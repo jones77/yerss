@@ -385,6 +385,49 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// updateListMouse handles mouse events in the list view: wheel moves the
+// cursor by one row, a left-click on an article row selects and opens it, and
+// a left-click on a day-header row toggles that group's fold. Clicks on the
+// status bar (the bottom line) are ignored.
+func (m *Model) updateListMouse(msg tea.MouseMsg) {
+	switch {
+	case msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress:
+		m.moveListCursor(-1)
+	case msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress:
+		m.moveListCursor(1)
+	case msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress:
+		m.handleListClick(msg.Y)
+	}
+}
+
+// handleListClick maps a screen row to a visible-row index via the list window
+// start offset and dispatches on the row kind found there.
+func (m *Model) handleListClick(y int) {
+	if y >= m.height-1 {
+		return
+	}
+	rows := m.visibleRows()
+	if len(rows) == 0 {
+		return
+	}
+	visible := m.height - 1
+	if visible < 1 {
+		visible = 1
+	}
+	start, _ := listWindow(len(rows), m.list.cursor, visible)
+	idx := start + y
+	if idx < 0 || idx >= len(rows) {
+		return
+	}
+	row := rows[idx]
+	if row.kind == rowHeader {
+		m.toggle(row.groupIdx)
+		return
+	}
+	m.list.cursor = idx
+	m.openArticle()
+}
+
 func (m *Model) pageSize() int {
 	n := m.height - 1
 	if n < 1 {

@@ -169,6 +169,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateList(msg)
 		}
 		return m.updateArticle(msg)
+	case tea.MouseMsg:
+		if m.popup != noPopup {
+			return m, nil
+		}
+		if m.view == viewList {
+			m.updateListMouse(msg)
+		} else {
+			m.updateArticleMouse(msg)
+		}
+		return m, nil
 	case refreshFinishedMsg:
 		m.refreshing = false
 		if msg.err != nil {

@@ -50,7 +50,7 @@ func main() {
 
 	m := ui.New(cfg, st)
 	applyAsciiFlag(m, ascii)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "yerss: %v\n", err)
 		os.Exit(1)

@@ -48,8 +48,8 @@ func DefaultKeybindings() Keymap {
 	return Keymap{
 		Quit:         {"q", "ctrl+c"},
 		Refresh:      {"R", "ctrl+r", "f5"},
-		OpenArticle:  {"enter", "l"},
-		Back:         {"esc", "enter", "h"},
+		OpenArticle:  {"enter", "l", "o"},
+		Back:         {"esc", "enter", "h", "b"},
 		MoveUp:       {"up", "k"},
 		MoveDown:     {"down", "j"},
 		PageUp:       {"pgup", "ctrl+b"},

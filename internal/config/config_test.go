@@ -129,3 +129,46 @@ func TestDefaultKeybindingsValid(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultKeyAliases(t *testing.T) {
+	km := DefaultKeybindings()
+	listEff, err := km.EffectiveKeys(ViewList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	articleEff, err := km.EffectiveKeys(ViewArticle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listEff["o"] != OpenArticle {
+		t.Errorf("o in list view should map to open_article, got %v", listEff["o"])
+	}
+	if articleEff["o"] != OpenURL {
+		t.Errorf("o in article view should map to open_url, got %v", articleEff["o"])
+	}
+	for _, view := range []View{ViewList, ViewArticle} {
+		eff, err := km.EffectiveKeys(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if eff["b"] != Back {
+			t.Errorf("b in view %s should map to back, got %v", view, eff["b"])
+		}
+	}
+	// Existing aliases must remain unchanged.
+	if listEff["enter"] != OpenArticle || listEff["l"] != OpenArticle {
+		t.Errorf("enter/l in list should still open articles")
+	}
+	for _, view := range []View{ViewList, ViewArticle} {
+		eff, err := km.EffectiveKeys(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if eff["h"] != Back {
+			t.Errorf("h in view %s should map to back, got %v", view, eff["h"])
+		}
+		if eff["esc"] != Back {
+			t.Errorf("esc in view %s should map to back, got %v", view, eff["esc"])
+		}
+	}
+}

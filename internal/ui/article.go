@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
 	"yerss/internal/store"
@@ -74,7 +75,7 @@ func renderArticleContent(a store.Article) string {
 		b.WriteString("\n")
 	}
 	if a.Link != "" {
-		b.WriteString(a.Link)
+		b.WriteString(ansi.SetHyperlink(a.Link) + a.Link + ansi.ResetHyperlink())
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -129,6 +130,20 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.popup = popupHelp
 	}
 	return m, cmd
+}
+
+// updateArticleMouse handles mouse events in the article view: wheel up/down
+// scrolls the viewport by one line, with downward scroll marking the article
+// read like the Down key. Clicks are no-ops — links are handled natively by
+// the terminal via OSC 8 hyperlinks.
+func (m *Model) updateArticleMouse(msg tea.MouseMsg) {
+	switch {
+	case msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress:
+		m.article.viewport.ScrollUp(1)
+	case msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress:
+		m.article.viewport.ScrollDown(1)
+		m.article.markRead(m.store)
+	}
 }
 
 // markRead implements the read-status rules: an article that fits the
