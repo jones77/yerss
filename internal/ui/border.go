@@ -60,7 +60,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	thumbTop, thumbH := sc.thumb(interiorH)
 
 	border := lipgloss.NewStyle().Foreground(p.Border)
-	thumb := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
+	thumb := lipgloss.NewStyle().Bold(true).Foreground(p.StatusBar)
 
 	ipad := strings.Repeat(" ", padX)
 	space := strings.Repeat(" ", interiorW)
@@ -115,7 +115,9 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 // dash-plus-corner on the right (`─╖`). The date is always fully visible; when
 // the title does not fit, it is truncated and ends with the ellipsis glyph and
 // the right rail keeps its single dash so the two ends mirror each other. When
-// the title fits, leftover space is filled with horizontal dashes.
+// the title fits, leftover space is filled with horizontal dashes. The date,
+// title, and ellipsis are styled in baby blue; the bullet and the rails stay in
+// the border color.
 func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	leftRail := g.tl + g.h
 	rightRail := g.h + g.tr
@@ -131,19 +133,29 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	}
 
 	style := lipgloss.NewStyle().Foreground(p.Border)
+	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
 
 	if runewidth.StringWidth(title) <= titleW {
-		core := prefix + title + " "
-		fill := coreW - runewidth.StringWidth(core)
+		fill := coreW - runewidth.StringWidth(prefix+title) - 1
 		if fill < 0 {
 			fill = 0
 		}
-		return style.Render(leftRail + core + strings.Repeat(g.h, fill) + rightRail)
+		if date == "" {
+			head := textStyle.Render(title) + " "
+			return style.Render(leftRail + " " + head + strings.Repeat(g.h, fill) + rightRail)
+		}
+		head := textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(title) + " "
+		return style.Render(leftRail + head + strings.Repeat(g.h, fill) + rightRail)
 	}
 
 	cut := truncate(title, titleW-runewidth.StringWidth(g.ellipsis))
-	core := prefix + cut + g.ellipsis + " "
-	return style.Render(leftRail + core + rightRail)
+	var head string
+	if date == "" {
+		head = textStyle.Render(cut+g.ellipsis) + " "
+		return style.Render(leftRail + " " + head + rightRail)
+	}
+	head = textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(cut+g.ellipsis) + " "
+	return style.Render(leftRail + head + rightRail)
 }
 
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
@@ -152,10 +164,13 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 // right-aligned `<percent>% · <bottomLine>/<totalLines>` position indicator,
 // each inset one space from the horizontal line (like the top border's date
 // and title) and separated from the dash fill by a space. The bullet between
-// the percent and the line ratio is g.bullet.
+// the percent and the line ratio is g.bullet. The hint, percent, and ratio are
+// styled in baby blue; the bullet and the rails stay in the border color.
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	hint := "o: open in browser"
-	indicator := fmt.Sprintf("%d%% %s %d/%d", sc.percent(), g.bullet, sc.bottomLine(), sc.totalH)
+	percentStr := fmt.Sprintf("%d%%", sc.percent())
+	ratioStr := fmt.Sprintf("%d/%d", sc.bottomLine(), sc.totalH)
+	indicator := percentStr + " " + g.bullet + " " + ratioStr
 	inner := max(1, w-2)
 	// The fixed chrome is 8 columns: corner+h+space on each side plus a space
 	// either side of the dash fill, leaving inner-6 for hint+indicator+fill.
@@ -177,5 +192,15 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 		fill = 0
 	}
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return style.Render(g.bl + g.h + " " + hint + " " + strings.Repeat(g.h, fill) + " " + indicator + " " + g.h + g.br)
+	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
+	hint = textStyle.Render(hint)
+	var ind string
+	if indicator == "" {
+		ind = ""
+	} else if bi := strings.Index(indicator, g.bullet); bi >= 0 {
+		ind = textStyle.Render(indicator[:bi]) + style.Render(g.bullet) + textStyle.Render(indicator[bi+len(g.bullet):])
+	} else {
+		ind = textStyle.Render(indicator)
+	}
+	return style.Render(g.bl + g.h + " " + hint + " " + strings.Repeat(g.h, fill) + " " + ind + " " + g.h + g.br)
 }

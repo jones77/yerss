@@ -156,7 +156,7 @@ func TestArticleFrameBorderColors(t *testing.T) {
 	lines := strings.Split(s, "\n")
 
 	borderColon := lipgloss.NewStyle().Foreground(m.palette.Border).Render(":")
-	brightPipe := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff")).Render("|")
+	brightPipe := lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar).Render("|")
 
 	if !strings.HasPrefix(lines[2], borderColon) {
 		t.Errorf("left border should be a grey :, got %q", lines[2][:20])

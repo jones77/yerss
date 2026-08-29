@@ -96,14 +96,14 @@ func (m *Model) newArticleState(a store.Article) articleState {
 }
 
 // articleHeaderMarkdown builds the markdown for the reader header: a bold
-// title, italic author, and the article URL as a markdown link when present.
+// title, plain author, and the article URL as a markdown link when present.
 func articleHeaderMarkdown(a store.Article) string {
 	var b strings.Builder
 	if a.Title != "" {
 		b.WriteString("**" + escapeMarkdownText(a.Title) + "**\n")
 	}
 	if a.Author != "" {
-		b.WriteString("*by " + escapeMarkdownText(a.Author) + "*\n")
+		b.WriteString("by " + escapeMarkdownText(a.Author) + "\n")
 	}
 	if a.Link != "" {
 		b.WriteString(markdownLink(a.Link) + "\n")

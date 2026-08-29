@@ -28,7 +28,7 @@ func glamourStandardStyle(theme string) string {
 // glamourStyleConfig returns the built-in dark/light style config with the
 // document's left margin removed, so the reader's own padX padding is the only
 // inset from the border (otherwise glamour's default two-column margin stacks
-// on top of it).
+// on top of it). Links drop their underline.
 func glamourStyleConfig(style string) ansi.StyleConfig {
 	var cfg ansi.StyleConfig
 	switch style {
@@ -39,6 +39,8 @@ func glamourStyleConfig(style string) ansi.StyleConfig {
 	}
 	zero := uint(0)
 	cfg.Document.Margin = &zero
+	falsePtr := false
+	cfg.Link.Underline = &falsePtr
 	return cfg
 }
 
