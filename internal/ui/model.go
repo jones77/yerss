@@ -158,8 +158,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.view == viewArticle {
+			offset := m.article.viewport.YOffset
 			a := *m.article.article
 			m.article = m.newArticleState(a)
+			m.article.viewport.SetYOffset(offset)
 		}
 		return m, nil
 	case tea.KeyMsg:

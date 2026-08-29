@@ -114,6 +114,36 @@ func TestRestoreSelectionReopensArticle(t *testing.T) {
 	}
 }
 
+func TestArticleScrollOffsetSurvivesWindowSize(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	st := openSharedStore(t)
+	m1 := modelOn(t, st)
+	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
+	m1.loadList()
+	m1.list.cursor = 1
+	m1.openArticle()
+	m1.article.viewport.ScrollDown(7)
+	wantOffset := m1.article.viewport.YOffset
+	m1.persistSelection()
+
+	m2 := modelOn(t, st)
+	m2.loadList()
+	m2.restoreSelection()
+	if m2.view != viewArticle {
+		t.Fatalf("expected article view after restore, got %d", m2.view)
+	}
+	if m2.article.viewport.YOffset != wantOffset {
+		t.Fatalf("restored offset = %d, want %d", m2.article.viewport.YOffset, wantOffset)
+	}
+
+	// The terminal's first WindowSizeMsg recreates the article state; the
+	// scroll offset must survive it.
+	m2.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	if m2.article.viewport.YOffset != wantOffset {
+		t.Errorf("offset after WindowSizeMsg = %d, want %d", m2.article.viewport.YOffset, wantOffset)
+	}
+}
+
 func TestRestoreSelectionFallsBackWhenArticleGone(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	st := openSharedStore(t)
