@@ -25,11 +25,14 @@ timezone (`--:--` when undated) after the tree glyph, followed by the article
 title; the title SHALL NOT be preceded or followed by bullet points. The
 source-domain identifier SHALL be right-aligned at the content edge and SHALL
 be the only field on the right; it SHALL be derived from the article's link
-host by stripping any leading `www.`, removing the top-level domain (the part
-after the final dot), and truncating the remainder to at most 12 characters
+host by stripping any leading `www.`, taking the organization label of the
+registrable domain (the public suffix plus one, so multi-part public suffixes
+such as `co.uk` are removed whole), and truncating it to at most 12 characters
 (for example `newrepublic.com` → `newrepublic`,
 `reallylongnewspaperdomainname.net` → `reallylongne`). When the article has no
-link, the system SHALL derive the identifier from the feed URL host instead.
+link, the system SHALL derive the identifier from the feed URL host instead;
+hosts that have no registrable domain (single-label hosts, IP literals) fall
+back to removing the part after the final dot.
 When a title would run into the right-aligned identifier, the system SHALL
 leave at least one space between the title and the identifier, and a truncated
 title SHALL end with an ellipsis — `…` in Unicode mode and `...` in ASCII
@@ -102,6 +105,11 @@ expanded articles).
 
 - **WHEN** an article has no link and its feed URL is `https://nytimes.com/rss`
 - **THEN** the source identifier is `nytimes`
+
+#### Scenario: Source identifier strips multi-part public suffixes
+
+- **WHEN** an article row is rendered for a story linked from `tribunemag.co.uk`
+- **THEN** the source identifier is `tribunemag`, not the truncated remainder of the final-dot strip
 
 #### Scenario: Truncated title ends with an ellipsis and keeps its gap
 

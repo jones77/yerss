@@ -65,6 +65,9 @@ func TestSourceID(t *testing.T) {
 		{"https://reallylongnewspaperdomainname.net/x", "", "reallylongne"},
 		{"https://tribunemag.com./story/1", "", "tribunemag"},
 		{"https://WWW.TRIBUNEMAG.COM/x", "", "tribunemag"},
+		{"https://tribunemag.co.uk/story/1", "", "tribunemag"},
+		{"https://www.bbc.co.uk/news/x", "", "bbc"},
+		{"https://feeds.example.com/x", "", "example"},
 		{"", "https://nytimes.com/rss", "nytimes"},
 		{"", "", ""},
 	}

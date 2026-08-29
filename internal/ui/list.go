@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
+	"golang.org/x/net/publicsuffix"
 
 	"yerss/internal/config"
 	"yerss/internal/store"
@@ -343,9 +344,12 @@ func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool
 }
 
 // sourceID derives a short publication identifier from a URL host: strip any
-// trailing dot and a leading "www.", take the label before the final dot (the
-// second-level domain), and truncate to at most 12 characters. The article link
-// host is used when present; otherwise the feed URL host is used.
+// trailing dot and a leading "www.", take the organization label of the
+// registrable domain (the public suffix plus one, so multi-part suffixes like
+// "co.uk" are removed whole), and truncate to at most 12 characters. The
+// article link host is used when present; otherwise the feed URL host is
+// used. Hosts with no registrable domain (single-label hosts, IP literals)
+// fall back to dropping everything from the final dot.
 func sourceID(rawURL, feedURL string) string {
 	host := ""
 	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
@@ -358,7 +362,13 @@ func sourceID(rawURL, feedURL string) string {
 	}
 	h := strings.ToLower(strings.TrimSuffix(host, "."))
 	h = strings.TrimPrefix(h, "www.")
-	if i := strings.LastIndex(h, "."); i > 0 {
+	if etld1, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
+		if i := strings.Index(etld1, "."); i > 0 {
+			h = etld1[:i]
+		} else {
+			h = etld1
+		}
+	} else if i := strings.LastIndex(h, "."); i > 0 {
 		h = h[:i]
 	}
 	if len(h) > 12 {
