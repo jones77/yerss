@@ -75,6 +75,65 @@ func TestRenderArticleBorderASCII(t *testing.T) {
 	}
 }
 
+// trackGlyphs returns the right-edge column of every interior row of a rendered
+// article frame, with ANSI escapes stripped. The thumb rows read '#' and the
+// dim track rows read ':' in ASCII fallback mode.
+func trackGlyphs(t *testing.T, s string) string {
+	t.Helper()
+	lines := strings.Split(s, "\n")
+	var b strings.Builder
+	for _, l := range lines[1 : len(lines)-1] {
+		st := ansi.Strip(l)
+		b.WriteByte(st[len(st)-1])
+	}
+	return b.String()
+}
+
+func TestRenderArticleThumbPosition(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.ascii = true
+	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
+	// 70 content lines vs viewport height 20 (height 24, padY 1): scrollable
+	// range 50, track height 22, thumb height 22*20/70 = 6.
+	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+
+	cases := []struct {
+		name      string
+		offset    int
+		wantTrack string
+		wantLabel string
+	}{
+		{"on open", 0, "######::::::::::::::::", "0% scrolled"},
+		{"42%", 21, "::::::######::::::::::", "42% scrolled"},
+		{"100%", 50, "::::::::::::::::######", "100% scrolled"},
+	}
+	for _, c := range cases {
+		m.article.viewport.SetYOffset(c.offset)
+		s := m.renderArticle()
+		lines := strings.Split(s, "\n")
+		if got := trackGlyphs(t, s); got != c.wantTrack {
+			t.Errorf("%s: track glyphs = %q, want %q", c.name, got, c.wantTrack)
+		}
+		if !strings.Contains(lines[len(lines)-1], c.wantLabel) {
+			t.Errorf("%s: bottom border missing %q: %q", c.name, c.wantLabel, lines[len(lines)-1])
+		}
+	}
+}
+
+func TestRenderArticleShortArticleFullTrack(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.ascii = true
+	m.article = m.newArticleState(store.Article{Title: "short", Content: "<p>x</p>"})
+	s := m.renderArticle()
+	lines := strings.Split(s, "\n")
+	if got := trackGlyphs(t, s); got != strings.Repeat("#", 22) {
+		t.Errorf("short article track = %q, want all %q", got, strings.Repeat("#", 22))
+	}
+	if !strings.Contains(lines[len(lines)-1], "100% scrolled") {
+		t.Errorf("bottom border missing 100%%: %q", lines[len(lines)-1])
+	}
+}
+
 func TestRenderTagPopup(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.popup = popupTagsList

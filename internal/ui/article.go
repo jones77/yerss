@@ -15,7 +15,6 @@ type articleState struct {
 	article    *store.Article
 	lines      []string
 	viewport   viewport.Model
-	percent    int
 	readMarked bool
 }
 
@@ -53,7 +52,6 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		lines:    strings.Split(wrapped, "\n"),
 		viewport: vp,
 	}
-	m.updateArticlePercent(&st)
 	if len(st.lines) <= vpH {
 		st.markRead(m.store)
 	}
@@ -125,19 +123,7 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.Help:
 		m.popup = popupHelp
 	}
-	m.updateArticlePercent(&m.article)
 	return m, cmd
-}
-
-func (m *Model) updateArticlePercent(st *articleState) {
-	p := int(st.viewport.ScrollPercent()*100 + 0.5)
-	if p < 0 {
-		p = 0
-	}
-	if p > 100 {
-		p = 100
-	}
-	st.percent = p
 }
 
 // markRead implements the read-status rules: an article that fits the
@@ -172,6 +158,11 @@ func (m *Model) renderArticle() string {
 	g := glyphsFor(m.ascii)
 	content := m.article.viewport.View()
 	lines := strings.Split(content, "\n")
+	sc := scrollState{
+		totalH:    m.article.viewport.TotalLineCount(),
+		viewportH: m.article.viewport.Height,
+		offset:    m.article.viewport.YOffset,
+	}
 	return renderArticleBorder(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY,
-		g, m.palette, date, title, st.percent, lines)
+		g, m.palette, date, title, sc, lines)
 }

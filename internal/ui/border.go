@@ -26,11 +26,12 @@ func glyphsFor(ascii bool) borderGlyphs {
 
 // renderArticleBorder draws the article reader frame: a thin border with the
 // date and title inline in the top edge, a percent-scrolled indicator in the
-// bottom edge, and a double-line right edge whose filled portion (top N%)
-// uses the accent color and the rest the dim color. The frame is inset from
-// the terminal by padX columns on each side and content is padded inside by
-// padY rows above and below.
-func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, title string, percent int, content []string) string {
+// bottom edge, and a double-line right edge that acts as a scrollbar. A
+// contiguous accent thumb positioned by the scroll offset represents the
+// currently visible portion of the content, and the rest of the track is dim.
+// The frame is inset from the terminal by padX columns on each side and content
+// is padded inside by padY rows above and below.
+func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, title string, sc scrollState, content []string) string {
 	if h < 1 {
 		h = 1
 	}
@@ -57,7 +58,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	if interiorH < 1 {
 		interiorH = 1
 	}
-	fillH := interiorH * percent / 100
+	thumbTop, thumbH := sc.thumb(interiorH)
 
 	accent := lipgloss.NewStyle().Foreground(p.Accent)
 	dim := lipgloss.NewStyle().Foreground(p.Dim)
@@ -66,7 +67,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	space := strings.Repeat(" ", contentW)
 
 	right := func(row int) string {
-		if row < fillH {
+		if row >= thumbTop && row < thumbTop+thumbH {
 			return accent.Render(g.fill)
 		}
 		return dim.Render(g.unfill)
@@ -96,7 +97,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 		lines = append(lines, left()+space+right(row))
 		row++
 	}
-	lines = append(lines, bottomBorder(w, padX, g, p, percent))
+	lines = append(lines, bottomBorder(w, padX, g, p, sc.percent()))
 
 	// Defensive clamp to exactly h lines on the most degenerate sizes.
 	if len(lines) > h {
