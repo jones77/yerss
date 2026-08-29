@@ -123,3 +123,29 @@ func TestRenderArticleMarkdownEscapesHeader(t *testing.T) {
 		t.Errorf("escaped title missing: %q", out)
 	}
 }
+
+func TestIndentListContinuationsHangsIndent(t *testing.T) {
+	m, _ := newTestModel(t)
+	md := "- top bullet that is long enough to wrap around onto a second line\n" +
+		"  - nested bullet also long enough to wrap a bit\n" +
+		"  continuation text\n" +
+		"\n" +
+		"plain paragraph that wraps around but must stay unindented"
+	stripped := ansi.Strip(m.renderMarkdown(md, 30))
+	if !strings.Contains(stripped, "\n  enough to wrap around onto a") {
+		t.Errorf("top-level continuation should hang-indent 2 below the bullet:\n%q", stripped)
+	}
+	if !strings.Contains(stripped, "\n    enough to wrap a bit") {
+		t.Errorf("nested continuation should hang-indent under nested text:\n%q", stripped)
+	}
+	if strings.Contains(stripped, "\n  around but must stay") {
+		t.Errorf("paragraph continuation must not be indented:\n%q", stripped)
+	}
+}
+
+func TestIndentListContinuationsSkipsPlainParagraph(t *testing.T) {
+	in := "first line of plain text\nsecond line of the same paragraph"
+	if got := indentListContinuations(in); got != in {
+		t.Errorf("plain paragraph lines must be untouched, got %q", got)
+	}
+}

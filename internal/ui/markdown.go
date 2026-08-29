@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/ansi"
 	"charm.land/glamour/v2/styles"
+	xansi "github.com/charmbracelet/x/ansi"
 )
 
 // glamourStandardStyle maps the configured display theme to a glamour standard
@@ -67,6 +69,38 @@ func (m *Model) markdownRenderer(contentW int) *glamour.TermRenderer {
 	return r
 }
 
+// indentListContinuations shifts the wrapped continuation lines of list items
+// two columns to the right so they align under the text that follows the
+// bullet or number. Glamour wraps list content inside the same block as its
+// marker, so every level's continuation lands on the marker column; adding two
+// cells re-aligns it with the item's text. The article frame later truncates
+// each line back to the content width, so no width bookkeeping is needed here.
+func indentListContinuations(rendered string) string {
+	const indent = "  "
+	prevItem := false
+	lines := strings.Split(rendered, "\n")
+	for i, line := range lines {
+		vis := xansi.Strip(line)
+		if strings.Trim(vis, " \t") == "" {
+			prevItem = false
+			continue
+		}
+		if listItemLineRe.MatchString(vis) {
+			prevItem = true
+			continue
+		}
+		if prevItem {
+			lines[i] = indent + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// listItemLineRe matches a rendered list-item marker at the start of a line,
+// after any leading whitespace: an unordered bullet (•, ‣, ▪, *, +, -) or an
+// ordered number (1. 2) followed by a space.
+var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]`)
+
 // escapeMarkdownText escapes the characters that CommonMark treats as special
 // inline (emphasis, code spans, links, autolinks) in feed-controlled header
 // text so it renders literally. Characters that are only special at the start
@@ -107,5 +141,5 @@ func (m *Model) renderMarkdown(md string, contentW int) string {
 	if err != nil {
 		return md
 	}
-	return strings.Trim(out, "\n")
+	return indentListContinuations(strings.Trim(out, "\n"))
 }
