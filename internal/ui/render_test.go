@@ -75,6 +75,29 @@ func TestRenderArticleBorderASCII(t *testing.T) {
 	}
 }
 
+func TestRenderArticleBorderInteriorPadding(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.ascii = true
+	m.article = m.newArticleState(store.Article{
+		Title:   "Hello world article title",
+		Content: "<p>a short paragraph</p>",
+	})
+	lines := strings.Split(m.renderArticle(), "\n")
+	first := ansi.Strip(lines[2])
+	if !strings.HasPrefix(first, "|  Hello world article title") {
+		t.Errorf("content missing two-space left padding: %q", first)
+	}
+	if got := first[len(first)-1]; got != '#' {
+		t.Errorf("right edge thumb not at column %d: got %q", len(first)-1, first)
+	}
+	if len(first) != 80 {
+		t.Errorf("content row width = %d, want 80: %q", len(first), first)
+	}
+	if !strings.HasPrefix(ansi.Strip(lines[0]), "+") {
+		t.Errorf("top border has leading margin: %q", lines[0])
+	}
+}
+
 // trackGlyphs returns the right-edge column of every interior row of a rendered
 // article frame, with ANSI escapes stripped. The thumb rows read '#' and the
 // dim track rows read ':' in ASCII fallback mode.

@@ -29,8 +29,8 @@ func glyphsFor(ascii bool) borderGlyphs {
 // bottom edge, and a double-line right edge that acts as a scrollbar. A
 // contiguous accent thumb positioned by the scroll offset represents the
 // currently visible portion of the content, and the rest of the track is dim.
-// The frame is inset from the terminal by padX columns on each side and content
-// is padded inside by padY rows above and below.
+// Content is padded inside the border by padX columns on each side and padY
+// rows above and below.
 func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, title string, sc scrollState, content []string) string {
 	if h < 1 {
 		h = 1
@@ -45,9 +45,13 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	if effPadY < 0 {
 		effPadY = 0
 	}
-	contentW := w - 2*padX - 2
-	if contentW < 1 {
-		contentW = 1
+	interiorW := w - 2
+	if interiorW < 1 {
+		interiorW = 1
+	}
+	textW := interiorW - 2*padX
+	if textW < 1 {
+		textW = 1
 	}
 	viewportH := h - 2*effPadY - 2
 	if viewportH < 1 {
@@ -63,8 +67,8 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	accent := lipgloss.NewStyle().Foreground(p.Accent)
 	dim := lipgloss.NewStyle().Foreground(p.Dim)
 
-	pad := strings.Repeat(" ", padX)
-	space := strings.Repeat(" ", contentW)
+	ipad := strings.Repeat(" ", padX)
+	space := strings.Repeat(" ", interiorW)
 
 	right := func(row int) string {
 		if row >= thumbTop && row < thumbTop+thumbH {
@@ -72,59 +76,66 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 		}
 		return dim.Render(g.unfill)
 	}
-	left := func() string {
-		return pad + g.v
-	}
 
 	var lines []string
-	lines = append(lines, topBorder(w, padX, g, p, date, title))
+	lines = append(lines, topBorder(w, g, p, date, title))
 
 	row := 0
+	blank := func() string {
+		return g.v + space + right(row)
+	}
 	for i := 0; i < effPadY; i++ {
-		lines = append(lines, left()+space+right(row))
+		lines = append(lines, blank())
 		row++
 	}
 	for i := 0; i < viewportH; i++ {
 		var line string
 		if i < len(content) {
-			line = truncate(content[i], contentW)
+			line = truncate(content[i], textW)
 		}
-		line = padRight(line, contentW)
-		lines = append(lines, left()+line+right(row))
+		line = padRight(line, textW)
+		lines = append(lines, g.v+ipad+line+ipad+right(row))
 		row++
 	}
 	for i := 0; i < effPadY; i++ {
-		lines = append(lines, left()+space+right(row))
+		lines = append(lines, blank())
 		row++
 	}
-	lines = append(lines, bottomBorder(w, padX, g, p, sc.percent()))
+	lines = append(lines, bottomBorder(w, g, p, sc.percent()))
 
 	// Defensive clamp to exactly h lines on the most degenerate sizes.
 	if len(lines) > h {
 		lines = lines[:h]
 	} else if len(lines) < h {
 		for len(lines) < h {
-			lines = append(lines, left()+space+right(row))
+			lines = append(lines, blank())
 			row++
 		}
 	}
 	return strings.Join(lines, "\n")
 }
 
-func topBorder(w, padX int, g borderGlyphs, p Palette, date, title string) string {
+func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	text := " " + date + " · " + title + " "
-	text = truncate(text, w-2*padX-3)
-	fill := (w - 2*padX - 2) - 1 - runewidth.StringWidth(text)
+	inner := w - 2
+	if inner < 1 {
+		inner = 1
+	}
+	text = truncate(text, inner-1)
+	fill := (inner - 1) - runewidth.StringWidth(text)
 	if fill < 0 {
 		fill = 0
 	}
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return strings.Repeat(" ", padX) + style.Render(g.tl+g.h+text+strings.Repeat(g.h, fill)+g.tr)
+	return style.Render(g.tl + g.h + text + strings.Repeat(g.h, fill) + g.tr)
 }
 
-func bottomBorder(w, padX int, g borderGlyphs, p Palette, percent int) string {
+func bottomBorder(w int, g borderGlyphs, p Palette, percent int) string {
 	text := fmt.Sprintf(" %d%% scrolled ", percent)
-	inner := (w - 2*padX - 2)
+	inner := w - 2
+	if inner < 1 {
+		inner = 1
+	}
 	text = truncate(text, inner)
 	tw := runewidth.StringWidth(text)
 	total := inner - tw
@@ -133,5 +144,5 @@ func bottomBorder(w, padX int, g borderGlyphs, p Palette, percent int) string {
 	}
 	left, right := total/2, total-total/2
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return strings.Repeat(" ", padX) + style.Render(g.bl+strings.Repeat(g.h, left)+text+strings.Repeat(g.h, right)+g.br)
+	return style.Render(g.bl + strings.Repeat(g.h, left) + text + strings.Repeat(g.h, right) + g.br)
 }
