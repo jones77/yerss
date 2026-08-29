@@ -452,10 +452,6 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case config.TagPopup:
 		m.openTagPopup(popupTagsList)
-	case config.ToggleRead:
-		m.toggleReadAtCursor()
-	case config.MarkAllRead:
-		m.markAllVisibleRead()
 	case config.Help:
 		m.popup = popupHelp
 	}
@@ -530,29 +526,6 @@ func (m *Model) articleAtCursor() (*articleItem, bool) {
 		return nil, false
 	}
 	return &m.list.groups[row.groupIdx].articles[row.artIdx], true
-}
-
-func (m *Model) toggleReadAtCursor() {
-	item, ok := m.articleAtCursor()
-	if !ok {
-		return
-	}
-	item.Read = !item.Read
-	_ = m.store.SetRead(item.ID, item.Read)
-}
-
-func (m *Model) markAllVisibleRead() {
-	var ids []int64
-	for gi := range m.list.groups {
-		for ai := range m.list.groups[gi].articles {
-			item := &m.list.groups[gi].articles[ai]
-			ids = append(ids, item.ID)
-			item.Read = true
-		}
-	}
-	if len(ids) > 0 {
-		_ = m.store.MarkAllRead(ids)
-	}
 }
 
 func (m *Model) clearFilter() {

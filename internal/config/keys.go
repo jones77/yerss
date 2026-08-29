@@ -23,8 +23,6 @@ const (
 	Top             Action = "top"
 	Bottom          Action = "bottom"
 	TagPopup        Action = "tag_popup"
-	ToggleRead      Action = "toggle_read"
-	MarkAllRead     Action = "mark_all_read"
 	OpenURL         Action = "open_url"
 	CopyURL         Action = "copy_url"
 	CopyArticleText Action = "copy_article_text"
@@ -68,8 +66,6 @@ var catalog = []actionSpec{
 	{Top, []string{"g", "ctrl+up"}, []View{ViewList, ViewArticle}},
 	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle}},
 	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
-	{ToggleRead, []string{"m"}, []View{ViewList, ViewArticle}},
-	{MarkAllRead, []string{"a"}, []View{ViewList}},
 	{OpenURL, []string{"o"}, []View{ViewArticle}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
 	{CopyArticleText, []string{"C"}, []View{ViewArticle}},

@@ -495,51 +495,6 @@ ORDER BY total DESC, c.name ASC`)
 	return tags, rows.Err()
 }
 
-// markAllChunkSize bounds the number of ids in a single IN clause so each
-// UPDATE stays well under SQLite's bound-parameter limit.
-const markAllChunkSize = 500
-
-// MarkAllRead sets the read flag on every article with one of the given IDs.
-func (s *Store) MarkAllRead(ids []int64) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, chunk := range chunkIDs(ids, markAllChunkSize) {
-		if len(chunk) == 0 {
-			continue
-		}
-		args := make([]any, len(chunk))
-		ph := make([]string, len(chunk))
-		for i, id := range chunk {
-			args[i] = id
-			ph[i] = "?"
-		}
-		stmt := `UPDATE articles SET read = 1 WHERE id IN (` + strings.Join(ph, ", ") + `)`
-		if _, err := tx.Exec(stmt, args...); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// chunkIDs splits ids into slices of at most n elements, preserving order.
-func chunkIDs(ids []int64, n int) [][]int64 {
-	if n <= 0 {
-		n = 1
-	}
-	var chunks [][]int64
-	for i := 0; i < len(ids); i += n {
-		end := i + n
-		if end > len(ids) {
-			end = len(ids)
-		}
-		chunks = append(chunks, ids[i:end])
-	}
-	return chunks
-}
-
 func (s *Store) articleCategories(articleID int64) ([]string, error) {
 	rows, err := s.db.Query(`
 SELECT c.name FROM categories c

@@ -155,8 +155,6 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.article.viewport.GotoTop()
 	case config.Bottom:
 		m.scrollArticle(func() { m.article.viewport.GotoBottom() })
-	case config.ToggleRead:
-		m.article.toggleRead(m.store)
 	case config.OpenURL:
 		if m.article.article.Link != "" {
 			cmd = openURLCmd(m.article.article.Link)
@@ -320,11 +318,6 @@ func (s *articleState) markRead(st *store.Store) {
 	s.readMarked = true
 	s.article.Read = true
 	_ = st.SetRead(s.id, true)
-}
-
-func (s *articleState) toggleRead(st *store.Store) {
-	s.article.Read = !s.article.Read
-	_ = st.SetRead(s.id, s.article.Read)
 }
 
 func (m *Model) renderArticle() string {

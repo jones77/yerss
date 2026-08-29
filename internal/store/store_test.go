@@ -496,57 +496,6 @@ func TestLastSelectionRoundtrip(t *testing.T) {
 	}
 }
 
-func TestChunkIDs(t *testing.T) {
-	ids := make([]int64, 1200)
-	for i := range ids {
-		ids[i] = int64(i + 1)
-	}
-	chunks := chunkIDs(ids, 500)
-	if len(chunks) != 3 {
-		t.Fatalf("chunkIDs = %d chunks, want 3", len(chunks))
-	}
-	if len(chunks[0]) != 500 || len(chunks[1]) != 500 || len(chunks[2]) != 200 {
-		t.Fatalf("chunk sizes = %d/%d/%d, want 500/500/200",
-			len(chunks[0]), len(chunks[1]), len(chunks[2]))
-	}
-	if chunks[1][0] != 501 {
-		t.Errorf("second chunk starts at %d, want 501", chunks[1][0])
-	}
-	if empty := chunkIDs(nil, 500); len(empty) != 0 {
-		t.Errorf("chunkIDs(nil) = %d chunks, want 0", len(empty))
-	}
-}
-
-func TestMarkAllReadAcrossChunks(t *testing.T) {
-	st := newTestStore(t)
-	const total = 520 // exceeds one chunk of 500
-	var ids []int64
-	for i := 0; i < total; i++ {
-		a := sampleArticle()
-		a.GUID = fmt.Sprintf("g%d", i)
-		id, err := st.UpsertArticle(a)
-		if err != nil {
-			t.Fatalf("UpsertArticle: %v", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := st.MarkAllRead(ids); err != nil {
-		t.Fatalf("MarkAllRead: %v", err)
-	}
-	arts, err := st.ListArticles("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(arts) != total {
-		t.Fatalf("listed %d articles, want %d", len(arts), total)
-	}
-	for _, a := range arts {
-		if !a.Read {
-			t.Errorf("article %d not marked read", a.ID)
-		}
-	}
-}
-
 func TestUpsertArticleReturnedIDMatchesRow(t *testing.T) {
 	st := newTestStore(t)
 	a := sampleArticle()

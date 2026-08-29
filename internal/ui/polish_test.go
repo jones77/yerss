@@ -196,10 +196,9 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 
 func TestActionLabel(t *testing.T) {
 	cases := map[config.Action]string{
-		config.OpenArticle:  "Open Article",
-		config.MarkAllRead:  "Mark All Read",
-		config.ToggleRead:   "Toggle Read",
-		config.HalfPageDown: "Half Page Down",
+		config.OpenArticle:     "Open Article",
+		config.HalfPageDown:    "Half Page Down",
+		config.CopyArticleText: "Copy Article Text",
 	}
 	for a, want := range cases {
 		if got := actionLabel(a); got != want {

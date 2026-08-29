@@ -442,14 +442,14 @@ The system SHALL open a tag popup occupying 40% of the screen when the user pres
 The system SHALL display a help popup listing each action and its bound keys
 when the user presses `?`. Each action SHALL be labeled with its display name
 derived from the action identifier by replacing underscores with spaces and
-rendering the result in Title Case (for example `open_article` → `Open Article`,
-`mark_all_read` → `Mark All Read`). The action label SHALL appear on the left
+rendering the result in Title Case (for example `half_page_down` →
+`Half Page Down`). The action label SHALL appear on the left
 and the bound key strings SHALL appear on the right.
 
 #### Scenario: Action labels are Title Case without underscores
 
 - **WHEN** the help popup is displayed
-- **THEN** each action is labeled with underscores replaced by spaces and each word capitalized (for example `Open Article`, `Mark All Read`, `Toggle Read`)
+- **THEN** each action is labeled with underscores replaced by spaces and each word capitalized (for example `Open Article`, `Half Page Down`)
 
 #### Scenario: Help popup lists current bindings
 

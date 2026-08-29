@@ -170,8 +170,6 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		Top:             {"g", "ctrl+up"},
 		Bottom:          {"G", "ctrl+down"},
 		TagPopup:        {"T", "t"},
-		ToggleRead:      {"m"},
-		MarkAllRead:     {"a"},
 		OpenURL:         {"o"},
 		CopyURL:         {"c"},
 		CopyArticleText: {"C"},
