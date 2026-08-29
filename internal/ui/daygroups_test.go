@@ -132,6 +132,47 @@ func TestCursorWrapsAcrossVisibleRows(t *testing.T) {
 	}
 }
 
+func TestPageKeysClampAtBoundaries(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
+	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
+	m.loadList()
+
+	// rows: [header, a, b]; pageSize is large (> 3), so one page jump should
+	// land directly on the last row, and page up from there back on the first.
+	m.list.cursor = 0
+	m.updateList(tea.KeyMsg{Type: tea.KeyPgDown})
+	if m.list.cursor != 2 {
+		t.Errorf("page down from top: cursor = %d, want 2", m.list.cursor)
+	}
+	m.updateList(tea.KeyMsg{Type: tea.KeyPgUp})
+	if m.list.cursor != 0 {
+		t.Errorf("page up from bottom: cursor = %d, want 0", m.list.cursor)
+	}
+
+	// Half-page and page jumps must not wrap: on the first row a page up and a
+	// half-page up stay put, and on the last row a page down stays put.
+	m.updateList(tea.KeyMsg{Type: tea.KeyPgUp})
+	if m.list.cursor != 0 {
+		t.Errorf("page up at top should clamp: cursor = %d, want 0", m.list.cursor)
+	}
+	m.list.cursor = 2
+	m.updateList(tea.KeyMsg{Type: tea.KeyPgDown})
+	if m.list.cursor != 2 {
+		t.Errorf("page down at bottom should clamp: cursor = %d, want 2", m.list.cursor)
+	}
+	m.updateList(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if m.list.cursor != 2 {
+		t.Errorf("half page down at bottom should clamp: cursor = %d, want 2", m.list.cursor)
+	}
+	m.list.cursor = 0
+	m.updateList(tea.KeyMsg{Type: tea.KeyCtrlU})
+	if m.list.cursor != 0 {
+		t.Errorf("half page up at top should clamp: cursor = %d, want 0", m.list.cursor)
+	}
+}
+
 func TestOpenAndFoldKeysOnHeader(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)

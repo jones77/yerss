@@ -435,13 +435,13 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.Refresh:
 		cmd = m.refreshManual()
 	case config.PageDown:
-		m.moveListCursor(m.pageSize())
+		m.list.cursor = clampIndex(m.list.cursor+m.pageSize(), len(m.visibleRows()))
 	case config.PageUp:
-		m.moveListCursor(-m.pageSize())
+		m.list.cursor = clampIndex(m.list.cursor-m.pageSize(), len(m.visibleRows()))
 	case config.HalfPageDown:
-		m.moveListCursor(m.pageSize() / 2)
+		m.list.cursor = clampIndex(m.list.cursor+m.pageSize()/2, len(m.visibleRows()))
 	case config.HalfPageUp:
-		m.moveListCursor(-m.pageSize() / 2)
+		m.list.cursor = clampIndex(m.list.cursor-m.pageSize()/2, len(m.visibleRows()))
 	case config.Top:
 		if n := len(m.visibleRows()); n > 0 {
 			m.list.cursor = 0
