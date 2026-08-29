@@ -250,8 +250,11 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	if !strings.Contains(line, "10:04") {
 		t.Errorf("row = %q, want local time 10:04 (15:04 UTC - 5h)", line)
 	}
-	if !strings.Contains(line, "timed·example·10:04") {
-		t.Errorf("row should be title·source·time: %q", line)
+	if !strings.HasSuffix(line, "·example·10:04") {
+		t.Errorf("source and time should be right-aligned: %q", line)
+	}
+	if !strings.Contains(line, "timed") {
+		t.Errorf("row should contain the title: %q", line)
 	}
 	if !strings.HasPrefix(line, "  ") {
 		t.Errorf("row should keep the cursor gutter: %q", line)

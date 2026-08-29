@@ -26,7 +26,7 @@ func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
 		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: ".", expand: "v", collapse: ">"}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·", expand: "▾", collapse: "▸"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·", expand: "▾", collapse: "▸"}
 }
 
 // renderArticleBorder draws the article reader frame: a thin border with the
@@ -165,8 +165,9 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
 // core + rightCorner`. The core is a left-aligned `o: open in browser` hint
 // and a right-aligned `<percent>% · <bottomLine>/<totalLines>` position
-// indicator, with horizontal dashes filling the space between them. The
-// bullet between the percent and the line ratio is g.bullet.
+// indicator, each inset one space from its corner (mirroring the top border's
+// date and title) and separated from the dash fill by a space. The bullet
+// between the percent and the line ratio is g.bullet.
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	hint := "o: open in browser"
 	indicator := fmt.Sprintf("%d%% %s %d/%d", sc.percent(), g.bullet, sc.bottomLine(), sc.totalH)
@@ -178,10 +179,10 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	indicator = truncate(indicator, inner)
 	hw := ansi.StringWidth(hint)
 	iw := ansi.StringWidth(indicator)
-	fill := inner - hw - iw
+	fill := inner - 4 - hw - iw
 	if fill < 0 {
 		fill = 0
 	}
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return style.Render(g.bl + hint + strings.Repeat(g.h, fill) + indicator + g.br)
+	return style.Render(g.bl + " " + hint + " " + strings.Repeat(g.h, fill) + " " + indicator + " " + g.br)
 }

@@ -24,8 +24,8 @@ func TestTopBorderTitleFits(t *testing.T) {
 	if !strings.HasPrefix(line, "┌─ ") {
 		t.Errorf("expected left rail ┌─ : %q", line)
 	}
-	if !strings.HasSuffix(line, "╖") {
-		t.Errorf("expected right corner ╖: %q", line)
+	if !strings.HasSuffix(line, "┐") {
+		t.Errorf("expected right corner ┐: %q", line)
 	}
 	if !strings.Contains(line, "───") {
 		t.Errorf("expected fill dashes when the title fits: %q", line)
@@ -46,7 +46,7 @@ func TestTopBorderTitleTruncated(t *testing.T) {
 	if !strings.Contains(line, "2026-01-02") {
 		t.Errorf("date must stay intact: %q", line)
 	}
-	if !strings.HasSuffix(line, "… ─╖") {
+	if !strings.HasSuffix(line, "… ─┐") {
 		t.Errorf("expected … then a single dash before the right corner: %q", line)
 	}
 }
@@ -82,7 +82,7 @@ func TestTopBorderCJKTitle(t *testing.T) {
 	if strings.Contains(line, "イトルです") {
 		t.Errorf("title should be truncated before the remaining chars: %q", line)
 	}
-	if !strings.HasSuffix(line, "… ─╖") {
+	if !strings.HasSuffix(line, "… ─┐") {
 		t.Errorf("expected ellipsis and single dash: %q", line)
 	}
 }

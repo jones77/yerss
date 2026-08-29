@@ -50,7 +50,7 @@ func TestTopBorderShowsTime(t *testing.T) {
 	if !strings.Contains(line, "2026-01-02 15:04:05") {
 		t.Errorf("date+time prefix must stay intact: %q", line)
 	}
-	if !strings.HasSuffix(line, "… ─╖") {
+	if !strings.HasSuffix(line, "… ─┐") {
 		t.Errorf("expected ellipsis and single dash before the right corner: %q", line)
 	}
 }
@@ -63,6 +63,8 @@ func TestSourceID(t *testing.T) {
 		{"https://www.nytimes.com/x", "", "nytimes"},
 		{"https://sueddeutsche.de/x", "", "sueddeutsche"},
 		{"https://reallylongnewspaperdomainname.net/x", "", "reallylongne"},
+		{"https://tribunemag.com./story/1", "", "tribunemag"},
+		{"https://WWW.TRIBUNEMAG.COM/x", "", "tribunemag"},
 		{"", "https://nytimes.com/rss", "nytimes"},
 		{"", "", ""},
 	}
@@ -70,6 +72,47 @@ func TestSourceID(t *testing.T) {
 		if got := sourceID(c.link, c.feed); got != c.want {
 			t.Errorf("sourceID(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
 		}
+	}
+}
+
+func TestArticleRowSourceAndTimeRightAligned(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
+	m.loadList()
+	item := &m.list.groups[0].articles[0]
+	item.Link = "https://newrepublic.com/story/1"
+
+	line := ansi.Strip(m.renderArticleRow(item, false))
+	if !strings.HasSuffix(line, "·newrepublic·15:04") {
+		t.Errorf("source and time should be right-aligned: %q", line)
+	}
+	if ansi.StringWidth(line) != m.width {
+		t.Errorf("row width = %d, want %d: %q", ansi.StringWidth(line), m.width, line)
+	}
+}
+
+func TestArticleRowTitleTruncatedWithEllipsis(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, strings.Repeat("x", 200), time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
+	m.loadList()
+	item := &m.list.groups[0].articles[0]
+	item.Link = "https://newrepublic.com/story/1"
+
+	g := glyphsFor(m.ascii)
+	line := ansi.Strip(m.renderArticleRow(item, false))
+	if !strings.Contains(line, g.ellipsis) {
+		t.Errorf("long title should end with an ellipsis: %q", line)
+	}
+	if !strings.Contains(line, g.ellipsis+g.bullet) {
+		t.Errorf("no space between the ellipsis and the source bullet: %q", line)
+	}
+	if ansi.StringWidth(line) != m.width {
+		t.Errorf("row width = %d, want %d: %q", ansi.StringWidth(line), m.width, line)
+	}
+	if !strings.HasSuffix(line, "·newrepublic·15:04") {
+		t.Errorf("right-aligned source and time should remain visible: %q", line)
 	}
 }
 
@@ -129,11 +172,17 @@ func TestArticleFrameBorderColors(t *testing.T) {
 func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	g := glyphsFor(false)
 	line := stripTop(t, bottomBorder(40, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
-	if !strings.HasPrefix(line, "└o: open in browser") {
-		t.Errorf("help hint should be left-aligned: %q", line)
+	if !strings.HasPrefix(line, "└ o: open in browser") {
+		t.Errorf("help hint should be left-aligned and inset one space: %q", line)
 	}
-	if !strings.HasSuffix(line, "100% · 120/120╜") {
-		t.Errorf("indicator should be 100%% · 120/120 at the bottom: %q", line)
+	if !strings.HasSuffix(line, "100% · 120/120 ┘") {
+		t.Errorf("indicator should be inset one space and right-aligned: %q", line)
+	}
+	if !strings.Contains(line, "browser ─") {
+		t.Errorf("space between the hint and the border fill: %q", line)
+	}
+	if !strings.Contains(line, "─ 100%") {
+		t.Errorf("space between the border fill and the percentage: %q", line)
 	}
 
 	fits := stripTop(t, bottomBorder(40, g, darkPalette(), scrollState{totalH: 4, viewportH: 20, offset: 0}))
