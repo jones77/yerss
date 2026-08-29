@@ -1,0 +1,56 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        # Deferred resource closes are intentionally unchecked.
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Rows).Close
+        - (*os.File).Close
+        - (*io.PipeWriter).Close
+        - (io.Closer).Close
+        - (*yerss/internal/store.Store).Close
+        # Config bootstrap/self-update are best-effort by design; built-in
+        # defaults require no config file, so failures are non-fatal.
+        - yerss/internal/config.Bootstrap
+        - yerss/internal/config.MigrateFile
+        # Stream writes (stderr diagnostics, test HTTP bodies) are unchecked.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        # Permission restoration in test cleanup.
+        - os.Chmod
+  exclusions:
+    rules:
+      # yerss config, feeds, and data files are not secrets: 0644 files and
+      # 0755 dirs are intentional, and reading a user-specified path is the
+      # purpose of the config layer. G301/G302/G304/G306 fire on those.
+      - linters: [gosec]
+        text: "G301|G302|G304|G306"
+        path: "internal/config/|internal/feed/feeds\\.go|internal/store/store\\.go|_test\\.go$"
+      # openCommand passes the URL as a single argv element to a non-shell
+      # opener (open/rundll32/xdg-open); no shell is invoked, so there is no
+      # injection vector. G204 still flags any variable argument.
+      - linters: [gosec]
+        text: "G204"
+        path: "internal/ui/open\\.go"
+      # G104 (errors unhandled) duplicates errcheck, where intentional ignores
+      # are configured above. G703 flags the config self-update writing its own
+      # file, which is the function's purpose.
+      - linters: [gosec]
+        text: "G104|G703"
+        path: ".*"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

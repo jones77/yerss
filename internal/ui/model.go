@@ -163,9 +163,10 @@ func (m *Model) View() string {
 	case viewArticle:
 		s = m.renderArticle()
 	}
-	if m.popup == popupTagsList || m.popup == popupTagsArticle {
+	switch m.popup {
+	case popupTagsList, popupTagsArticle:
 		s = overlay(s, m.renderTagPopup())
-	} else if m.popup == popupHelp {
+	case popupHelp:
 		s = overlay(s, m.renderHelp())
 	}
 	return s
@@ -219,9 +220,7 @@ func overlay(base, pop string) string {
 	}
 
 	out := make([]string, len(baseLines))
-	for i, l := range baseLines {
-		out[i] = l
-	}
+	copy(out, baseLines)
 	for i, l := range popLines {
 		t := by + i
 		if t < 0 || t >= len(out) {
