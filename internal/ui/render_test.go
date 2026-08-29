@@ -88,10 +88,10 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 	})
 	lines := strings.Split(m.renderArticle(), "\n")
 	first := ansi.Strip(lines[2])
-	// padX contributes two leading spaces, then glamour's document margin adds
-	// two more before the content text.
-	if !strings.HasPrefix(first, ":    Hello world article title") {
-		t.Errorf("content missing left padding: %q", first)
+	// padX contributes two leading spaces; glamour's document margin is removed
+	// so it does not stack on top.
+	if !strings.HasPrefix(first, ":  Hello world article title") {
+		t.Errorf("content missing two-space left padding: %q", first)
 	}
 	if got := first[len(first)-1]; got != '|' {
 		t.Errorf("right edge thumb not at column %d: got %q", len(first)-1, first)

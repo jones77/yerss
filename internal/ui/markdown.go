@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/ansi"
+	"charm.land/glamour/v2/styles"
 )
 
 // glamourStandardStyle maps the configured display theme to a glamour standard
@@ -23,6 +25,23 @@ func glamourStandardStyle(theme string) string {
 	}
 }
 
+// glamourStyleConfig returns the built-in dark/light style config with the
+// document's left margin removed, so the reader's own padX padding is the only
+// inset from the border (otherwise glamour's default two-column margin stacks
+// on top of it).
+func glamourStyleConfig(style string) ansi.StyleConfig {
+	var cfg ansi.StyleConfig
+	switch style {
+	case "light":
+		cfg = styles.LightStyleConfig
+	default:
+		cfg = styles.DarkStyleConfig
+	}
+	zero := uint(0)
+	cfg.Document.Margin = &zero
+	return cfg
+}
+
 // markdownRenderer returns the glamour renderer for the given content width,
 // caching it across renders and rebuilding it only when the width or the
 // resolved theme changes (glamour binds its word wrap at construction). It
@@ -34,7 +53,7 @@ func (m *Model) markdownRenderer(contentW int) *glamour.TermRenderer {
 		return m.mdRenderer
 	}
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle(style),
+		glamour.WithStyles(glamourStyleConfig(style)),
 		glamour.WithWordWrap(contentW),
 	)
 	if err != nil {
