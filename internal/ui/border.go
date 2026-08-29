@@ -134,28 +134,26 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 
 	style := lipgloss.NewStyle().Foreground(p.Border)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
+	hLeft := style.Render(leftRail)
+	hRight := style.Render(rightRail)
 
 	if runewidth.StringWidth(title) <= titleW {
 		fill := coreW - runewidth.StringWidth(prefix+title) - 1
 		if fill < 0 {
 			fill = 0
 		}
+		right := style.Render(strings.Repeat(g.h, fill) + rightRail)
 		if date == "" {
-			head := textStyle.Render(title) + " "
-			return style.Render(leftRail + " " + head + strings.Repeat(g.h, fill) + rightRail)
+			return hLeft + " " + textStyle.Render(title) + " " + right
 		}
-		head := textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(title) + " "
-		return style.Render(leftRail + head + strings.Repeat(g.h, fill) + rightRail)
+		return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(title) + " " + right
 	}
 
 	cut := truncate(title, titleW-runewidth.StringWidth(g.ellipsis))
-	var head string
 	if date == "" {
-		head = textStyle.Render(cut+g.ellipsis) + " "
-		return style.Render(leftRail + " " + head + rightRail)
+		return hLeft + " " + textStyle.Render(cut+g.ellipsis) + " " + hRight
 	}
-	head = textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(cut+g.ellipsis) + " "
-	return style.Render(leftRail + head + rightRail)
+	return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.bullet) + " " + textStyle.Render(cut+g.ellipsis) + " " + hRight
 }
 
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
@@ -193,7 +191,6 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	}
 	style := lipgloss.NewStyle().Foreground(p.Border)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
-	hint = textStyle.Render(hint)
 	var ind string
 	if indicator == "" {
 		ind = ""
@@ -202,5 +199,6 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	} else {
 		ind = textStyle.Render(indicator)
 	}
-	return style.Render(g.bl + g.h + " " + hint + " " + strings.Repeat(g.h, fill) + " " + ind + " " + g.h + g.br)
+	dash := style.Render(g.h)
+	return style.Render(g.bl) + dash + " " + textStyle.Render(hint) + " " + style.Render(strings.Repeat(g.h, fill)) + " " + ind + " " + dash + style.Render(g.br)
 }
