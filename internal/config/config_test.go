@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/adrg/xdg"
@@ -150,6 +152,82 @@ open_article = ["q"]
 `)
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected conflict error, got nil")
+	}
+}
+
+func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
+	want := Keymap{
+		Quit:            {"q", "ctrl+c"},
+		Refresh:         {"R", "r", "ctrl+r", "f5"},
+		OpenArticle:     {"enter", "l", "o"},
+		Back:            {"esc", "enter", "h", "b"},
+		MoveUp:          {"up", "k"},
+		MoveDown:        {"down", "j"},
+		PageUp:          {"pgup", "ctrl+b"},
+		PageDown:        {"pgdn", "ctrl+f"},
+		HalfPageUp:      {"ctrl+u"},
+		HalfPageDown:    {"ctrl+d", "space"},
+		Top:             {"g", "ctrl+up"},
+		Bottom:          {"G", "ctrl+down"},
+		TagPopup:        {"T", "t"},
+		ToggleRead:      {"m"},
+		MarkAllRead:     {"a"},
+		OpenURL:         {"o"},
+		CopyURL:         {"c"},
+		CopyArticleText: {"C"},
+		Help:            {"?"},
+	}
+	got := DefaultKeybindings()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("DefaultKeybindings mismatch:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestKeybindingCatalogConsistency(t *testing.T) {
+	tmpl := seededConfig()
+	for _, spec := range catalog {
+		line := "# " + string(spec.action) + " = " + tomlKeyArray(spec.keys)
+		if !strings.Contains(tmpl, line) {
+			t.Errorf("seeded template missing %q", line)
+		}
+		if spec.action != Quit && len(spec.keys) == 0 {
+			t.Errorf("action %q has no keys", spec.action)
+		}
+	}
+
+	var kbOpts []ConfigOption
+	for _, opt := range ConfigReleases {
+		if opt.Section == "keybindings" {
+			kbOpts = append(kbOpts, opt)
+		}
+	}
+	if len(kbOpts) != len(catalog) {
+		t.Fatalf("keybinding options = %d, want %d", len(kbOpts), len(catalog))
+	}
+
+	got := AllActions()
+	if len(got) != len(catalog) {
+		t.Fatalf("AllActions() = %d actions, want %d", len(got), len(catalog))
+	}
+	for i, spec := range catalog {
+		if got[i] != spec.action {
+			t.Errorf("AllActions()[%d] = %q, want %q", i, got[i], spec.action)
+		}
+	}
+}
+
+func TestSeededTemplateIncludesAllAliases(t *testing.T) {
+	tmpl := seededConfig()
+	for _, want := range []string{
+		`# back = ["esc", "enter", "h", "b"]`,
+		`# open_article = ["enter", "l", "o"]`,
+		`# tag_popup = ["T", "t"]`,
+		`# refresh = ["R", "r", "ctrl+r", "f5"]`,
+		`# copy_article_text = ["C"]`,
+	} {
+		if !strings.Contains(tmpl, want) {
+			t.Errorf("seeded template missing %q", want)
+		}
 	}
 }
 

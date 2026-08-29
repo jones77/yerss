@@ -40,26 +40,8 @@ func seededConfig() string {
 # padding_x = 2
 # padding_y = 1
 
-# [keybindings]
-# quit = ["q", "ctrl+c"]
-# refresh = ["R", "ctrl+r", "f5"]
-# open_article = ["enter", "l"]
-# back = ["esc", "enter", "h"]
-# move_up = ["up", "k"]
-# move_down = ["down", "j"]
-# page_up = ["pgup", "ctrl+b"]
-# page_down = ["pgdn", "ctrl+f"]
-# half_page_up = ["ctrl+u"]
-# half_page_down = ["ctrl+d", "space"]
-# top = ["g", "ctrl+up"]
-# bottom = ["G", "ctrl+down"]
-# tag_popup = ["T"]
-# toggle_read = ["m"]
-# mark_all_read = ["a"]
-# open_url = ["o"]
-# copy_url = ["c"]
-# help = ["?"]
-`, ConfigSchemaVersion, BuildCommit, defaultFeedsFile)
+%s
+`, ConfigSchemaVersion, BuildCommit, defaultFeedsFile, seededKeybindings())
 }
 
 // Bootstrap creates the config directory and seeds config.toml and feeds.txt

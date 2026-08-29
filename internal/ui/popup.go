@@ -157,13 +157,7 @@ func (m *Model) renderHelp() string {
 	var lines []string
 	lines = append(lines, "Help - current keymap")
 	lines = append(lines, "")
-	for _, a := range []config.Action{
-		config.Quit, config.Refresh, config.OpenArticle, config.Back,
-		config.MoveUp, config.MoveDown, config.PageUp, config.PageDown,
-		config.HalfPageUp, config.HalfPageDown, config.Top, config.Bottom,
-		config.TagPopup, config.ToggleRead, config.MarkAllRead,
-		config.OpenURL, config.CopyURL, config.CopyArticleText, config.Help,
-	} {
+	for _, a := range config.AllActions() {
 		keys := strings.Join(m.cfg.Keybindings[a], ", ")
 		if keys == "" {
 			continue

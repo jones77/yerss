@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-29
+goal: Make the action/keybinding catalog a single source of truth so defaults,
+  help, the seeded template, and self-update registry cannot drift
+skip_specs: true

@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"yerss/internal/config"
 )
 
 // sendKey routes a single rune through the active view's update handler.
@@ -127,5 +131,23 @@ func TestOOpensOnArticleRowNotHeader(t *testing.T) {
 	sendKey(m, 'o')
 	if m.view != viewList {
 		t.Errorf("o on a day header should not open an article, view = %d", m.view)
+	}
+}
+
+func TestHelpListsEveryActionInOrder(t *testing.T) {
+	m, _ := newTestModel(t)
+	help := m.renderHelp()
+	last := 0
+	for i, a := range config.AllActions() {
+		keys := strings.Join(m.cfg.Keybindings[a], ", ")
+		line := fmt.Sprintf("  %-18s %s", actionLabel(a), keys)
+		pos := strings.Index(help, line)
+		if pos < 0 {
+			t.Fatalf("help missing %q", line)
+		}
+		if i > 0 && pos < last {
+			t.Errorf("action %q out of order in help", a)
+		}
+		last = pos
 	}
 }

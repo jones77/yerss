@@ -44,29 +44,122 @@ const (
 // Keymap maps an action to its bound key strings (normalized).
 type Keymap map[Action][]string
 
+// actionSpec describes a single action: its identifier, default key strings,
+// and the views it is valid in. catalog is the single source of truth for the
+// action set, the runtime defaults, per-view key resolution, the help screen,
+// and the seeded config template, so none of them can drift apart.
+type actionSpec struct {
+	action Action
+	keys   []string
+	views  []View
+}
+
+var catalog = []actionSpec{
+	{Quit, []string{"q", "ctrl+c"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{Refresh, []string{"R", "r", "ctrl+r", "f5"}, []View{ViewList}},
+	{OpenArticle, []string{"enter", "l", "o"}, []View{ViewList}},
+	{Back, []string{"esc", "enter", "h", "b"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{MoveUp, []string{"up", "k"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{MoveDown, []string{"down", "j"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{PageUp, []string{"pgup", "ctrl+b"}, []View{ViewList, ViewArticle}},
+	{PageDown, []string{"pgdn", "ctrl+f"}, []View{ViewList, ViewArticle}},
+	{HalfPageUp, []string{"ctrl+u"}, []View{ViewList, ViewArticle}},
+	{HalfPageDown, []string{"ctrl+d", "space"}, []View{ViewList, ViewArticle}},
+	{Top, []string{"g", "ctrl+up"}, []View{ViewList, ViewArticle}},
+	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle}},
+	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
+	{ToggleRead, []string{"m"}, []View{ViewList, ViewArticle}},
+	{MarkAllRead, []string{"a"}, []View{ViewList}},
+	{OpenURL, []string{"o"}, []View{ViewArticle}},
+	{CopyURL, []string{"c"}, []View{ViewArticle}},
+	{CopyArticleText, []string{"C"}, []View{ViewArticle}},
+	{Help, []string{"?"}, []View{ViewList, ViewArticle, ViewPopup}},
+}
+
+var allActions = func() map[Action]bool {
+	m := make(map[Action]bool, len(catalog))
+	for _, spec := range catalog {
+		m[spec.action] = true
+	}
+	return m
+}()
+
 // DefaultKeybindings returns the built-in key map.
 func DefaultKeybindings() Keymap {
-	return Keymap{
-		Quit:            {"q", "ctrl+c"},
-		Refresh:         {"R", "r", "ctrl+r", "f5"},
-		OpenArticle:     {"enter", "l", "o"},
-		Back:            {"esc", "enter", "h", "b"},
-		MoveUp:          {"up", "k"},
-		MoveDown:        {"down", "j"},
-		PageUp:          {"pgup", "ctrl+b"},
-		PageDown:        {"pgdn", "ctrl+f"},
-		HalfPageUp:      {"ctrl+u"},
-		HalfPageDown:    {"ctrl+d", "space"},
-		Top:             {"g", "ctrl+up"},
-		Bottom:          {"G", "ctrl+down"},
-		TagPopup:        {"T", "t"},
-		ToggleRead:      {"m"},
-		MarkAllRead:     {"a"},
-		OpenURL:         {"o"},
-		CopyURL:         {"c"},
-		CopyArticleText: {"C"},
-		Help:            {"?"},
+	km := make(Keymap, len(catalog))
+	for _, spec := range catalog {
+		km[spec.action] = spec.keys
 	}
+	return km
+}
+
+// AllActions returns every bindable action in canonical display order. The
+// help popup iterates it so the help screen always matches the catalog.
+func AllActions() []Action {
+	out := make([]Action, 0, len(catalog))
+	for _, spec := range catalog {
+		out = append(out, spec.action)
+	}
+	return out
+}
+
+// hasView reports whether views contains v.
+func hasView(views []View, v View) bool {
+	for _, w := range views {
+		if w == v {
+			return true
+		}
+	}
+	return false
+}
+
+// actionsForView returns the actions valid in view v, in catalog order.
+func actionsForView(v View) []Action {
+	var out []Action
+	for _, spec := range catalog {
+		if hasView(spec.views, v) {
+			out = append(out, spec.action)
+		}
+	}
+	return out
+}
+
+// tomlKeyArray renders a key list as a TOML string-array literal, e.g.
+// ["q", "ctrl+c"].
+func tomlKeyArray(keys []string) string {
+	quoted := make([]string, len(keys))
+	for i, k := range keys {
+		quoted[i] = `"` + k + `"`
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// seededKeybindings renders the commented-out [keybindings] section of the
+// seeded config template from the catalog, so the template cannot drift from
+// the runtime defaults.
+func seededKeybindings() string {
+	var b strings.Builder
+	b.WriteString("# [keybindings]\n")
+	for _, spec := range catalog {
+		b.WriteString("# " + string(spec.action) + " = " + tomlKeyArray(spec.keys) + "\n")
+	}
+	return b.String()
+}
+
+// keybindingOptions returns the ConfigReleases entries for the keybinding
+// actions, derived from the catalog so the self-update registry cannot drift
+// from the runtime defaults.
+func keybindingOptions() []ConfigOption {
+	opts := make([]ConfigOption, 0, len(catalog))
+	for _, spec := range catalog {
+		opts = append(opts, ConfigOption{
+			Version: 1,
+			Section: "keybindings",
+			Key:     string(spec.action),
+			Default: tomlKeyArray(spec.keys),
+		})
+	}
+	return opts
 }
 
 // normalizeKey canonicalizes key string spellings so config values match the
@@ -147,30 +240,6 @@ func Validate(km Keymap) error {
 		if _, err := km.EffectiveKeys(view); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-var allActions = func() map[Action]bool {
-	m := make(map[Action]bool)
-	for _, a := range []Action{
-		Quit, Refresh, OpenArticle, Back, MoveUp, MoveDown,
-		PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom,
-		TagPopup, ToggleRead, MarkAllRead, OpenURL, CopyURL, CopyArticleText, Help,
-	} {
-		m[a] = true
-	}
-	return m
-}()
-
-func actionsForView(v View) []Action {
-	switch v {
-	case ViewList:
-		return []Action{Quit, Refresh, OpenArticle, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, ToggleRead, MarkAllRead, Help}
-	case ViewArticle:
-		return []Action{Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, ToggleRead, OpenURL, CopyURL, CopyArticleText, Help}
-	case ViewPopup:
-		return []Action{Quit, MoveUp, MoveDown, Back, Help}
 	}
 	return nil
 }
