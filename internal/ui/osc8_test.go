@@ -9,42 +9,6 @@ import (
 	"yerss/internal/store"
 )
 
-func TestHTMLToTextWrapsLinksInOSC8(t *testing.T) {
-	url := "https://example.com/post"
-	html := `<p>Hello <a href="` + url + `">world</a>.</p>`
-	out := HTMLToText(html)
-
-	if !strings.Contains(out, ansi.SetHyperlink(url)) {
-		t.Errorf("link text not wrapped in OSC 8 carrying %q: %q", url, out)
-	}
-	if !strings.Contains(out, ansi.ResetHyperlink()) {
-		t.Errorf("missing OSC 8 hyperlink reset: %q", out)
-	}
-	stripped := ansi.Strip(out)
-	if !strings.Contains(stripped, "[world]("+url+")") {
-		t.Errorf("visible text should be markdown [world](url): %q", stripped)
-	}
-	if !strings.Contains(stripped, "Hello") {
-		t.Errorf("non-link text should be unaffected: %q", stripped)
-	}
-}
-
-func TestHTMLToTextSingleQuotedHref(t *testing.T) {
-	url := "https://example.com/post"
-	html := `<p>See <a href='` + url + `'>post</a> now.</p>`
-	out := HTMLToText(html)
-	if !strings.Contains(out, ansi.SetHyperlink(url)) {
-		t.Errorf("single-quoted href not wrapped in OSC 8: %q", out)
-	}
-}
-
-func TestHTMLToTextPlainParagraphHasNoEscapes(t *testing.T) {
-	out := HTMLToText("<p>just plain text</p>")
-	if strings.Contains(out, "\x1b") {
-		t.Errorf("plain text should not contain escape sequences: %q", out)
-	}
-}
-
 func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	m, _ := newTestModel(t)
 	url := "https://example.com/post"
@@ -59,20 +23,6 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(text), url) {
 		t.Errorf("visible header URL text missing: %q", ansi.Strip(text))
-	}
-}
-
-func TestWrapTextWidthWithOSC8(t *testing.T) {
-	url := "https://example.com/post"
-	linked := ansi.SetHyperlink(url) + "world" + ansi.ResetHyperlink()
-	out := wrapText(linked+" ", 10, "…")
-	for _, l := range strings.Split(out, "\n") {
-		if ansi.StringWidth(l) > 10 {
-			t.Errorf("line width %d > 10: %q", ansi.StringWidth(l), l)
-		}
-	}
-	if strings.Count(out, "\n") != 0 {
-		t.Errorf("a short OSC 8 link should fit one line, got %q", out)
 	}
 }
 

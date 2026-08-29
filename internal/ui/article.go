@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/convert"
 	"yerss/internal/config"
 	"yerss/internal/store"
 )
@@ -80,7 +81,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		vpH = 1
 	}
 	text := renderArticleContent(a)
-	wrapped := wrapText(text, contentW, glyphsFor(m.ascii).ellipsis)
+	wrapped := convert.WrapText(text, contentW, glyphsFor(m.ascii).ellipsis)
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(wrapped)
 	st := articleState{
@@ -110,7 +111,7 @@ func renderArticleContent(a store.Article) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(HTMLToText(a.Content))
+	b.WriteString(convert.Convert(a.Content))
 	return b.String()
 }
 

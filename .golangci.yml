@@ -28,6 +28,12 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        # html-to-markdown renderer output is written to an in-memory buffer
+        # that never fails; the Writer methods echo io.Writer semantics.
+        - (github.com/JohannesKaufmann/html-to-markdown/v2/converter.Writer).Write
+        - (github.com/JohannesKaufmann/html-to-markdown/v2/converter.Writer).WriteByte
+        - (github.com/JohannesKaufmann/html-to-markdown/v2/converter.Writer).WriteRune
+        - (github.com/JohannesKaufmann/html-to-markdown/v2/converter.Writer).WriteString
         # Permission restoration in test cleanup.
         - os.Chmod
   exclusions:
