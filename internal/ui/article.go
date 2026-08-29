@@ -2,10 +2,12 @@ package ui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattn/go-runewidth"
 
 	"yerss/convert"
 	"yerss/internal/config"
@@ -200,6 +202,9 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 			return nil
 		}
 		if c, ok := m.contentCell(msg.X, msg.Y); ok {
+			if url := m.linkAtContentCell(c.x, c.y); url != "" {
+				return openURLCmd(url)
+			}
 			m.article.sel = textSelection{
 				active:   true,
 				tracking: true,
@@ -266,6 +271,110 @@ func (m *Model) contentCellClamped(x, y int) cell {
 		cy = h - 1
 	}
 	return cell{x: cx, y: cy}
+}
+
+// linkSpan is a hyperlink covering the display columns [start, end) on a
+// single rendered line.
+type linkSpan struct {
+	start, end int
+	url        string
+}
+
+// linkAtContentCell reports the URL of any hyperlink covering content cell
+// (x, y), or "" when the cell is not on a link. The cell is indexed against the
+// viewport's visible lines, matching the layout the user sees.
+func (m *Model) linkAtContentCell(x, y int) string {
+	visible := strings.Split(m.article.viewport.View(), "\n")
+	if y < 0 || y >= len(visible) {
+		return ""
+	}
+	for _, sp := range parseLinkSpans(visible[y]) {
+		if x >= sp.start && x < sp.end {
+			return sp.url
+		}
+	}
+	return ""
+}
+
+// parseLinkSpans scans a rendered ANSI line for OSC 8 hyperlink escapes and
+// returns the display-column span each URL covers. It tracks the current
+// column as it walks printable runes (honoring wide characters), clips spans
+// when a link is reset, and skips CSI/SGR and other escape sequences. The
+// terminator may be BEL or the ESC-backslash string terminator.
+func parseLinkSpans(line string) []linkSpan {
+	var spans []linkSpan
+	url := ""
+	start := 0
+	flush := func(x int) {
+		if url != "" {
+			spans = append(spans, linkSpan{start: start, end: x, url: url})
+		}
+	}
+	x := 0
+	for i := 0; i < len(line); {
+		switch line[i] {
+		case 0x1b:
+			if i+1 < len(line) && line[i+1] == ']' {
+				end := oscEnd(line, i+2)
+				if end < 0 {
+					flush(x)
+					return spans
+				}
+				payload := line[i+2 : end]
+				flush(x)
+				if strings.HasPrefix(payload, "8;") {
+					rest := payload[2:]
+					u := rest
+					if idx := strings.LastIndex(rest, ";"); idx >= 0 {
+						u = rest[idx+1:]
+					}
+					if u == "" {
+						url = ""
+					} else {
+						url = u
+						start = x
+					}
+				}
+				if line[end] == 0x07 {
+					i = end + 1
+				} else {
+					i = end + 2
+				}
+				continue
+			}
+			if i+1 < len(line) && line[i+1] == '[' {
+				i += 2
+				for i < len(line) && !(line[i] >= 0x40 && line[i] <= 0x7e) {
+					i++
+				}
+				i++
+				continue
+			}
+			i += 2
+			continue
+		default:
+			r, size := utf8.DecodeRuneInString(line[i:])
+			x += runewidth.RuneWidth(r)
+			i += size
+		}
+	}
+	flush(x)
+	return spans
+}
+
+// oscEnd returns the index of the terminator that closes an OSC string
+// beginning at from: either a BEL byte or the index of the ESC in the
+// ESC-backslash string terminator. It returns -1 when no terminator is found.
+func oscEnd(line string, from int) int {
+	for i := from; i < len(line); i++ {
+		if line[i] == 0x07 {
+			return i
+		}
+		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '\\' {
+			return i
+		}
+	}
+	return -1
 }
 
 // selectedText returns the plain text within the selection range, stripped of
