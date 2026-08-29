@@ -93,6 +93,13 @@ func New(cfg *config.Config, st *store.Store) *Model {
 	return m
 }
 
+// SetAscii forces ASCII fallback glyph rendering, overriding the config setting
+// and terminal detection. It takes effect on the next render.
+func (m *Model) SetAscii(v bool) { m.ascii = v }
+
+// Ascii reports whether ASCII fallback glyphs are in use.
+func (m *Model) Ascii() bool { return m.ascii }
+
 // Init loads articles and kicks off a startup refresh when the gate allows.
 func (m *Model) Init() tea.Cmd {
 	m.loadList()

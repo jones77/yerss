@@ -8,6 +8,13 @@ Guidelines for AI agents working in this repository.
 for storage, and gofeed for feed parsing. Behavioral requirements live in
 `openspec/specs/`.
 
+### Unicode/ASCII glyph pairs
+
+When you add a Unicode glyph (box-drawing, `…`, fold markers, etc.), add its
+ASCII fallback in `glyphsFor` (`internal/ui/border.go`) and keep the two in
+sync. The `-a`/`--ascii` flag forces the fallback so both paths can be
+exercised in testing.
+
 ## OpenSpec workflow
 
 - Work strictly within `openspec/changes/<change>/tasks.md` for the active change;

@@ -13,10 +13,11 @@ import (
 )
 
 func main() {
-	var editFeeds, editConfig, jsonOut bool
+	var editFeeds, editConfig, jsonOut, ascii bool
 	pflag.BoolVarP(&editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
 	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
 	pflag.BoolVarP(&jsonOut, "json", "j", false, "dump articles as JSON and exit")
+	pflag.BoolVarP(&ascii, "ascii", "a", false, "force ASCII fallback glyphs")
 	pflag.Parse()
 
 	if code, done := runEditFlags(editConfig, editFeeds); done {
@@ -48,10 +49,19 @@ func main() {
 	}
 
 	m := ui.New(cfg, st)
+	applyAsciiFlag(m, ascii)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "yerss: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// applyAsciiFlag forces ASCII fallback on the model when the -a flag is set,
+// overriding the config setting and terminal detection for that run.
+func applyAsciiFlag(m *ui.Model, force bool) {
+	if force {
+		m.SetAscii(true)
 	}
 }
 
