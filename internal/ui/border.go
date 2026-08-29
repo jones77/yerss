@@ -15,13 +15,14 @@ type borderGlyphs struct {
 	tl, bl, tr, br string
 	h, v           string
 	fill, unfill   string
+	ellipsis       string
 }
 
 func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
-		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: "|", fill: "#", unfill: ":"}
+		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: "|", fill: "#", unfill: ":", ellipsis: "..."}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "║"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "║", ellipsis: "…"}
 }
 
 // renderArticleBorder draws the article reader frame: a thin border with the
@@ -115,19 +116,46 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	return strings.Join(lines, "\n")
 }
 
+// topBorder renders the article frame's top edge as `leftRail + core +
+// rightRail`, where the rails are corner-plus-dash on the left (`┌─`) and
+// dash-plus-corner on the right (`─╖`). The date is always fully visible; when
+// the title does not fit, it is truncated and ends with the ellipsis glyph and
+// the right rail keeps its single dash so the two ends mirror each other. When
+// the title fits, leftover space is filled with horizontal dashes.
 func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
-	text := " " + date + " · " + title + " "
-	inner := w - 2
-	if inner < 1 {
-		inner = 1
+	leftRail := g.tl + g.h
+	rightRail := g.h + g.tr
+	innerW := w - 2
+	if innerW < 1 {
+		innerW = 1
 	}
-	text = truncate(text, inner-1)
-	fill := (inner - 1) - runewidth.StringWidth(text)
-	if fill < 0 {
-		fill = 0
+	coreW := innerW - 2
+	if coreW < 1 {
+		coreW = 1
 	}
+	prefix := " " + date + " · "
+	if date == "" {
+		prefix = " "
+	}
+	titleW := coreW - runewidth.StringWidth(prefix) - 1
+	if titleW < 0 {
+		titleW = 0
+	}
+
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return style.Render(g.tl + g.h + text + strings.Repeat(g.h, fill) + g.tr)
+
+	if runewidth.StringWidth(title) <= titleW {
+		core := prefix + title + " "
+		fill := coreW - runewidth.StringWidth(core)
+		if fill < 0 {
+			fill = 0
+		}
+		return style.Render(leftRail + core + strings.Repeat(g.h, fill) + rightRail)
+	}
+
+	cut := truncate(title, titleW-runewidth.StringWidth(g.ellipsis))
+	core := prefix + cut + g.ellipsis + " "
+	return style.Render(leftRail + core + rightRail)
 }
 
 func bottomBorder(w int, g borderGlyphs, p Palette, percent int) string {
