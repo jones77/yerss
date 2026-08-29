@@ -174,3 +174,90 @@ func TestH2BoldH3Plain(t *testing.T) {
 		t.Errorf("H3 heading should render plain (not bold), got: %q", h3)
 	}
 }
+
+func TestRenderMarkdownBlockquoteKeepsSolidBar(t *testing.T) {
+	// glamour re-wraps a blockquote wider than its inner paragraph at many
+	// content widths, stranding short words ("to", "of", "by") on their own line
+	// that lose the "│" prefix and break the solid quote bar. renderMarkdown
+	// must fold those orphans back so every blockquote line stays barred with no
+	// content lost or clipped.
+	src := "> What changes must now occur, in our way of looking at things, in our notions! Even the elementary concepts of time and space have begun to vacillate. Space is killed by the railways, and we are left with time alone."
+	m, _ := newTestModel(t)
+	for _, w := range []int{110, 90, 86, 81, 70, 60, 50, 46, 41, 40} {
+		stripped := ansi.Strip(m.renderMarkdown(src, w))
+		inQuote := false
+		var words []string
+		for _, line := range strings.Split(stripped, "\n") {
+			if strings.TrimSpace(line) == "" {
+				inQuote = false
+				continue
+			}
+			if strings.HasPrefix(line, "│") {
+				inQuote = true
+				words = append(words, strings.Fields(strings.TrimPrefix(line, "│"))...)
+				continue
+			}
+			if inQuote {
+				t.Errorf("width %d: blockquote line missing '│' bar: %q", w, line)
+			}
+		}
+		// No blockquote content may be dropped or clipped by the fix.
+		compact := strings.Join(words, " ")
+		for _, want := range []string{"notions", "vacillate", "railways", "alone"} {
+			if !strings.Contains(compact, want) {
+				t.Errorf("width %d: blockquote lost %q:\n%q", w, want, stripped)
+			}
+		}
+	}
+}
+
+func TestFixBlockquoteRewrapUnit(t *testing.T) {
+	// Emulate glamour's broken output: an orphaned word ("to", "time") on its
+	// own line that lost the "│" bar, plus intact bar lines.
+	bar := "\x1b[38;5;252m│ \x1b[m"
+	in := bar + "notions! Even the elementary concepts of time and space have begun        \n" +
+		"to\n" +
+		bar + "vacillate. Space is killed by the railways, and we are left with   \n" +
+		"time\n" +
+		bar + "alone."
+	got := ansi.Strip(fixBlockquoteRewrap(in))
+	lines := strings.Split(got, "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "to" || strings.TrimSpace(line) == "time" {
+			t.Errorf("orphan word still on its own line after rewrap: %q", line)
+		}
+		if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "│") {
+			t.Errorf("blockquote line missing '│' bar: %q", line)
+		}
+	}
+	compact := strings.Join(strings.Fields(got), " ")
+	for _, want := range []string{"have begun to", "vacillate", "left with time", "alone"} {
+		if !strings.Contains(compact, want) {
+			t.Errorf("rewrap should keep %q in order:\n%q", want, got)
+		}
+	}
+}
+
+func TestRenderMarkdownBlockquoteNoClip(t *testing.T) {
+	// A full-width bar line must never have content clipped to absorb an
+	// orphaned word: "the lines to" must survive intact at every width.
+	m, _ := newTestModel(t)
+	md := "> What changes must now occur, in our way of looking at things, in our notions! Even the elementary concepts of time and space have begun to vacillate. Space is killed by the railways, and we are left with time alone. … Now you can travel to Orléans in four and a half hours, and it takes no longer to get to Rouen. Just imagine what will happen when the lines to Belgium and Germany are completed and connected up with their railways! I feel as if the mountains and forests of all countries were advancing on Paris. Even now, I can smell the German linden trees; the North Sea’s breakers are rolling against my door."
+	for _, w := range []int{110, 90, 86, 81, 70, 60, 50, 46, 41, 40} {
+		stripped := ansi.Strip(m.renderMarkdown(md, w))
+		// Collapse to logical words (drop the "│" bar and spacing) so line
+		// boundaries do not break substring checks.
+		var sb strings.Builder
+		for _, f := range strings.Fields(stripped) {
+			if f == "│" {
+				continue
+			}
+			sb.WriteString(f)
+			sb.WriteByte(' ')
+		}
+		compact := strings.TrimSpace(sb.String())
+		if !strings.Contains(compact, "the lines to Belgium") {
+			t.Errorf("width %d: 'the lines to Belgium' corrupted:\n%q", w, compact)
+		}
+	}
+}

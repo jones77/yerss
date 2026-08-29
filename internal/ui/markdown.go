@@ -3,10 +3,13 @@ package ui
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/ansi"
 	"charm.land/glamour/v2/styles"
+	"github.com/mattn/go-runewidth"
 	xansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -117,6 +120,153 @@ func indentListContinuations(rendered string) string {
 // ordered number (1. 2) followed by a space.
 var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]`)
 
+// fixBlockquoteRewrap repairs a glamour wrapping bug where, at many content
+// widths, a short word inside a blockquote is split onto its own line that
+// loses the blockquote "│" prefix (glamour re-wraps the blockquote wider than
+// its inner paragraph, stranding the first word of a wrapped line). Such lines
+// break the solid vertical quote bar. Rather than guess at the split, each
+// blockquote run is reassembled into its logical text, word-wrapped once at the
+// blockquote content width, and re-prefixed with the "│" bar, so no word is
+// stranded and no line overflows.
+func fixBlockquoteRewrap(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	for i := 0; i < len(lines); i++ {
+		if !isBarLine(lines[i]) && !isOrphanLine(lines, i) {
+			continue
+		}
+		if !isBarLine(lines[i]) {
+			continue
+		}
+		j := i + 1
+		var bar string
+		var content strings.Builder
+		contentW := 0
+		bar, _ = splitBar(lines[i])
+		content.WriteString(barContent(lines[i]))
+		if w := xansi.StringWidth(lines[i]); w > contentW {
+			contentW = w
+		}
+		for j < len(lines) && (isBarLine(lines[j]) || isOrphanLine(lines, j)) {
+			if isBarLine(lines[j]) {
+				if w := xansi.StringWidth(lines[j]); w > contentW {
+					contentW = w
+				}
+				content.WriteString(" ")
+				content.WriteString(barContent(lines[j]))
+			} else {
+				content.WriteString(" ")
+				content.WriteString(strings.TrimSpace(xansi.Strip(lines[j])))
+			}
+			j++
+		}
+		wrapped := xansi.Wrap(strings.TrimSpace(content.String()), contentW-2, " ,.;-+|")
+		fixed := make([]string, 0, j-i)
+		for _, l := range strings.Split(wrapped, "\n") {
+			if strings.TrimSpace(xansi.Strip(l)) == "" {
+				continue
+			}
+			fixed = append(fixed, bar+l)
+		}
+		lines = append(append(lines[:i], fixed...), lines[j:]...)
+		i += len(fixed) - 1
+	}
+	return strings.Join(lines, "\n")
+}
+
+// isBarLine reports whether the line starts with a blockquote "│" bar.
+func isBarLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(xansi.Strip(line)), "│")
+}
+
+// isOrphanLine reports whether the line is a short, bar-less word left behind
+// inside a blockquote by glamour's mis-wrapping (between two bar lines).
+func isOrphanLine(lines []string, i int) bool {
+	if i == 0 || i+1 >= len(lines) {
+		return false
+	}
+	vis := strings.TrimSpace(xansi.Strip(lines[i]))
+	return vis != "" && !strings.HasPrefix(vis, "│") &&
+		xansi.StringWidth(vis) < xansi.StringWidth(lines[i-1]) && isBarLine(lines[i-1]) && isBarLine(lines[i+1])
+}
+
+// splitBar splits a processed blockquote line into its styled "│ " prefix and
+// the remaining styled content, walking visible cells (not bytes) so ANSI
+// escape sequences in the prefix do not offset the content.
+func splitBar(line string) (prefix, content string) {
+	w := 0
+	i := 0
+	for i < len(line) && w < 2 {
+		if line[i] == '\x1b' {
+			i = skipEscape(line, i)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(line[i:])
+		r, _ := utf8.DecodeRuneInString(line[i:])
+		if !unicode.IsControl(r) {
+			w += runewidth.RuneWidth(r)
+		}
+		i += size
+	}
+	return line[:i], line[i:]
+}
+
+// barContent returns the styled content of a blockquote line minus its "│ "
+// prefix and trailing padding (which glamour writes as styled spaces).
+func barContent(line string) string {
+	_, c := splitBar(line)
+	keep := xansi.StringWidth(strings.TrimRight(xansi.Strip(c), " "))
+	return cutStyledWidth(c, keep)
+}
+
+// cutStyledWidth returns the styled substring of s covering at most w visible
+// cells, walking visible cells (not bytes) so ANSI escape sequences do not
+// shift the cut point.
+func cutStyledWidth(s string, w int) string {
+	i := 0
+	seen := 0
+	for i < len(s) && seen < w {
+		if s[i] == '\x1b' {
+			i = skipEscape(s, i)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		r, _ := utf8.DecodeRuneInString(s[i:])
+		if !unicode.IsControl(r) {
+			seen += runewidth.RuneWidth(r)
+		}
+		i += size
+	}
+	return s[:i]
+}
+
+// skipEscape advances i past the escape/OSC/CSI sequence starting at i.
+func skipEscape(s string, i int) int {
+	if s[i] != '\x1b' {
+		return i
+	}
+	i++
+	if i < len(s) && s[i] == ']' {
+		i++
+		for i < len(s) && s[i] != '\x07' && !(s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\') {
+			i++
+		}
+		if i < len(s) {
+			i++
+		}
+	} else if i < len(s) && s[i] == '[' {
+		i++
+		for i < len(s) && !('@' <= s[i] && s[i] <= '~') {
+			i++
+		}
+		if i < len(s) {
+			i++
+		}
+	} else if i < len(s) {
+		i++
+	}
+	return i
+}
+
 // escapeMarkdownText escapes the characters that CommonMark treats as special
 // inline (emphasis, code spans, links, autolinks) in feed-controlled header
 // text so it renders literally. Characters that are only special at the start
@@ -157,5 +307,5 @@ func (m *Model) renderMarkdown(md string, contentW int) string {
 	if err != nil {
 		return md
 	}
-	return indentListContinuations(strings.Trim(out, "\n"))
+	return fixBlockquoteRewrap(indentListContinuations(strings.Trim(out, "\n")))
 }
