@@ -105,6 +105,7 @@ func (m *Model) Ascii() bool { return m.ascii }
 // Init loads articles and kicks off a startup refresh when the gate allows.
 func (m *Model) Init() tea.Cmd {
 	m.loadList()
+	m.restoreSelection()
 	last, _ := m.store.LastRefreshedAt()
 	m.lastRefreshedAt = last
 	if m.hasUnfetchedFeeds() {

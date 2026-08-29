@@ -329,3 +329,38 @@ func TestDBSizeMissingMainFile(t *testing.T) {
 		t.Error("expected error when main DB file is missing")
 	}
 }
+func TestLastSelectionRoundtrip(t *testing.T) {
+	st := newTestStore(t)
+
+	zero, err := st.LoadLastSelection()
+	if err != nil {
+		t.Fatalf("LoadLastSelection on empty store: %v", err)
+	}
+	if zero != (LastSelection{}) {
+		t.Errorf("expected zero selection, got %+v", zero)
+	}
+
+	sel := LastSelection{View: "article", ArticleID: 42}
+	if err := st.SaveLastSelection(sel); err != nil {
+		t.Fatalf("SaveLastSelection: %v", err)
+	}
+	got, err := st.LoadLastSelection()
+	if err != nil {
+		t.Fatalf("LoadLastSelection: %v", err)
+	}
+	if got != sel {
+		t.Errorf("roundtrip = %+v, want %+v", got, sel)
+	}
+
+	sel2 := LastSelection{View: "list", HeaderKey: "20260828"}
+	if err := st.SaveLastSelection(sel2); err != nil {
+		t.Fatalf("SaveLastSelection second: %v", err)
+	}
+	got, err = st.LoadLastSelection()
+	if err != nil {
+		t.Fatalf("LoadLastSelection second: %v", err)
+	}
+	if got != sel2 {
+		t.Errorf("overwrite roundtrip = %+v, want %+v", got, sel2)
+	}
+}

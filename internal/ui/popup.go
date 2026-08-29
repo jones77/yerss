@@ -60,6 +60,7 @@ func (m *Model) updatePopup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch act {
 	case config.Quit:
+		m.persistSelection()
 		return m, tea.Quit
 	case config.Back:
 		m.popup = noPopup

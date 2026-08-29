@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
 	"yerss/internal/config"
@@ -274,19 +275,46 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 		ts = item.PublishedAt.Local().Format("15:04")
 	}
 
-	bullets := 1
-	if src != "" {
-		bullets = 2
+	right := g.bullet + src + g.bullet + ts
+	if src == "" {
+		right = g.bullet + ts
 	}
-	titleW := m.width - 2 - len(src) - bullets - len(ts)
-	if titleW < 1 {
-		titleW = 1
+	rightW := ansi.StringWidth(right)
+
+	// The title area plus the gap before the right block must total
+	// width - cursor(2) - rightW. When the title is truncated (ends with an
+	// ellipsis) the gap is dropped so the ellipsis touches the bullet, and the
+	// title claims the gap's column to stay flush right.
+	availW := m.width - 2 - rightW
+	if availW < 1 {
+		availW = 1
 	}
-	title := truncate(item.Title, titleW)
+	title := item.Title
+	titleW := availW - 1
+	truncated := false
+	if ansi.StringWidth(title) > titleW {
+		truncated = true
+		titleW = availW
+		if titleW < ansi.StringWidth(g.ellipsis) {
+			title = truncate(title, titleW)
+		} else {
+			title = ansi.Truncate(title, titleW, g.ellipsis)
+		}
+	}
+	pad := titleW - ansi.StringWidth(title)
+	if pad < 0 {
+		pad = 0
+	}
+	gap := " "
+	if truncated {
+		gap = ""
+	}
 
 	var b strings.Builder
 	b.WriteString(bar.Render(cursor))
 	b.WriteString(titleStyle.Render(title))
+	b.WriteString(bar.Render(strings.Repeat(" ", pad)))
+	b.WriteString(bar.Render(gap))
 	b.WriteString(dim.Render(g.bullet))
 	if src != "" {
 		b.WriteString(dim.Render(src))
@@ -296,10 +324,10 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	return truncate(b.String(), m.width)
 }
 
-// sourceID derives a short publication identifier from a URL host: strip a
-// leading "www.", take the label before the final dot (the second-level
-// domain), and truncate to at most 12 characters. The article link host is
-// used when present; otherwise the feed URL host is used.
+// sourceID derives a short publication identifier from a URL host: strip any
+// trailing dot and a leading "www.", take the label before the final dot (the
+// second-level domain), and truncate to at most 12 characters. The article link
+// host is used when present; otherwise the feed URL host is used.
 func sourceID(rawURL, feedURL string) string {
 	host := ""
 	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
@@ -310,7 +338,8 @@ func sourceID(rawURL, feedURL string) string {
 	if host == "" {
 		return ""
 	}
-	h := strings.ToLower(strings.TrimPrefix(host, "www."))
+	h := strings.ToLower(strings.TrimSuffix(host, "."))
+	h = strings.TrimPrefix(h, "www.")
 	if i := strings.LastIndex(h, "."); i > 0 {
 		h = h[:i]
 	}
@@ -381,6 +410,7 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch act {
 	case config.Quit:
+		m.persistSelection()
 		return m, tea.Quit
 	case config.MoveDown:
 		m.moveListCursor(1)

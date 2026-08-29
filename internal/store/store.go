@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,6 +127,10 @@ CREATE TABLE IF NOT EXISTS article_categories (
   category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
   PRIMARY KEY (article_id, category_id)
 );
+CREATE TABLE IF NOT EXISTS state (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
 `)
 	return err
 }
@@ -151,6 +156,49 @@ func (s *Store) LastRefreshedAt() (time.Time, error) {
 		return time.Time{}, nil
 	}
 	return time.Unix(ts.Int64, 0), nil
+}
+
+// LastSelection records the reader's selection at quit time so a restart can
+// restore the list cursor and, when applicable, the open article and its scroll
+// position. View is "list" or "article"; HeaderKey is the day-group key
+// ("20060102" or "undated") when the cursor sits on a day header, otherwise
+// ArticleID names the selected (or open) article and ArticleOffset is its
+// viewport scroll offset.
+type LastSelection struct {
+	View          string `json:"view"`
+	ArticleID     int64  `json:"article_id,omitempty"`
+	HeaderKey     string `json:"header_key,omitempty"`
+	ArticleOffset int    `json:"article_offset,omitempty"`
+}
+
+// SaveLastSelection persists the reader selection under a fixed key.
+func (s *Store) SaveLastSelection(sel LastSelection) error {
+	data, err := json.Marshal(sel)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+INSERT INTO state (key, value) VALUES ('last_selection', ?)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value`, string(data))
+	return err
+}
+
+// LoadLastSelection returns the previously saved reader selection, or the zero
+// value when none has been saved.
+func (s *Store) LoadLastSelection() (LastSelection, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM state WHERE key = 'last_selection'`).Scan(&v)
+	if err == sql.ErrNoRows {
+		return LastSelection{}, nil
+	}
+	if err != nil {
+		return LastSelection{}, err
+	}
+	var sel LastSelection
+	if err := json.Unmarshal([]byte(v), &sel); err != nil {
+		return LastSelection{}, err
+	}
+	return sel, nil
 }
 
 // HasVerifiedFeed reports whether at least one feed has ever been successfully
