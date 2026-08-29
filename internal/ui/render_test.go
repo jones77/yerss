@@ -93,8 +93,8 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 	if !strings.HasPrefix(first, ":  Hello world article title") {
 		t.Errorf("content missing two-space left padding: %q", first)
 	}
-	if got := first[len(first)-1]; got != '|' {
-		t.Errorf("right edge thumb not at column %d: got %q", len(first)-1, first)
+	if got := first[len(first)-1]; got != ':' {
+		t.Errorf("right edge not a border line at column %d: got %q", len(first)-1, first)
 	}
 	if len(first) != 80 {
 		t.Errorf("content row width = %d, want 80: %q", len(first), first)
@@ -105,8 +105,8 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 }
 
 // trackGlyphs returns the right-edge column of every interior row of a rendered
-// article frame, with ANSI escapes stripped. The thumb rows read '#' and the
-// dim track rows read ':' in ASCII fallback mode.
+// article frame, with ANSI escapes stripped. In ASCII fallback mode the thumb
+// rows read '|' and the plain border track rows read ':'.
 func trackGlyphs(t *testing.T, s string) string {
 	t.Helper()
 	lines := strings.Split(s, "\n")
@@ -149,14 +149,14 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 	}
 }
 
-func TestRenderArticleShortArticleFullTrack(t *testing.T) {
+func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.ascii = true
 	m.article = m.newArticleState(store.Article{Title: "short", Content: "<p>x</p>"})
 	s := m.renderArticle()
 	lines := strings.Split(s, "\n")
-	if got := trackGlyphs(t, s); got != strings.Repeat("|", 22) {
-		t.Errorf("short article track = %q, want all %q", got, strings.Repeat("|", 22))
+	if got := trackGlyphs(t, s); got != strings.Repeat(":", 22) {
+		t.Errorf("fitting article track = %q, want all %q", got, strings.Repeat(":", 22))
 	}
 	if !strings.Contains(lines[len(lines)-1], "100% . 3/3") {
 		t.Errorf("bottom border missing 100%%: %q", lines[len(lines)-1])

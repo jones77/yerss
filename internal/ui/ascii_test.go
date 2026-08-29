@@ -21,6 +21,7 @@ func TestSetAsciiForcesAsciiGlyphs(t *testing.T) {
 	}
 
 	m.SetAscii(true)
+	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 	after := ansi.Strip(m.renderArticle())
 	if !strings.HasPrefix(after, "+") {
 		t.Errorf("expected an ASCII top border after SetAscii(true), got %q", after)

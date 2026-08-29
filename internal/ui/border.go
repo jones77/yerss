@@ -66,7 +66,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	space := strings.Repeat(" ", interiorW)
 
 	right := func(row int) string {
-		if row >= thumbTop && row < thumbTop+thumbH {
+		if !sc.fitsViewport() && row >= thumbTop && row < thumbTop+thumbH {
 			return thumb.Render(g.fill)
 		}
 		return border.Render(g.unfill)

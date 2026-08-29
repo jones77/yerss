@@ -17,10 +17,11 @@ func (s scrollState) fitsViewport() bool {
 
 // thumb returns the accent thumb's top row and height within a track of the
 // given height. When the content fits the viewport there is nothing to scroll
-// and the whole track is filled (top 0, height trackH). For scrollable content
-// the thumb is proportional to the visible fraction, clamped to a minimum of 1
-// row and a maximum of trackH-1 rows (or 1 row when trackH is 1), and its top
-// row is positioned by the scroll offset within the thumb's travel range.
+// and the whole track is filled (top 0, height trackH), though the renderer
+// omits the thumb entirely in that case. For scrollable content the thumb is
+// proportional to the visible fraction, clamped to a minimum of 1 row and a
+// maximum of trackH-1 rows (or 1 row when trackH is 1), and its top row is
+// positioned by the scroll offset within the thumb's travel range.
 func (s scrollState) thumb(trackH int) (top, height int) {
 	if s.fitsViewport() {
 		return 0, trackH
