@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-29
+goal: Remove duplicated ANSI/selection helpers and simplify the non-declarative
+  markdown post-processing without changing rendered output
+skip_specs: true

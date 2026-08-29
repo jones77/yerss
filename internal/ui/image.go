@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
 
 	"yerss/internal/image"
@@ -18,20 +16,16 @@ func (m *Model) imagesEnabled() bool {
 
 // articleImageBlock renders the article's lead image (when loaded and enabled)
 // as halfblock lines sized to the content width. The block height is capped so
-// the full image plus the header and one line of body fit within the viewport.
-// It returns nil when images are disabled, no URL is set, the image is not yet
-// loaded, or rendering fails.
-func (m *Model) articleImageBlock(a store.Article, contentW, vpH int) []string {
+// the full image plus the header (headerLines, computed by the caller) and one
+// line of body fit within the viewport. It returns nil when images are
+// disabled, no URL is set, the image is not yet loaded, or rendering fails.
+func (m *Model) articleImageBlock(a store.Article, contentW, vpH, headerLines int) []string {
 	if !m.imagesEnabled() || a.ImageURL == "" {
 		return nil
 	}
 	img, ok := m.imgCache.Get(a.ImageURL)
 	if !ok {
 		return nil
-	}
-	headerLines := 0
-	if header := m.renderMarkdown(articleHeaderMarkdown(a), contentW); header != "" {
-		headerLines = len(strings.Split(header, "\n"))
 	}
 	maxH := max(1, vpH-headerLines-1)
 	lines, err := m.imgRenderer.Render(img, contentW, maxH)

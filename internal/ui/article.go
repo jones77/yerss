@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
 
 	"yerss/convert"
 	"yerss/internal/config"
@@ -55,6 +54,25 @@ func (s textSelection) rangeFor() (lo, hi cell) {
 	return lo, hi
 }
 
+// selectionRange returns the selected column range [from, to) on one row: the
+// anchor/cur cells when the selection spans a single row, the full line width
+// on the first and last rows of a multi-row selection, and the full line in
+// between. lineWidth must be the display width of the row's visible text. It is
+// the single source of truth shared by the copy and highlight paths so they
+// cannot drift apart.
+func selectionRange(lo, hi cell, row, lineWidth int) (from, to int) {
+	if lo.y == hi.y {
+		return lo.x, hi.x
+	}
+	if row == lo.y {
+		return lo.x, lineWidth
+	}
+	if row == hi.y {
+		return 0, hi.x
+	}
+	return 0, lineWidth
+}
+
 func (m *Model) openArticle() tea.Cmd {
 	item, ok := m.articleAtCursor()
 	if !ok {
@@ -75,7 +93,11 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	padX, padY := m.cfg.Display.PaddingX, m.cfg.Display.PaddingY
 	contentW, vpH, _ := contentGeom(m.width, m.height, padX, padY)
 	imgStart, imgEnd := -1, -1
-	imgBlock := m.articleImageBlock(a, contentW, vpH)
+	headerLines := 0
+	if header := m.renderMarkdown(articleHeaderMarkdown(a), contentW); header != "" {
+		headerLines = len(strings.Split(header, "\n"))
+	}
+	imgBlock := m.articleImageBlock(a, contentW, vpH, headerLines)
 	rendered := m.renderMarkdown(renderArticleMarkdown(a), contentW)
 	if len(imgBlock) > 0 {
 		imgStart, imgEnd = 0, len(imgBlock)-1
@@ -342,19 +364,12 @@ func parseLinkSpans(line string) []linkSpan {
 				}
 				continue
 			}
-			if i+1 < len(line) && line[i+1] == '[' {
-				i += 2
-				for i < len(line) && !(line[i] >= 0x40 && line[i] <= 0x7e) {
-					i++
-				}
-				i++
-				continue
-			}
-			i += 2
+			// Any other escape/CSI sequence: skip it via the shared helper.
+			i = skipEscape(line, i)
 			continue
 		default:
 			r, size := utf8.DecodeRuneInString(line[i:])
-			x += runewidth.RuneWidth(r)
+			x += cellWidth(r)
 			i += size
 		}
 	}
@@ -392,16 +407,7 @@ func (s *articleState) selectedText() string {
 			continue
 		}
 		line := ansi.Strip(visible[row])
-		var from, to int
-		if lo.y == hi.y {
-			from, to = lo.x, hi.x
-		} else if row == lo.y {
-			from, to = lo.x, ansi.StringWidth(line)
-		} else if row == hi.y {
-			from, to = 0, hi.x
-		} else {
-			from, to = 0, ansi.StringWidth(line)
-		}
+		from, to := selectionRange(lo, hi, row, ansi.StringWidth(line))
 		if from < to {
 			slice := ansi.Cut(line, from, to)
 			if row < hi.y {
@@ -471,16 +477,7 @@ func highlightSelection(lines []string, sel textSelection) []string {
 			continue
 		}
 		width := ansi.StringWidth(line)
-		var from, to int
-		if lo.y == hi.y {
-			from, to = lo.x, hi.x
-		} else if i == lo.y {
-			from, to = lo.x, width
-		} else if i == hi.y {
-			from, to = 0, hi.x
-		} else {
-			from, to = 0, width
-		}
+		from, to := selectionRange(lo, hi, i, width)
 		if to > width {
 			to = width
 		}
