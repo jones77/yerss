@@ -13,9 +13,10 @@ import (
 )
 
 func main() {
-	var editFeeds, editConfig bool
+	var editFeeds, editConfig, jsonOut bool
 	pflag.BoolVarP(&editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
 	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
+	pflag.BoolVarP(&jsonOut, "json", "j", false, "dump articles as JSON and exit")
 	pflag.Parse()
 
 	if code, done := runEditFlags(editConfig, editFeeds); done {
@@ -37,6 +38,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	if jsonOut {
+		os.Exit(runJSONDump(cfg, st))
+	}
 
 	if code := runStartupGate(cfg, st); code != 0 {
 		os.Exit(code)

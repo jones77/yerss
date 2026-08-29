@@ -371,6 +371,32 @@ WHERE ac.article_id = ? ORDER BY c.name`, articleID)
 	return names, rows.Err()
 }
 
+// ArticleCategoryMap returns every article's category names keyed by article
+// ID, ordered by category name within each article. It is for callers that
+// need categories alongside a full article listing (ListArticles does not join
+// categories).
+func (s *Store) ArticleCategoryMap() (map[int64][]string, error) {
+	rows, err := s.db.Query(`
+SELECT ac.article_id, c.name
+FROM article_categories ac
+JOIN categories c ON c.id = ac.category_id
+ORDER BY ac.article_id, c.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[int64][]string)
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		m[id] = append(m[id], name)
+	}
+	return m, rows.Err()
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
