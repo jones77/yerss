@@ -67,10 +67,11 @@ func TestArticleImageBlockComposedBelowHeader(t *testing.T) {
 		t.Fatal("renderer was not called")
 	}
 	// Header (URL, blank, title, author) is 4 lines; the block sits below it
-	// after one blank line and covers the two image lines plus the
-	// attribution line.
-	if m.article.imgStart != 5 || m.article.imgEnd != 7 {
-		t.Errorf("img range = %d..%d, want 5..7", m.article.imgStart, m.article.imgEnd)
+	// after one blank line and covers the two image lines plus the wrapped
+	// attribution (the 4-cell fake photo wraps "photo: example" onto four
+	// lines).
+	if m.article.imgStart != 5 || m.article.imgEnd != 10 {
+		t.Errorf("img range = %d..%d, want 5..10", m.article.imgStart, m.article.imgEnd)
 	}
 	lines := strippedLines(m.article.lines)
 	if !strings.HasPrefix(lines[0], "https://example.com/a") {
@@ -79,8 +80,10 @@ func TestArticleImageBlockComposedBelowHeader(t *testing.T) {
 	if !strings.HasSuffix(lines[5], "IMG1") || !strings.HasSuffix(lines[6], "IMG2") {
 		t.Errorf("image lines not below the header: %q", lines[5:7])
 	}
-	if !strings.Contains(lines[7], "phot") {
-		t.Errorf("attribution line missing below the image: %q", lines[7])
+	for i, want := range []string{"phot", "o:", "exam", "ple"} {
+		if !strings.HasSuffix(strings.TrimRight(lines[7+i], " "), want) {
+			t.Errorf("wrapped attribution line %d = %q, want it to end with %q", i, lines[7+i], want)
+		}
 	}
 	if !strings.Contains(strings.Join(lines, "\n"), "Headline") || !strings.Contains(strings.Join(lines, "\n"), "body text") {
 		t.Errorf("header/body missing around the image block")
@@ -122,7 +125,10 @@ func TestArticleImageBlockNotLoadedYet(t *testing.T) {
 }
 
 func TestArticleImageBlockHeightCap(t *testing.T) {
-	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
+	// A wide fake photo keeps the fallback attribution on one line, so one
+	// render call at the reserved cap is enough.
+	wide := strings.Repeat("I", 40)
+	m, fr := newImageModel(t, []string{wide, wide})
 	m.height = 24
 	m.article = m.newArticleState(imageArticle())
 	if len(fr.calls) != 1 {
@@ -133,7 +139,7 @@ func TestArticleImageBlockHeightCap(t *testing.T) {
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-	// The cap reserves the blank lines around the block, the attribution
+	// The cap reserves the blank lines around the block, one attribution
 	// line, and one line of body text.
 	if want := m.article.viewport.Height - headerLines - 4; fr.calls[0].maxH != want {
 		t.Errorf("height cap = %d, want %d", fr.calls[0].maxH, want)
@@ -161,9 +167,10 @@ func TestImageLoadRecomposesAndPreservesScroll(t *testing.T) {
 	if m.article.imgStart <= 0 {
 		t.Fatalf("image block not composed after load: imgStart=%d", m.article.imgStart)
 	}
-	// The inserted lines are the blank above the block, the two image lines,
-	// the attribution, and the blank below it.
-	if want := oldOffset + 4; m.article.viewport.YOffset != want {
+	// The inserted lines are the two image lines, the four wrapped
+	// attribution lines, and the blank below the block; the blank above it
+	// is the separator that already divided header and body.
+	if want := oldOffset + 7; m.article.viewport.YOffset != want {
 		t.Errorf("offset = %d, want %d (bumped by inserted lines)", m.article.viewport.YOffset, want)
 	}
 	_ = fr
@@ -338,25 +345,33 @@ func TestScrollSnapsPastImageBlock(t *testing.T) {
 	}
 }
 
-func TestArticleImageCentered(t *testing.T) {
-	m, _ := newImageModel(t, []string{"IMG1", "IMG2"})
+func TestAttributionWrapsUnderNarrowPhoto(t *testing.T) {
+	// The 4-cell fake photo forces the 14-cell fallback attribution to wrap
+	// onto four centered lines within the photo's span.
+	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.article = m.newArticleState(imageArticle())
+
+	// The wrapped attribution needs more lines than the initial cap
+	// reserved, so the photo is re-rendered smaller.
+	if len(fr.calls) != 2 {
+		t.Fatalf("expected two render calls, got %d", len(fr.calls))
+	}
+	if fr.calls[1].maxH >= fr.calls[0].maxH {
+		t.Errorf("re-render should shrink the cap: %d then %d", fr.calls[0].maxH, fr.calls[1].maxH)
+	}
 
 	contentW := m.article.viewport.Width
 	lines := strippedLines(m.article.lines)
-	img1 := lines[m.article.imgStart]
-	attr := lines[m.article.imgEnd]
-	// The fake photo is 4 cells wide: it is centered by (contentW-4)/2
-	// leading spaces, and the attribution is truncated to the photo's width
-	// ("photo: example" -> "phot") and centered within the same span.
-	if got := len(img1) - len(strings.TrimLeft(img1, " ")); got != (contentW-4)/2 {
-		t.Errorf("image line left pad = %d, want %d: %q", got, (contentW-4)/2, img1)
-	}
-	if got := len(attr) - len(strings.TrimLeft(attr, " ")); got != (contentW-4)/2 {
-		t.Errorf("attribution left pad = %d, want %d: %q", got, (contentW-4)/2, attr)
-	}
-	if !strings.HasSuffix(attr, "phot") {
-		t.Errorf("attribution should be truncated to the photo width: %q", attr)
+	photoPad := (contentW - 4) / 2
+	for i, want := range []string{"phot", "o:", "exam", "ple"} {
+		attr := lines[m.article.imgStart+2+i]
+		if !strings.HasSuffix(strings.TrimRight(attr, " "), want) {
+			t.Errorf("wrapped attribution line %d = %q, want it to end with %q", i, attr, want)
+		}
+		wantPad := photoPad + max(0, (4-len(want))/2)
+		if got := len(attr) - len(strings.TrimLeft(attr, " ")); got != wantPad {
+			t.Errorf("wrapped line %d left pad = %d, want %d: %q", i, got, wantPad, attr)
+		}
 	}
 }
 

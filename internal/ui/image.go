@@ -20,14 +20,16 @@ func (m *Model) imagesEnabled() bool {
 }
 
 // articleImageBlock renders the article's lead image (when loaded and
-// enabled) as halfblock lines with a centered, dim attribution line directly
-// beneath. The block sits below the reader header: the image height is
-// capped so the blank line above the block, the attribution line, the blank
-// line below it, and one line of body text fit within the viewport alongside
-// the header (headerLines, computed by the caller). The photo is centered as
-// a unit and the attribution is constrained to the photo's own width,
-// centered beneath it. It returns nil when images are disabled, no URL is
-// set, the image is not yet loaded, or rendering fails.
+// enabled) as halfblock lines with a dim attribution centered directly
+// beneath. The block sits below the reader header with one blank line on
+// each side, and its height is capped so the whole block plus at least one
+// line of body text fits within the viewport alongside the header
+// (headerLines, computed by the caller). The photo is centered as a unit and
+// the attribution is wrapped to the photo's own width; a narrow
+// (height-capped) photo can push the attribution onto several lines, so the
+// photo is re-rendered smaller until the block fits. It returns nil when
+// images are disabled, no URL is set, the image is not yet loaded, or
+// rendering fails.
 func (m *Model) articleImageBlock(a store.Article, contentW, vpH, headerLines int) []string {
 	if !m.imagesEnabled() || a.ImageURL == "" {
 		return nil
@@ -36,35 +38,111 @@ func (m *Model) articleImageBlock(a store.Article, contentW, vpH, headerLines in
 	if !ok {
 		return nil
 	}
-	maxH := max(1, vpH-headerLines-4)
-	lines, err := m.imgRenderer.Render(img, contentW, maxH)
-	if err != nil {
-		return nil
+	attr := articleAttribution(a)
+
+	// Budget: blank line above + attribution lines + blank line below + one
+	// body line. The attribution line count is unknown until the photo's
+	// width is known (it wraps to the photo), so render optimistically
+	// reserving one attribution line, then re-render smaller if the wrapped
+	// attribution needs more. Bounded at three iterations.
+	base := vpH - headerLines - 3
+	maxH := max(1, base-1)
+	if attr == "" {
+		maxH = max(1, base)
 	}
+	var rendered, attrLines []string
+	for i := 0; ; i++ {
+		var err error
+		rendered, err = m.imgRenderer.Render(img, contentW, maxH)
+		if err != nil {
+			return nil
+		}
+		imgW := 0
+		for _, l := range rendered {
+			if w := ansi.StringWidth(l); w > imgW {
+				imgW = w
+			}
+		}
+		attrLines = nil
+		if attr != "" {
+			attrLines = wrapLines(attr, imgW)
+		}
+		want := max(1, base-len(attrLines))
+		if want == maxH || i == 2 {
+			break
+		}
+		maxH = want
+	}
+
 	imgW := 0
-	for _, l := range lines {
+	for _, l := range rendered {
 		if w := ansi.StringWidth(l); w > imgW {
 			imgW = w
 		}
 	}
 	photoPad := max(0, (contentW-imgW)/2)
-	out := make([]string, 0, len(lines)+1)
-	for _, l := range lines {
+	out := make([]string, 0, len(rendered)+len(attrLines))
+	for _, l := range rendered {
 		out = append(out, strings.Repeat(" ", photoPad)+l)
 	}
-	if attr := articleAttribution(a); attr != "" {
-		attr = truncate(attr, imgW)
-		pad := photoPad + max(0, (imgW-ansi.StringWidth(attr))/2)
-		style := lipgloss.NewStyle().Foreground(m.palette.Dim)
-		out = append(out, strings.Repeat(" ", pad)+style.Render(attr))
+	style := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	for _, al := range attrLines {
+		pad := photoPad + max(0, (imgW-ansi.StringWidth(al))/2)
+		out = append(out, strings.Repeat(" ", pad)+style.Render(al))
 	}
 	return out
 }
 
-// articleAttribution returns the one-line photo attribution for the article's
-// lead image: the credit extracted from the article's HTML when present,
-// otherwise "photo: <source>" derived by the list view's source-identifier
-// rules. It returns "" when neither is available.
+// wrapLines wraps plain text to w display columns, breaking on spaces and
+// hard-splitting any word longer than w. Non-empty input yields at least one
+// line.
+func wrapLines(s string, w int) []string {
+	if w < 1 {
+		w = 1
+	}
+	var lines []string
+	cur := ""
+	for _, word := range strings.Fields(s) {
+		for ansi.StringWidth(word) > w {
+			var head string
+			head, word = splitAtWidth(word, w)
+			if cur != "" {
+				lines = append(lines, cur)
+				cur = ""
+			}
+			lines = append(lines, head)
+		}
+		if cur == "" {
+			cur = word
+		} else if ansi.StringWidth(cur)+1+ansi.StringWidth(word) <= w {
+			cur += " " + word
+		} else {
+			lines = append(lines, cur)
+			cur = word
+		}
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
+}
+
+// splitAtWidth splits s into the longest prefix of at most w display columns
+// and the remainder.
+func splitAtWidth(s string, w int) (head, tail string) {
+	x := 0
+	for i, r := range s {
+		if x += ansi.StringWidth(string(r)); x > w {
+			return s[:i], s[i:]
+		}
+	}
+	return s, ""
+}
+
+// articleAttribution returns the photo attribution for the article's lead
+// image: the credit extracted from the article's HTML when present, otherwise
+// "photo: <source>" derived by the list view's source-identifier rules. It
+// returns "" when neither is available.
 func articleAttribution(a store.Article) string {
 	if credit := convert.ImageCredit(a.Content, a.ImageURL); credit != "" {
 		return credit

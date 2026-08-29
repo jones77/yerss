@@ -751,8 +751,8 @@ that scrolls with the article text. The image SHALL be rendered using a Unicode
 halfblocks representation (half-block characters with ANSI color) sized to fit
 the content width while preserving aspect ratio, and SHALL be horizontally
 centered within the content width. Directly beneath the image, with no blank
-line between them, the system SHALL render a one-line photo attribution
-constrained to the photo's own width (truncated to that width when the credit
+line between them, the system SHALL render a photo attribution constrained to
+the photo's own width (wrapped onto additional centered lines when the credit
 is longer) and centered beneath the photo; a blank line SHALL follow the
 attribution before the article content resumes. The attribution text SHALL be
 the photo's credit extracted from the article's stored HTML when present — a
@@ -762,7 +762,8 @@ element whose class indicates a credit line — and SHALL fall back to
 rules used for the list view's organization column. The combined image-plus-
 attribution block height SHALL be capped so that the full block plus at least
 one line of body text fits within the viewport height; when the block is taller
-than this cap, it SHALL be scaled down to fit. When image rendering is disabled
+than this cap — for example because a wrapped attribution needs more lines —
+it SHALL be scaled down to fit. When image rendering is disabled
 (config `off` or `--ascii` mode), no image block and no attribution SHALL be
 rendered and the article SHALL render exactly as it does without an image URL.
 
@@ -781,10 +782,10 @@ rendered and the article SHALL render exactly as it does without an image URL.
 - **WHEN** a lead image is rendered with an attribution
 - **THEN** the attribution line is centered within the photo's own width and there is no blank line between the image and the attribution
 
-#### Scenario: Attribution truncated to the photo width
+#### Scenario: Attribution wraps under the photo
 
 - **WHEN** the attribution text is longer than the rendered photo's width (for example after the photo is scaled down by the height cap)
-- **THEN** the attribution is truncated to the photo's width and stays centered beneath the photo
+- **THEN** the attribution wraps onto additional lines within the photo's width, each centered beneath the photo, and the photo is re-rendered smaller so the whole block plus at least one line of body text still fits the viewport
 
 #### Scenario: Attribution taken from the article HTML
 
