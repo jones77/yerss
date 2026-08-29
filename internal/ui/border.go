@@ -16,13 +16,14 @@ type borderGlyphs struct {
 	h, v           string
 	fill, unfill   string
 	ellipsis       string
+	expand, collapse string
 }
 
 func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
-		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: "|", fill: "#", unfill: ":", ellipsis: "..."}
+		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: "|", fill: "#", unfill: ":", ellipsis: "...", expand: "v", collapse: ">"}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "║", ellipsis: "…"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "║", ellipsis: "…", expand: "▾", collapse: "▸"}
 }
 
 // renderArticleBorder draws the article reader frame: a thin border with the

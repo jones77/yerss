@@ -20,7 +20,7 @@ func TestRenderList(t *testing.T) {
 	if !strings.Contains(s, "one") || !strings.Contains(s, "two") {
 		t.Errorf("list render missing articles: %q", s)
 	}
-	if !strings.Contains(s, "2 articles") {
+	if !strings.Contains(s, "2/2 articles") {
 		t.Errorf("status bar missing count: %q", s)
 	}
 }

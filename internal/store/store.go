@@ -307,6 +307,14 @@ WHERE c.name = ?
 	return articles, rows.Err()
 }
 
+// ArticleCount returns the total number of articles in the database,
+// regardless of any tag filter.
+func (s *Store) ArticleCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM articles`).Scan(&n)
+	return n, err
+}
+
 // ListTags returns all tags with unread/read/total counts sorted by
 // popularity (total article count descending).
 func (s *Store) ListTags() ([]TagCount, error) {

@@ -10,18 +10,46 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"yerss/internal/config"
+	"yerss/internal/store"
 )
 
 type listState struct {
-	articles []articleItem
-	cursor   int
-	filter   string
+	groups []dayGroup
+	total  int
+	cursor int
+	filter string
 }
 
 type articleItem struct {
-	ID    int64
-	Title string
-	Read  bool
+	ID          int64
+	Title       string
+	Read        bool
+	PublishedAt time.Time
+}
+
+// dayGroup is a collapsible bucket of articles sharing one local calendar day.
+// date is local midnight of that day; label is the rendered header text.
+type dayGroup struct {
+	date      time.Time
+	label     string
+	collapsed bool
+	articles  []articleItem
+}
+
+// rowKind distinguishes a day-header row from an article row in the flattened
+// visible-row list.
+type rowKind int
+
+const (
+	rowHeader rowKind = iota
+	rowArticle
+)
+
+// visibleRow identifies a rendered row in the flattened visible-row list.
+type visibleRow struct {
+	kind     rowKind
+	groupIdx int
+	artIdx   int // valid when kind is rowArticle
 }
 
 func (m *Model) loadList() {
@@ -30,32 +58,131 @@ func (m *Model) loadList() {
 		m.setStatus("load error: " + err.Error())
 		return
 	}
-	items := make([]articleItem, 0, len(arts))
+	m.list.groups = bucketDayGroups(arts)
+	if total, err := m.store.ArticleCount(); err == nil {
+		m.list.total = total
+	}
+	m.clampCursor()
+}
+
+// bucketDayGroups buckets a reverse-chronological article list into day groups,
+// most recent day first. Articles with no publication time land in a trailing
+// "Undated" group.
+func bucketDayGroups(arts []store.Article) []dayGroup {
+	var groups []dayGroup
+	idx := map[string]int{}
 	for _, a := range arts {
 		title := a.Title
 		if title == "" {
 			title = "(untitled)"
 		}
-		items = append(items, articleItem{ID: a.ID, Title: title, Read: a.Read})
+		item := articleItem{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt}
+
+		key := "undated"
+		t := a.PublishedAt.Local()
+		if !a.PublishedAt.IsZero() {
+			day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+			key = day.Format("20060102")
+			t = day
+		}
+
+		i, ok := idx[key]
+		if !ok {
+			label := "Undated"
+			if key != "undated" {
+				label = longDate(t)
+			}
+			i = len(groups)
+			groups = append(groups, dayGroup{date: t, label: label})
+			idx[key] = i
+		}
+		groups[i].articles = append(groups[i].articles, item)
 	}
-	m.list.articles = items
-	if len(items) == 0 {
+	return groups
+}
+
+// visibleRows flattens the day groups into the ordered rows that are rendered
+// and navigated: each group emits its header, then its articles unless the
+// group is collapsed.
+func (m *Model) visibleRows() []visibleRow {
+	var rows []visibleRow
+	for gi := range m.list.groups {
+		rows = append(rows, visibleRow{kind: rowHeader, groupIdx: gi})
+		if !m.list.groups[gi].collapsed {
+			for ai := range m.list.groups[gi].articles {
+				rows = append(rows, visibleRow{kind: rowArticle, groupIdx: gi, artIdx: ai})
+			}
+		}
+	}
+	return rows
+}
+
+// articleCount returns the number of articles currently loaded across all day
+// groups (the filtered count for the status bar).
+func (m *Model) articleCount() int {
+	n := 0
+	for i := range m.list.groups {
+		n += len(m.list.groups[i].articles)
+	}
+	return n
+}
+
+// clampCursor keeps the cursor within the flattened visible-row list.
+func (m *Model) clampCursor() {
+	n := len(m.visibleRows())
+	if n == 0 {
 		m.list.cursor = 0
-	} else if m.list.cursor >= len(items) {
-		m.list.cursor = len(items) - 1
+	} else if m.list.cursor >= n {
+		m.list.cursor = n - 1
+	} else if m.list.cursor < 0 {
+		m.list.cursor = 0
 	}
 }
 
-func (m *Model) renderList() string {
-	head := "yerss"
-	if m.list.filter != "" {
-		head += " · filter: " + m.list.filter
+func (m *Model) collapse(i int) {
+	if i >= 0 && i < len(m.list.groups) {
+		m.list.groups[i].collapsed = true
 	}
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Accent).Render(head))
-	b.WriteString("\n\n")
+	m.clampCursor()
+}
 
-	if len(m.list.articles) == 0 {
+func (m *Model) expand(i int) {
+	if i >= 0 && i < len(m.list.groups) {
+		m.list.groups[i].collapsed = false
+	}
+	m.clampCursor()
+}
+
+func (m *Model) toggle(i int) {
+	if i >= 0 && i < len(m.list.groups) {
+		m.list.groups[i].collapsed = !m.list.groups[i].collapsed
+	}
+	m.clampCursor()
+}
+
+// longDate renders a local calendar day as `Weekday Day-ordinal Month, Year`,
+// for example "Saturday 28th August, 2026".
+func longDate(t time.Time) string {
+	d := t.Day()
+	suf := "th"
+	switch d % 10 {
+	case 1:
+		suf = "st"
+	case 2:
+		suf = "nd"
+	case 3:
+		suf = "rd"
+	}
+	if d/10 == 1 {
+		suf = "th"
+	}
+	return t.Format("Monday ") + fmt.Sprintf("%d%s ", d, suf) + t.Format("January, 2006")
+}
+
+func (m *Model) renderList() string {
+	var b strings.Builder
+
+	if m.articleCount() == 0 {
 		dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
 		b.WriteString(dim.Render("No articles."))
 		b.WriteString("\n")
@@ -65,28 +192,20 @@ func (m *Model) renderList() string {
 			b.WriteString(dim.Render("Add feeds to " + m.cfg.FeedsFile() + " and press R to refresh."))
 		}
 	} else {
-		visible := m.height - 4
+		rows := m.visibleRows()
+		visible := m.height - 1
 		if visible < 1 {
 			visible = 1
 		}
-		start, end := listWindow(len(m.list.articles), m.list.cursor, visible)
+		start, end := listWindow(len(rows), m.list.cursor, visible)
 		for i := start; i < end; i++ {
-			item := m.list.articles[i]
-			cursor := "  "
-			if i == m.list.cursor {
-				cursor = "> "
-			}
-			title := truncate(item.Title, m.width-4)
-			var style lipgloss.Style
-			if item.Read {
-				style = lipgloss.NewStyle().Foreground(m.palette.Dim)
+			row := rows[i]
+			if row.kind == rowHeader {
+				b.WriteString(m.renderDayHeader(&m.list.groups[row.groupIdx], i == m.list.cursor))
 			} else {
-				style = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold)
+				g := &m.list.groups[row.groupIdx]
+				b.WriteString(m.renderArticleRow(&g.articles[row.artIdx], i == m.list.cursor))
 			}
-			if i == m.list.cursor {
-				style = style.Background(lipgloss.Color("#333333"))
-			}
-			b.WriteString(style.Render(cursor + title))
 			b.WriteString("\n")
 		}
 	}
@@ -110,6 +229,57 @@ func (m *Model) renderList() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m *Model) renderDayHeader(g *dayGroup, selected bool) string {
+	fold := glyphsFor(m.ascii).expand
+	if g.collapsed {
+		fold = glyphsFor(m.ascii).collapse
+	}
+	style := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	if selected {
+		style = style.Background(lipgloss.Color("#333333"))
+	}
+	return style.Render(fold + " " + g.label)
+}
+
+func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
+	const (
+		timeW = 8
+		gap   = 1
+	)
+	cursor := "  "
+	if selected {
+		cursor = "> "
+	}
+	titleW := m.width - 2 - timeW - gap
+	if titleW < 1 {
+		titleW = 1
+	}
+	title := truncate(item.Title, titleW)
+
+	ts := "--:--:--"
+	if !item.PublishedAt.IsZero() {
+		ts = item.PublishedAt.Local().Format("15:04:05")
+	}
+
+	pad := titleW - runewidth.StringWidth(title)
+	if pad < 0 {
+		pad = 0
+	}
+	line := cursor + title + strings.Repeat(" ", pad+gap) + ts
+	line = truncate(line, m.width)
+
+	var style lipgloss.Style
+	if item.Read {
+		style = lipgloss.NewStyle().Foreground(m.palette.Dim)
+	} else {
+		style = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold)
+	}
+	if selected {
+		style = style.Background(lipgloss.Color("#333333"))
+	}
+	return style.Render(line)
+}
+
 func (m *Model) renderStatusBar() string {
 	left := ""
 	if m.statusMsg != "" && time.Now().Before(m.statusExpires) {
@@ -117,7 +287,7 @@ func (m *Model) renderStatusBar() string {
 	} else if m.refreshing {
 		left = "refreshing..."
 	} else {
-		left = fmt.Sprintf("%d articles", len(m.list.articles))
+		left = fmt.Sprintf("%d/%d articles", m.articleCount(), m.list.total)
 	}
 	if m.list.filter != "" && (m.statusMsg == "" || !time.Now().Before(m.statusExpires)) {
 		left += " · filter " + m.list.filter
@@ -140,6 +310,27 @@ func (m *Model) renderStatusBar() string {
 }
 
 func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	rows := m.visibleRows()
+	if m.list.cursor >= 0 && m.list.cursor < len(rows) {
+		row := rows[m.list.cursor]
+		if row.kind == rowHeader {
+			switch msg.String() {
+			case "h":
+				m.collapse(row.groupIdx)
+				return m, nil
+			case "l":
+				m.expand(row.groupIdx)
+				return m, nil
+			case "enter", " ", "tab":
+				m.toggle(row.groupIdx)
+				return m, nil
+			}
+		} else if msg.String() == "tab" {
+			m.toggle(row.groupIdx)
+			return m, nil
+		}
+	}
+
 	act, ok := m.keys[config.ViewList][msg.String()]
 	if !ok {
 		return m, nil
@@ -169,12 +360,12 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.HalfPageUp:
 		m.moveListCursor(-m.pageSize() / 2)
 	case config.Top:
-		if len(m.list.articles) > 0 {
+		if n := len(m.visibleRows()); n > 0 {
 			m.list.cursor = 0
 		}
 	case config.Bottom:
-		if len(m.list.articles) > 0 {
-			m.list.cursor = len(m.list.articles) - 1
+		if n := len(m.visibleRows()); n > 0 {
+			m.list.cursor = n - 1
 		}
 	case config.TagPopup:
 		m.openTagPopup(popupTagsList)
@@ -189,7 +380,7 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) pageSize() int {
-	n := m.height - 4
+	n := m.height - 1
 	if n < 1 {
 		n = 1
 	}
@@ -197,7 +388,7 @@ func (m *Model) pageSize() int {
 }
 
 func (m *Model) moveListCursor(delta int) {
-	n := len(m.list.articles)
+	n := len(m.visibleRows())
 	if n == 0 {
 		return
 	}
@@ -208,25 +399,31 @@ func (m *Model) moveListCursor(delta int) {
 }
 
 func (m *Model) toggleReadAtCursor() {
-	i := m.list.cursor
-	if i >= len(m.list.articles) {
+	rows := m.visibleRows()
+	if m.list.cursor < 0 || m.list.cursor >= len(rows) {
 		return
 	}
-	item := &m.list.articles[i]
+	row := rows[m.list.cursor]
+	if row.kind != rowArticle {
+		return
+	}
+	item := &m.list.groups[row.groupIdx].articles[row.artIdx]
 	item.Read = !item.Read
 	_ = m.store.SetRead(item.ID, item.Read)
 }
 
 func (m *Model) markAllVisibleRead() {
-	if len(m.list.articles) == 0 {
-		return
+	var ids []int64
+	for gi := range m.list.groups {
+		for ai := range m.list.groups[gi].articles {
+			item := &m.list.groups[gi].articles[ai]
+			ids = append(ids, item.ID)
+			item.Read = true
+		}
 	}
-	ids := make([]int64, 0, len(m.list.articles))
-	for i := range m.list.articles {
-		ids = append(ids, m.list.articles[i].ID)
-		m.list.articles[i].Read = true
+	if len(ids) > 0 {
+		_ = m.store.MarkAllRead(ids)
 	}
-	_ = m.store.MarkAllRead(ids)
 }
 
 func (m *Model) clearFilter() {

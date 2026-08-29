@@ -63,8 +63,8 @@ func TestTagFiltering(t *testing.T) {
 	insertArticle(t, st, "a2", []string{"news"})
 
 	m.loadList()
-	if len(m.list.articles) != 2 {
-		t.Fatalf("expected 2 articles, got %d", len(m.list.articles))
+	if m.articleCount() != 2 {
+		t.Fatalf("expected 2 articles, got %d", m.articleCount())
 	}
 
 	m.popupData = popupState{
@@ -75,17 +75,36 @@ func TestTagFiltering(t *testing.T) {
 	if m.list.filter != "tech" {
 		t.Errorf("filter = %q, want tech", m.list.filter)
 	}
-	if len(m.list.articles) != 1 || m.list.articles[0].ID != id1 {
-		t.Fatalf("expected only tech article, got %+v", m.list.articles)
+	if m.articleCount() != 1 || !containsID(loadedIDs(m), id1) {
+		t.Fatalf("expected only tech article, got %v", loadedIDs(m))
 	}
 
 	m.clearFilter()
 	if m.list.filter != "" {
 		t.Errorf("filter after clear = %q", m.list.filter)
 	}
-	if len(m.list.articles) != 2 {
-		t.Fatalf("expected all articles after clear, got %d", len(m.list.articles))
+	if m.articleCount() != 2 {
+		t.Fatalf("expected all articles after clear, got %d", m.articleCount())
 	}
+}
+
+func loadedIDs(m *Model) []int64 {
+	var ids []int64
+	for gi := range m.list.groups {
+		for ai := range m.list.groups[gi].articles {
+			ids = append(ids, m.list.groups[gi].articles[ai].ID)
+		}
+	}
+	return ids
+}
+
+func containsID(ids []int64, id int64) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPopupWrapAround(t *testing.T) {
@@ -111,7 +130,7 @@ func TestOpenArticleStaleCursorNoPanic(t *testing.T) {
 	insertArticle(t, st, "one", nil)
 	m.loadList()
 
-	m.list.cursor = len(m.list.articles) + 5
+	m.list.cursor = len(m.visibleRows()) + 5
 	m.openArticle()
 	if m.view != viewList {
 		t.Errorf("openArticle with stale-high cursor changed view to %d", m.view)
@@ -123,7 +142,7 @@ func TestOpenArticleStaleCursorNoPanic(t *testing.T) {
 		t.Errorf("openArticle with negative cursor changed view to %d", m.view)
 	}
 
-	m.list.articles = nil
+	m.list.groups = nil
 	m.list.cursor = 0
 	m.openArticle()
 	if m.view != viewList {

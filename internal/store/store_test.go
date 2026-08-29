@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -222,5 +223,41 @@ func TestVerifiedFeedURLs(t *testing.T) {
 	}
 	if !urls[a.FeedURL] {
 		t.Errorf("fetched feed %q should be verified, got %v", a.FeedURL, urls)
+	}
+}
+
+func TestArticleCount(t *testing.T) {
+	st := newTestStore(t)
+
+	n, err := st.ArticleCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("empty store count = %d, want 0", n)
+	}
+
+	for i := 0; i < 3; i++ {
+		a := sampleArticle()
+		a.GUID = fmt.Sprintf("g%d", i)
+		if _, err := st.UpsertArticle(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err = st.ArticleCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("count = %d, want 3", n)
+	}
+
+	arts, err := st.ListArticles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(arts) {
+		t.Errorf("ArticleCount %d does not match len(ListArticles) %d", n, len(arts))
 	}
 }

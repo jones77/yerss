@@ -19,15 +19,20 @@ type articleState struct {
 }
 
 func (m *Model) openArticle() {
-	if m.list.cursor < 0 || m.list.cursor >= len(m.list.articles) {
+	rows := m.visibleRows()
+	if m.list.cursor < 0 || m.list.cursor >= len(rows) {
 		return
 	}
-	a := m.list.articles[m.list.cursor]
-	full, err := m.store.GetArticle(a.ID)
+	row := rows[m.list.cursor]
+	if row.kind != rowArticle {
+		return
+	}
+	item := &m.list.groups[row.groupIdx].articles[row.artIdx]
+	full, err := m.store.GetArticle(item.ID)
 	if err == nil && full != nil {
 		m.article = m.newArticleState(*full)
 	} else {
-		m.article = m.newArticleState(store.Article{ID: a.ID, Title: a.Title, Read: a.Read})
+		m.article = m.newArticleState(store.Article{ID: item.ID, Title: item.Title, Read: item.Read})
 	}
 	m.view = viewArticle
 }
