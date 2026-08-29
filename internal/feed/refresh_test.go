@@ -1,12 +1,14 @@
 package feed
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mmcdole/gofeed"
 	"yerss/internal/store"
 )
 
@@ -114,5 +116,78 @@ func TestVerifyFeedsOverallDeadline(t *testing.T) {
 	}
 	if elapsed > time.Second {
 		t.Errorf("VerifyFeeds did not respect the overall deadline: %v", elapsed)
+	}
+}
+// TestItemToArticleFallsBackToGUIDLink covers Atom feeds whose entries carry
+// the permalink in <id> but no <link> element (e.g. jacobin.com): the article
+// link must fall back to the GUID so the reader can open it.
+func TestItemToArticleFallsBackToGUIDLink(t *testing.T) {
+	item := &gofeed.Item{
+		GUID:    "https://jacobin.com/2026/08/some-article",
+		Title:   "Some Article",
+		Content: "<p>body</p>",
+	}
+	a := itemToArticle("https://jacobin.com/feed", item)
+	if a.Link != item.GUID {
+		t.Errorf("Link = %q, want the entry id %q", a.Link, item.GUID)
+	}
+}
+
+func TestItemToArticleKeepsRealLink(t *testing.T) {
+	item := &gofeed.Item{
+		GUID: "https://example.com/2026/08/id",
+		Link: "https://example.com/2026/08/article",
+	}
+	a := itemToArticle("https://example.com/feed", item)
+	if a.Link != item.Link {
+		t.Errorf("Link = %q, want %q", a.Link, item.Link)
+	}
+}
+
+func TestItemToArticleNonURLGUIDNoFallback(t *testing.T) {
+	item := &gofeed.Item{GUID: "tag:example.com,2026:article-1"}
+	a := itemToArticle("https://example.com/feed", item)
+	if a.Link != "" {
+		t.Errorf("Link should stay empty for a non-URL GUID, got %q", a.Link)
+	}
+}
+
+// TestFetchFeedsAtomEntryIDAsLink is an end-to-end check that a Jacobin-style
+// Atom feed (entry <id> is the permalink, no <link>) stores an article whose
+// Link is the entry id.
+func TestFetchFeedsAtomEntryIDAsLink(t *testing.T) {
+	atom := `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Jacobin</title>
+  <link href="https://jacobin.com"/>
+  <entry>
+    <id>https://jacobin.com/2026/08/colombia-earthquake</id>
+    <title>Colombia's Far Right</title>
+    <updated>2026-08-28T16:20:17Z</updated>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>body</p></div></content>
+  </entry>
+</feed>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, atom)
+	}))
+	defer srv.Close()
+
+	st := newTestFeedStore(t)
+	res := FetchFeeds(st, []string{srv.URL})
+	if res.Feeds != 1 {
+		t.Fatalf("expected 1 feed parsed, got %d", res.Feeds)
+	}
+	if len(res.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", res.Errors)
+	}
+	arts, err := st.ListArticles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arts) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(arts))
+	}
+	if arts[0].Link != "https://jacobin.com/2026/08/colombia-earthquake" {
+		t.Errorf("article Link = %q, want the entry id URL", arts[0].Link)
 	}
 }

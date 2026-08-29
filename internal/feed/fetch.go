@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -138,6 +139,10 @@ func itemToArticle(feedURL string, item *gofeed.Item) store.Article {
 	if guid == "" {
 		guid = item.Link
 	}
+	link := item.Link
+	if link == "" && isAbsoluteURL(guid) {
+		link = guid
+	}
 	var pub time.Time
 	if item.PublishedParsed != nil {
 		pub = *item.PublishedParsed
@@ -154,11 +159,20 @@ func itemToArticle(feedURL string, item *gofeed.Item) store.Article {
 		FeedURL:     feedURL,
 		GUID:        guid,
 		Title:       item.Title,
-		Link:        item.Link,
+		Link:        link,
 		Author:      author,
 		PublishedAt: pub,
 		Content:     item.Content,
 		Description: item.Description,
 		Categories:  item.Categories,
 	}
+}
+
+// isAbsoluteURL reports whether s parses as an absolute URL with a host. It is
+// used to fall back to a feed entry's id as the article link when the entry
+// carries no <link> element (common in Atom feeds where the id is the
+// permalink).
+func isAbsoluteURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && u.IsAbs() && u.Host != ""
 }
