@@ -27,7 +27,7 @@ func TestHTMLToTextParagraphBreaks(t *testing.T) {
 }
 
 func TestWrapText(t *testing.T) {
-	out := wrapText("one two three four five", 10)
+	out := wrapText("one two three four five", 10, "…")
 	lines := strings.Split(out, "\n")
 	for _, l := range lines {
 		if len(l) > 10 {

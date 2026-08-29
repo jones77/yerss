@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"yerss/internal/config"
 	"yerss/internal/store"
@@ -145,6 +147,13 @@ func tagCountText(unread, total int) (plain, bold string) {
 	return fmt.Sprintf("/%d)", total), fmt.Sprintf("(%d", unread)
 }
 
+// actionLabel renders an action identifier as a display label: underscores
+// become spaces and each word is capitalized (e.g. open_article -> Open
+// Article).
+func actionLabel(a config.Action) string {
+	return cases.Title(language.Und).String(strings.ReplaceAll(string(a), "_", " "))
+}
+
 func (m *Model) renderHelp() string {
 	var lines []string
 	lines = append(lines, "Help - current keymap")
@@ -160,7 +169,7 @@ func (m *Model) renderHelp() string {
 		if keys == "" {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("  %-18s %s", a, keys))
+		lines = append(lines, fmt.Sprintf("  %-18s %s", actionLabel(a), keys))
 	}
 	w := m.width * 3 / 4
 	h := m.height * 2 / 3

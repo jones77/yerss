@@ -247,11 +247,11 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 
 	item := &m.list.groups[0].articles[0]
 	line := ansi.Strip(m.renderArticleRow(item, false))
-	if !strings.Contains(line, "10:04:05") {
-		t.Errorf("row = %q, want local time 10:04:05 (15:04:05 UTC - 5h)", line)
+	if !strings.Contains(line, "10:04") {
+		t.Errorf("row = %q, want local time 10:04 (15:04 UTC - 5h)", line)
 	}
-	if !strings.HasSuffix(strings.TrimRight(line, " "), "10:04:05") {
-		t.Errorf("time column should be right-aligned: %q", line)
+	if !strings.Contains(line, "timed·example·10:04") {
+		t.Errorf("row should be title·source·time: %q", line)
 	}
 	if !strings.HasPrefix(line, "  ") {
 		t.Errorf("row should keep the cursor gutter: %q", line)

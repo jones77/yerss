@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ type articleItem struct {
 	Title       string
 	Read        bool
 	PublishedAt time.Time
+	Link        string
+	FeedURL     string
 }
 
 // dayGroup is a collapsible bucket of articles sharing one local calendar day.
@@ -79,7 +82,7 @@ func bucketDayGroups(arts []store.Article) []dayGroup {
 		if title == "" {
 			title = "(untitled)"
 		}
-		item := articleItem{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt}
+		item := articleItem{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt, Link: a.Link, FeedURL: a.FeedURL}
 
 		key := "undated"
 		t := a.PublishedAt.Local()
@@ -245,42 +248,76 @@ func (m *Model) renderDayHeader(g *dayGroup, selected bool) string {
 }
 
 func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
-	const (
-		timeW = 8
-		gap   = 1
-	)
+	g := glyphsFor(m.ascii)
 	cursor := "  "
 	if selected {
 		cursor = "> "
 	}
-	titleW := m.width - 2 - timeW - gap
+	bg := lipgloss.Color("#333333")
+	var titleStyle lipgloss.Style
+	if item.Read {
+		titleStyle = lipgloss.NewStyle().Foreground(m.palette.Dim)
+	} else {
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold)
+	}
+	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	bar := lipgloss.NewStyle()
+	if selected {
+		titleStyle = titleStyle.Background(bg)
+		dim = dim.Background(bg)
+		bar = bar.Background(bg)
+	}
+
+	src := sourceID(item.Link, item.FeedURL)
+	ts := "--:--"
+	if !item.PublishedAt.IsZero() {
+		ts = item.PublishedAt.Local().Format("15:04")
+	}
+
+	bullets := 1
+	if src != "" {
+		bullets = 2
+	}
+	titleW := m.width - 2 - len(src) - bullets - len(ts)
 	if titleW < 1 {
 		titleW = 1
 	}
 	title := truncate(item.Title, titleW)
 
-	ts := "--:--:--"
-	if !item.PublishedAt.IsZero() {
-		ts = item.PublishedAt.Local().Format("15:04:05")
+	var b strings.Builder
+	b.WriteString(bar.Render(cursor))
+	b.WriteString(titleStyle.Render(title))
+	b.WriteString(dim.Render(g.bullet))
+	if src != "" {
+		b.WriteString(dim.Render(src))
+		b.WriteString(dim.Render(g.bullet))
 	}
+	b.WriteString(dim.Render(ts))
+	return truncate(b.String(), m.width)
+}
 
-	pad := titleW - runewidth.StringWidth(title)
-	if pad < 0 {
-		pad = 0
+// sourceID derives a short publication identifier from a URL host: strip a
+// leading "www.", take the label before the final dot (the second-level
+// domain), and truncate to at most 12 characters. The article link host is
+// used when present; otherwise the feed URL host is used.
+func sourceID(rawURL, feedURL string) string {
+	host := ""
+	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
+		host = u.Host
+	} else if u, err := url.Parse(feedURL); err == nil && u.Host != "" {
+		host = u.Host
 	}
-	line := cursor + title + strings.Repeat(" ", pad+gap) + ts
-	line = truncate(line, m.width)
-
-	var style lipgloss.Style
-	if item.Read {
-		style = lipgloss.NewStyle().Foreground(m.palette.Dim)
-	} else {
-		style = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold)
+	if host == "" {
+		return ""
 	}
-	if selected {
-		style = style.Background(lipgloss.Color("#333333"))
+	h := strings.ToLower(strings.TrimPrefix(host, "www."))
+	if i := strings.LastIndex(h, "."); i > 0 {
+		h = h[:i]
 	}
-	return style.Render(line)
+	if len(h) > 12 {
+		h = h[:12]
+	}
+	return h
 }
 
 func (m *Model) renderStatusBar() string {

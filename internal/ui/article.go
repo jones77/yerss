@@ -49,7 +49,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		vpH = 1
 	}
 	text := renderArticleContent(a)
-	wrapped := wrapText(text, contentW)
+	wrapped := wrapText(text, contentW, glyphsFor(m.ascii).ellipsis)
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(wrapped)
 	st := articleState{
@@ -169,7 +169,7 @@ func (m *Model) renderArticle() string {
 	a := st.article
 	date := ""
 	if !a.PublishedAt.IsZero() {
-		date = a.PublishedAt.Format("2006-01-02")
+		date = a.PublishedAt.Local().Format("2006-01-02 15:04:05")
 	}
 	title := a.Title
 	if title == "" {

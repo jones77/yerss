@@ -47,7 +47,7 @@ type Keymap map[Action][]string
 func DefaultKeybindings() Keymap {
 	return Keymap{
 		Quit:         {"q", "ctrl+c"},
-		Refresh:      {"R", "ctrl+r", "f5"},
+		Refresh:      {"R", "r", "ctrl+r", "f5"},
 		OpenArticle:  {"enter", "l", "o"},
 		Back:         {"esc", "enter", "h", "b"},
 		MoveUp:       {"up", "k"},
@@ -58,7 +58,7 @@ func DefaultKeybindings() Keymap {
 		HalfPageDown: {"ctrl+d", "space"},
 		Top:          {"g", "ctrl+up"},
 		Bottom:       {"G", "ctrl+down"},
-		TagPopup:     {"T"},
+		TagPopup:     {"T", "t"},
 		ToggleRead:   {"m"},
 		MarkAllRead:  {"a"},
 		OpenURL:      {"o"},

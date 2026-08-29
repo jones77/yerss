@@ -130,6 +130,23 @@ func TestDefaultKeybindingsValid(t *testing.T) {
 	}
 }
 
+func TestDefaultKeybindingsBothCases(t *testing.T) {
+	km := DefaultKeybindings()
+	listEff, err := km.EffectiveKeys(ViewList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listEff["t"] != TagPopup || listEff["T"] != TagPopup {
+		t.Errorf("both t and T should map to tag_popup, got %v / %v", listEff["t"], listEff["T"])
+	}
+	if listEff["r"] != Refresh || listEff["R"] != Refresh {
+		t.Errorf("both r and R should map to refresh, got %v / %v", listEff["r"], listEff["R"])
+	}
+	if listEff["g"] != Top || listEff["G"] != Bottom {
+		t.Errorf("g should stay top and G bottom, got %v / %v", listEff["g"], listEff["G"])
+	}
+}
+
 func TestDefaultKeyAliases(t *testing.T) {
 	km := DefaultKeybindings()
 	listEff, err := km.EffectiveKeys(ViewList)

@@ -50,11 +50,15 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[0], "Hello world article title") {
 		t.Errorf("top border missing title: %q", lines[0])
 	}
-	if !strings.Contains(lines[0], "2026-01-02") {
-		t.Errorf("top border missing date: %q", lines[0])
+	wantDate := mustParseTime(t, "2026-01-02T15:04:05Z").Local().Format("2006-01-02 15:04:05")
+	if !strings.Contains(lines[0], wantDate) {
+		t.Errorf("top border missing date+time %q: %q", wantDate, lines[0])
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% scrolled") {
-		t.Errorf("bottom border missing percent: %q", lines[len(lines)-1])
+	if !strings.Contains(lines[len(lines)-1], "o: open in browser") {
+		t.Errorf("bottom border missing help hint: %q", lines[len(lines)-1])
+	}
+	if !strings.Contains(lines[len(lines)-1], "100% · 4/4") {
+		t.Errorf("bottom border missing line indicator: %q", lines[len(lines)-1])
 	}
 }
 
@@ -84,10 +88,10 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 	})
 	lines := strings.Split(m.renderArticle(), "\n")
 	first := ansi.Strip(lines[2])
-	if !strings.HasPrefix(first, "|  Hello world article title") {
+	if !strings.HasPrefix(first, ":  Hello world article title") {
 		t.Errorf("content missing two-space left padding: %q", first)
 	}
-	if got := first[len(first)-1]; got != '#' {
+	if got := first[len(first)-1]; got != '|' {
 		t.Errorf("right edge thumb not at column %d: got %q", len(first)-1, first)
 	}
 	if len(first) != 80 {
@@ -126,9 +130,9 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 		wantTrack string
 		wantLabel string
 	}{
-		{"on open", 0, "######::::::::::::::::", "0% scrolled"},
-		{"42%", 21, "::::::######::::::::::", "42% scrolled"},
-		{"100%", 50, "::::::::::::::::######", "100% scrolled"},
+		{"on open", 0, "||||||::::::::::::::::", "0% . 20/70"},
+		{"42%", 21, "::::::||||||::::::::::", "42% . 41/70"},
+		{"100%", 50, "::::::::::::::::||||||", "100% . 70/70"},
 	}
 	for _, c := range cases {
 		m.article.viewport.SetYOffset(c.offset)
@@ -149,10 +153,10 @@ func TestRenderArticleShortArticleFullTrack(t *testing.T) {
 	m.article = m.newArticleState(store.Article{Title: "short", Content: "<p>x</p>"})
 	s := m.renderArticle()
 	lines := strings.Split(s, "\n")
-	if got := trackGlyphs(t, s); got != strings.Repeat("#", 22) {
-		t.Errorf("short article track = %q, want all %q", got, strings.Repeat("#", 22))
+	if got := trackGlyphs(t, s); got != strings.Repeat("|", 22) {
+		t.Errorf("short article track = %q, want all %q", got, strings.Repeat("|", 22))
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% scrolled") {
+	if !strings.Contains(lines[len(lines)-1], "100% . 3/3") {
 		t.Errorf("bottom border missing 100%%: %q", lines[len(lines)-1])
 	}
 }

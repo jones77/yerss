@@ -5,25 +5,28 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
 
 // borderGlyphs holds the glyphs used to draw the article border. In ASCII
-// mode box-drawing characters are replaced with plain equivalents and the
-// double-line right edge uses # for filled and : for unfilled segments.
+// mode box-drawing characters are replaced with plain equivalents. The right
+// edge acts as a scrollbar: the unfilled track is a grey single line and the
+// filled thumb is a bright double line (`║` Unicode, `|` ASCII).
 type borderGlyphs struct {
 	tl, bl, tr, br string
 	h, v           string
 	fill, unfill   string
 	ellipsis       string
+	bullet         string
 	expand, collapse string
 }
 
 func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
-		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: "|", fill: "#", unfill: ":", ellipsis: "...", expand: "v", collapse: ">"}
+		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: ".", expand: "v", collapse: ">"}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "║", ellipsis: "…", expand: "▾", collapse: "▸"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "╖", br: "╜", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·", expand: "▾", collapse: "▸"}
 }
 
 // renderArticleBorder draws the article reader frame: a thin border with the
@@ -66,17 +69,17 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	}
 	thumbTop, thumbH := sc.thumb(interiorH)
 
-	accent := lipgloss.NewStyle().Foreground(p.Accent)
-	dim := lipgloss.NewStyle().Foreground(p.Dim)
+	border := lipgloss.NewStyle().Foreground(p.Border)
+	thumb := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
 
 	ipad := strings.Repeat(" ", padX)
 	space := strings.Repeat(" ", interiorW)
 
 	right := func(row int) string {
 		if row >= thumbTop && row < thumbTop+thumbH {
-			return accent.Render(g.fill)
+			return thumb.Render(g.fill)
 		}
-		return dim.Render(g.unfill)
+		return border.Render(g.unfill)
 	}
 
 	var lines []string
@@ -84,7 +87,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 
 	row := 0
 	blank := func() string {
-		return g.v + space + right(row)
+		return border.Render(g.v) + space + right(row)
 	}
 	for i := 0; i < effPadY; i++ {
 		lines = append(lines, blank())
@@ -96,14 +99,14 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 			line = truncate(content[i], textW)
 		}
 		line = padRight(line, textW)
-		lines = append(lines, g.v+ipad+line+ipad+right(row))
+		lines = append(lines, border.Render(g.v)+ipad+line+ipad+right(row))
 		row++
 	}
 	for i := 0; i < effPadY; i++ {
 		lines = append(lines, blank())
 		row++
 	}
-	lines = append(lines, bottomBorder(w, g, p, sc.percent()))
+	lines = append(lines, bottomBorder(w, g, p, sc))
 
 	// Defensive clamp to exactly h lines on the most degenerate sizes.
 	if len(lines) > h {
@@ -134,7 +137,7 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	if coreW < 1 {
 		coreW = 1
 	}
-	prefix := " " + date + " · "
+	prefix := " " + date + " " + g.bullet + " "
 	if date == "" {
 		prefix = " "
 	}
@@ -159,19 +162,26 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	return style.Render(leftRail + core + rightRail)
 }
 
-func bottomBorder(w int, g borderGlyphs, p Palette, percent int) string {
-	text := fmt.Sprintf(" %d%% scrolled ", percent)
+// bottomBorder renders the article frame's bottom edge as `leftCorner +
+// core + rightCorner`. The core is a left-aligned `o: open in browser` hint
+// and a right-aligned `<percent>% · <bottomLine>/<totalLines>` position
+// indicator, with horizontal dashes filling the space between them. The
+// bullet between the percent and the line ratio is g.bullet.
+func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
+	hint := "o: open in browser"
+	indicator := fmt.Sprintf("%d%% %s %d/%d", sc.percent(), g.bullet, sc.bottomLine(), sc.totalH)
 	inner := w - 2
 	if inner < 1 {
 		inner = 1
 	}
-	text = truncate(text, inner)
-	tw := runewidth.StringWidth(text)
-	total := inner - tw
-	if total < 0 {
-		total = 0
+	hint = truncate(hint, inner)
+	indicator = truncate(indicator, inner)
+	hw := ansi.StringWidth(hint)
+	iw := ansi.StringWidth(indicator)
+	fill := inner - hw - iw
+	if fill < 0 {
+		fill = 0
 	}
-	left, right := total/2, total-total/2
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return style.Render(g.bl + strings.Repeat(g.h, left) + text + strings.Repeat(g.h, right) + g.br)
+	return style.Render(g.bl + hint + strings.Repeat(g.h, fill) + indicator + g.br)
 }

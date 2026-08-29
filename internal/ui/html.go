@@ -15,10 +15,10 @@ var (
 )
 
 // HTMLToText converts article HTML to plain text, preserving paragraph
-// breaks and link URLs. Images are rendered as [alt] (or [image] when no alt
-// text is available). Links are wrapped in OSC 8 hyperlink sequences so the
-// link text is clickable; the anchor tag is kept so html2text still appends
-// the URL as visible fallback text.
+// breaks. Images are rendered as [alt] (or [image] when no alt text is
+// available). Links are rendered as markdown `[text](url)` with the link text
+// wrapped in OSC 8 hyperlink sequences so it is clickable, and the URL kept as
+// visible plain fallback text.
 func HTMLToText(html string) string {
 	if strings.TrimSpace(html) == "" {
 		return ""
@@ -28,6 +28,7 @@ func HTMLToText(html string) string {
 	text, err := html2text.FromString(html, html2text.Options{
 		PrettyTables:        false,
 		PrettyTablesOptions: nil,
+		OmitLinks:           true,
 	})
 	if err != nil {
 		return html
@@ -47,10 +48,9 @@ func replaceImages(html string) string {
 	})
 }
 
-// wrapLinks wraps the text of each <a href="url">...</a> element in OSC 8
-// hyperlink escape sequences carrying the URL, making the link text clickable
-// in terminals that support OSC 8. The anchor tag itself is preserved so
-// html2text still appends the URL as plain fallback text.
+// wrapLinks renders each <a href="url">...</a> element as a markdown link:
+// the link text is wrapped in OSC 8 hyperlink escape sequences carrying the
+// URL (so it is clickable) and the URL follows as visible plain fallback text.
 func wrapLinks(html string) string {
 	return linkTagRe.ReplaceAllStringFunc(html, func(m string) string {
 		sm := linkTagRe.FindStringSubmatch(m)
@@ -58,20 +58,48 @@ func wrapLinks(html string) string {
 		if url == "" {
 			return m
 		}
-		return sm[1] + ansi.SetHyperlink(url) + sm[3] + ansi.ResetHyperlink() + sm[4]
+		return ansi.SetHyperlink(url) + "[" + sm[3] + "]" + ansi.ResetHyperlink() + "(" + url + ")"
 	})
 }
 
 // wrapText soft-wraps text to the given display width on word boundaries.
-func wrapText(text string, width int) string {
+// Markdown links are link-aware: when a link's `[text](url)` form does not fit
+// on the current line, the `(url)` breaks onto a new line, and a URL too long
+// for a single line is truncated with the ellipsis glyph.
+func wrapText(text string, width int, ellipsis string) string {
 	if width <= 0 {
 		return text
 	}
 	var out strings.Builder
+	linkBoundary := "]" + ansi.ResetHyperlink() + "("
 	for _, para := range strings.Split(text, "\n") {
 		cur := ""
 		curW := 0
 		for _, word := range strings.Fields(para) {
+			if i := strings.Index(word, linkBoundary); i >= 0 {
+				head := word[:i+1+len(ansi.ResetHyperlink())]
+				tail := word[i+1+len(ansi.ResetHyperlink()):]
+				hw := ansi.StringWidth(head)
+				tw := ansi.StringWidth(tail)
+				if (cur == "" && hw+tw <= width) || (cur != "" && curW+hw+tw+1 <= width) {
+					if cur != "" {
+						cur += " "
+						curW++
+					}
+					cur += word
+					curW += hw + tw
+					continue
+				}
+				if cur != "" {
+					out.WriteString(cur)
+					out.WriteString("\n")
+				}
+				out.WriteString(head)
+				out.WriteString("\n")
+				cur = truncateURL(tail, width, ellipsis)
+				curW = ansi.StringWidth(cur)
+				continue
+			}
 			w := ansi.StringWidth(word)
 			if cur != "" && curW+w+1 > width {
 				out.WriteString(cur)
@@ -90,6 +118,21 @@ func wrapText(text string, width int) string {
 		out.WriteString("\n")
 	}
 	return strings.TrimSuffix(out.String(), "\n")
+}
+
+// truncateURL truncates a markdown URL tail `(url)` so it fits width display
+// columns, keeping the parentheses and cutting an overlong inner URL with the
+// ellipsis glyph.
+func truncateURL(tail string, width int, ellipsis string) string {
+	if ansi.StringWidth(tail) <= width {
+		return tail
+	}
+	inner := tail[1 : len(tail)-1]
+	avail := width - 2 - ansi.StringWidth(ellipsis)
+	if avail < 1 {
+		avail = 1
+	}
+	return "(" + ansi.Truncate(inner, avail, ellipsis) + ")"
 }
 
 // truncate truncates s to at most width display columns, keeping ANSI escape

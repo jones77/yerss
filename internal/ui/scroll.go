@@ -42,3 +42,13 @@ func (s scrollState) percent() int {
 	scrollableRange := s.totalH - s.viewportH
 	return int(float64(s.offset)/float64(scrollableRange)*100 + 0.5)
 }
+
+// bottomLine returns the line number of the last viewable line at the bottom
+// of the viewport, clamped to the total line count.
+func (s scrollState) bottomLine() int {
+	last := s.offset + s.viewportH
+	if last > s.totalH {
+		last = s.totalH
+	}
+	return last
+}

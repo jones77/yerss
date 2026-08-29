@@ -21,8 +21,8 @@ func TestHTMLToTextWrapsLinksInOSC8(t *testing.T) {
 		t.Errorf("missing OSC 8 hyperlink reset: %q", out)
 	}
 	stripped := ansi.Strip(out)
-	if !strings.Contains(stripped, "world ( "+url+" )") {
-		t.Errorf("visible text should keep link text and URL fallback: %q", stripped)
+	if !strings.Contains(stripped, "[world]("+url+")") {
+		t.Errorf("visible text should be markdown [world](url): %q", stripped)
 	}
 	if !strings.Contains(stripped, "Hello") {
 		t.Errorf("non-link text should be unaffected: %q", stripped)
@@ -65,7 +65,7 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 func TestWrapTextWidthWithOSC8(t *testing.T) {
 	url := "https://example.com/post"
 	linked := ansi.SetHyperlink(url) + "world" + ansi.ResetHyperlink()
-	out := wrapText(linked+" ", 10)
+	out := wrapText(linked+" ", 10, "…")
 	for _, l := range strings.Split(out, "\n") {
 		if ansi.StringWidth(l) > 10 {
 			t.Errorf("line width %d > 10: %q", ansi.StringWidth(l), l)
