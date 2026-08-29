@@ -171,12 +171,12 @@ func TestArticleFrameBorderColors(t *testing.T) {
 
 func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	g := glyphsFor(false)
-	line := stripTop(t, bottomBorder(40, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
-	if !strings.HasPrefix(line, "└ o: open in browser") {
-		t.Errorf("help hint should be left-aligned and inset one space: %q", line)
+	line := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
+	if !strings.HasPrefix(line, "└─ o: open in browser") {
+		t.Errorf("hint should be inset past a horizontal line: %q", line)
 	}
-	if !strings.HasSuffix(line, "100% · 120/120 ┘") {
-		t.Errorf("indicator should be inset one space and right-aligned: %q", line)
+	if !strings.HasSuffix(line, "100% · 120/120 ─┘") {
+		t.Errorf("indicator should be inset past a horizontal line: %q", line)
 	}
 	if !strings.Contains(line, "browser ─") {
 		t.Errorf("space between the hint and the border fill: %q", line)
@@ -184,8 +184,11 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	if !strings.Contains(line, "─ 100%") {
 		t.Errorf("space between the border fill and the percentage: %q", line)
 	}
+	if ansi.StringWidth(line) != 80 {
+		t.Errorf("bottom border width = %d, want 80: %q", ansi.StringWidth(line), line)
+	}
 
-	fits := stripTop(t, bottomBorder(40, g, darkPalette(), scrollState{totalH: 4, viewportH: 20, offset: 0}))
+	fits := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 4, viewportH: 20, offset: 0}))
 	if !strings.Contains(fits, "100% · 4/4") {
 		t.Errorf("short article indicator should be 100%% · 4/4: %q", fits)
 	}

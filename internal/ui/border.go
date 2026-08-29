@@ -163,11 +163,12 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 }
 
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
-// core + rightCorner`. The core is a left-aligned `o: open in browser` hint
-// and a right-aligned `<percent>% · <bottomLine>/<totalLines>` position
-// indicator, each inset one space from its corner (mirroring the top border's
-// date and title) and separated from the dash fill by a space. The bullet
-// between the percent and the line ratio is g.bullet.
+// horizontal line + core + horizontal line + rightCorner`, mirroring the top
+// border. The core is a left-aligned `o: open in browser` hint and a
+// right-aligned `<percent>% · <bottomLine>/<totalLines>` position indicator,
+// each inset one space from the horizontal line (like the top border's date
+// and title) and separated from the dash fill by a space. The bullet between
+// the percent and the line ratio is g.bullet.
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	hint := "o: open in browser"
 	indicator := fmt.Sprintf("%d%% %s %d/%d", sc.percent(), g.bullet, sc.bottomLine(), sc.totalH)
@@ -175,14 +176,25 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	if inner < 1 {
 		inner = 1
 	}
-	hint = truncate(hint, inner)
-	indicator = truncate(indicator, inner)
+	// The fixed chrome is 8 columns: corner+h+space on each side plus a space
+	// either side of the dash fill, leaving inner-6 for hint+indicator+fill.
+	// When that is too tight, the indicator (then the hint) is truncated.
+	avail := inner - 6
+	if avail < 0 {
+		avail = 0
+	}
+	hint = truncate(hint, avail)
 	hw := ansi.StringWidth(hint)
+	if avail-hw < 0 {
+		indicator = ""
+	} else {
+		indicator = truncate(indicator, avail-hw)
+	}
 	iw := ansi.StringWidth(indicator)
-	fill := inner - 4 - hw - iw
+	fill := inner - 6 - hw - iw
 	if fill < 0 {
 		fill = 0
 	}
 	style := lipgloss.NewStyle().Foreground(p.Border)
-	return style.Render(g.bl + " " + hint + " " + strings.Repeat(g.h, fill) + " " + indicator + " " + g.br)
+	return style.Render(g.bl + g.h + " " + hint + " " + strings.Repeat(g.h, fill) + " " + indicator + " " + g.h + g.br)
 }
