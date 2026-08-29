@@ -3,6 +3,7 @@ package ui
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jaytaylor/html2text"
@@ -58,7 +59,8 @@ func wrapLinks(html string) string {
 		if url == "" {
 			return m
 		}
-		return ansi.SetHyperlink(url) + "[" + sm[3] + "]" + ansi.ResetHyperlink() + "(" + url + ")"
+		inner := strings.TrimSpace(sm[3])
+		return ansi.SetHyperlink(url) + "[" + inner + "]" + ansi.ResetHyperlink() + "(" + url + ")"
 	})
 }
 
@@ -108,26 +110,27 @@ func wrapText(text string, width int, ellipsis string) string {
 					cur += head + tail + punct
 					curW += full
 				} else {
-					// The link does not fit on the current line; flush it and
-					// keep it together on a fresh line when it fits there,
-					// otherwise break [text] and (url) apart.
-					if cur != "" {
+					// The link does not fit on the current line: [text] trails
+					// the current line when it fits there, otherwise it goes on
+					// its own line, and (url) follows on the next line.
+					if cur != "" && curW+hw+1 <= width {
+						cur += " " + head
 						out.WriteString(cur)
 						out.WriteString("\n")
-					}
-					if full <= width {
-						cur = head + tail + punct
-						curW = full
 					} else {
+						if cur != "" {
+							out.WriteString(cur)
+							out.WriteString("\n")
+						}
 						out.WriteString(head)
 						out.WriteString("\n")
-						avail := width - pw
-						if avail < 1 {
-							avail = 1
-						}
-						cur = truncateURL(tail, avail, ellipsis) + punct
-						curW = ansi.StringWidth(cur)
 					}
+					avail := width - pw
+					if avail < 1 {
+						avail = 1
+					}
+					cur = truncateURL(tail, avail, ellipsis) + punct
+					curW = ansi.StringWidth(cur)
 				}
 				forceBreak = true
 				continue
@@ -153,12 +156,11 @@ func wrapText(text string, width int, ellipsis string) string {
 }
 
 // isTrailingPunct reports whether s is punctuation that belongs on the same
-// line as a preceding markdown link.
+// line as a preceding markdown link. It covers ASCII and Unicode punctuation
+// (curly quotes, ellipsis, dashes), so tokens like `,”` stay with the link.
 func isTrailingPunct(s string) bool {
 	for _, r := range s {
-		switch r {
-		case ',', '.', ';', ':', '!', '?', ')', '"', '\'':
-		default:
+		if !unicode.IsPunct(r) {
 			return false
 		}
 	}

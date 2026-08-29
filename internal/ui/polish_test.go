@@ -199,11 +199,14 @@ func TestWrapTextBreaksURLToNewLine(t *testing.T) {
 	link := ansi.SetHyperlink(url) + "[text]" + ansi.ResetHyperlink() + "(" + url + ")"
 	out := wrapText("abc "+link, 16, "…")
 	lines := strings.Split(out, "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d: %q", len(lines), out)
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %q", len(lines), out)
 	}
-	if ansi.Strip(lines[0]) != "abc" || ansi.Strip(lines[1]) != "[text]" || ansi.Strip(lines[2]) != "(example.com/a)" {
-		t.Errorf("URL should break onto its own line, got %q", out)
+	if ansi.Strip(lines[0]) != "abc [text]" {
+		t.Errorf("link text should trail the current line, got %q", ansi.Strip(lines[0]))
+	}
+	if ansi.Strip(lines[1]) != "(example.com/a)" {
+		t.Errorf("URL should break onto its own line, got %q", ansi.Strip(lines[1]))
 	}
 }
 
@@ -251,11 +254,11 @@ func TestWrapTextLinkStaysTogetherOnOwnLine(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d: %q", len(lines), out)
 	}
-	if ansi.Strip(lines[0]) != "Read the full story here:" {
-		t.Errorf("line 0 = %q", ansi.Strip(lines[0]))
+	if ansi.Strip(lines[0]) != "Read the full story here: [world]" {
+		t.Errorf("link text should trail the current line: %q", ansi.Strip(lines[0]))
 	}
-	if ansi.Strip(lines[1]) != "[world](https://example.com/post)" {
-		t.Errorf("link should stay together on its own line: %q", ansi.Strip(lines[1]))
+	if ansi.Strip(lines[1]) != "(https://example.com/post)" {
+		t.Errorf("URL should be on the next line: %q", ansi.Strip(lines[1]))
 	}
 	if ansi.Strip(lines[2]) != "more" {
 		t.Errorf("line 2 = %q", ansi.Strip(lines[2]))
@@ -286,6 +289,19 @@ func TestWrapTextTruncatesURLToKeepPunct(t *testing.T) {
 	}
 	if !strings.HasSuffix(last, ").") {
 		t.Errorf("punctuation should stay with the truncated link: %q", last)
+	}
+}
+
+func TestWrapTextKeepsCurlyQuotePunctWithLink(t *testing.T) {
+	url := "https://example.com/post"
+	link := ansi.SetHyperlink(url) + "[world]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText(link+",\u201d more", 60, "…")
+	lines := strings.Split(out, "\n")
+	if ansi.Strip(lines[0]) != "[world](https://example.com/post),\u201d" {
+		t.Errorf("curly-quote punctuation should trail the link: %q", ansi.Strip(lines[0]))
+	}
+	if ansi.Strip(lines[1]) != "more" {
+		t.Errorf("line 1 = %q", ansi.Strip(lines[1]))
 	}
 }
 
