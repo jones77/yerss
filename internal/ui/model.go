@@ -98,11 +98,37 @@ func (m *Model) Init() tea.Cmd {
 	m.loadList()
 	last, _ := m.store.LastRefreshedAt()
 	m.lastRefreshedAt = last
+	if m.hasUnfetchedFeeds() {
+		return m.refreshCmd()
+	}
 	gate := feed.Gate{MinInterval: m.cfg.MinInterval(), Cooldown: m.cfg.Cooldown()}
 	if gate.NeedsStartupRefresh(last, time.Now()) {
 		return m.refreshCmd()
 	}
 	return nil
+}
+
+// hasUnfetchedFeeds reports whether the configured feeds file contains a URL
+// that has never been successfully fetched (no feeds row with a non-NULL
+// last_fetched_at). It lets the startup refresh bypass the 15-minute gate so a
+// feed newly added to feeds.txt is fetched without a manual refresh. A feeds
+// file or store error is treated as "no new feeds" so startup falls through to
+// the time gate; refreshCmd surfaces the error if a refresh still runs.
+func (m *Model) hasUnfetchedFeeds() bool {
+	urls, err := feed.LoadFeeds(m.cfg.FeedsFile())
+	if err != nil {
+		return false
+	}
+	verified, err := m.store.VerifiedFeedURLs()
+	if err != nil {
+		return false
+	}
+	for _, u := range urls {
+		if !verified[u] {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) refreshCmd() tea.Cmd {

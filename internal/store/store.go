@@ -151,6 +151,28 @@ func (s *Store) HasVerifiedFeed() (bool, error) {
 	return true, nil
 }
 
+// VerifiedFeedURLs returns the set of feed URLs that have ever been
+// successfully fetched — that is, feeds rows whose last_fetched_at is set.
+// Stub rows created by article persistence (NULL last_fetched_at) are excluded,
+// matching HasVerifiedFeed's definition of a verified feed. The returned map is
+// non-nil even when no feed qualifies.
+func (s *Store) VerifiedFeedURLs() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT url FROM feeds WHERE last_fetched_at IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	urls := make(map[string]bool)
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		urls[u] = true
+	}
+	return urls, rows.Err()
+}
+
 // UpsertArticle stores an article, deduplicating on (feed_url, guid) and
 // updating content and metadata when the row already exists. It returns the
 // article's ID.

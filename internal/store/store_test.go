@@ -186,3 +186,41 @@ func TestHasVerifiedFeedRequiresFetchTime(t *testing.T) {
 		t.Error("feed with a recorded fetch time should count as verified")
 	}
 }
+
+func TestVerifiedFeedURLs(t *testing.T) {
+	st := newTestStore(t)
+
+	urls, err := st.VerifiedFeedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != 0 {
+		t.Errorf("empty table should yield an empty map, got %v", urls)
+	}
+
+	a := sampleArticle()
+	if _, err := st.UpsertArticle(a); err != nil {
+		t.Fatal(err)
+	}
+	urls, err = st.VerifiedFeedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != 0 {
+		t.Errorf("stub feed row (NULL last_fetched_at) must not count as verified, got %v", urls)
+	}
+
+	if err := st.UpsertFeed(a.FeedURL, "feed", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	urls, err = st.VerifiedFeedURLs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != 1 {
+		t.Fatalf("expected exactly 1 verified URL, got %v", urls)
+	}
+	if !urls[a.FeedURL] {
+		t.Errorf("fetched feed %q should be verified, got %v", a.FeedURL, urls)
+	}
+}
