@@ -28,7 +28,7 @@ func Convert(html string) string {
 	}
 	out, err := conv.ConvertString(html)
 	if err != nil {
-		return html
+		return plainText(html)
 	}
 	return out
 }
@@ -75,6 +75,60 @@ func renderImage(_ converter.Context, w converter.Writer, n *html.Node) converte
 		w.WriteString("[image]")
 		return converter.RenderSuccess
 	}
-	w.WriteString("[" + strings.TrimSpace(alt) + "]")
+	w.WriteString("[" + escapeAlt(strings.TrimSpace(alt)) + "]")
 	return converter.RenderSuccess
+}
+
+// escapeAlt backslash-escapes the markdown-significant characters in alt text so
+// that image alt text renders literally inside the [alt] placeholder instead of
+// being interpreted as styling or link syntax by the downstream renderer.
+func escapeAlt(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\', '`', '*', '_', '[', ']', '<', '>':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// plainText extracts the visible text from an HTML document. It is the graceful
+// fallback used when html-to-markdown conversion fails, so the reader shows
+// readable text with markup removed rather than the raw HTML source. Block
+// elements are separated by spaces.
+func plainText(htmlStr string) string {
+	doc, err := html.Parse(strings.NewReader(htmlStr))
+	if err != nil {
+		return strings.TrimSpace(htmlStr)
+	}
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.TextNode {
+			b.WriteString(n.Data)
+			return
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+		if n.Type == html.ElementNode && isBlockElement(n.Data) {
+			b.WriteByte(' ')
+		}
+	}
+	walk(doc)
+	return strings.TrimSpace(b.String())
+}
+
+// isBlockElement reports whether a tag separates its content from surrounding
+// text with whitespace when rendered as plain text.
+func isBlockElement(tag string) bool {
+	switch tag {
+	case "p", "div", "br", "li", "ul", "ol", "blockquote", "h1", "h2", "h3",
+		"h4", "h5", "h6", "table", "tr", "section", "article", "header",
+		"footer", "body", "html", "hr":
+		return true
+	}
+	return false
 }

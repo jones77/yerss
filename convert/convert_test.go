@@ -166,3 +166,23 @@ func TestConvertLinkTextKeepsInternalSpaces(t *testing.T) {
 		t.Errorf("internal word spaces in link text should be kept: %q", stripped)
 	}
 }
+
+func TestConvertImgAltEscaped(t *testing.T) {
+	out := Convert(`<p><img alt="a *b* [c]"></p>`)
+	if !strings.Contains(out, "[a \\*b\\* \\[c\\]]") {
+		t.Errorf("image alt text should be escaped so special chars render literally: %q", out)
+	}
+	if strings.Contains(out, "[a *b* [c]]") {
+		t.Errorf("unescaped alt text would be interpreted as markdown: %q", out)
+	}
+}
+
+func TestConvertErrorFallsBackToPlainText(t *testing.T) {
+	got := plainText("<p>Hello</p><div>World</div>")
+	if got != "Hello World" {
+		t.Errorf("plainText should join block text with spaces, got %q", got)
+	}
+	if strings.Contains(got, "<") || strings.Contains(got, ">") {
+		t.Errorf("plainText should strip HTML tags, got %q", got)
+	}
+}

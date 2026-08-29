@@ -3,13 +3,11 @@ package ui
 import (
 	"regexp"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/ansi"
 	"charm.land/glamour/v2/styles"
-	"github.com/mattn/go-runewidth"
 	xansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -120,6 +118,33 @@ func indentListContinuations(rendered string) string {
 // ordered number (1. 2) followed by a space.
 var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]`)
 
+// cellWidth returns the display width of a single rune, using the
+// grapheme-aware ANSI width primitive shared across the article rendering path so
+// visible-cell measurement is consistent everywhere it is needed.
+func cellWidth(r rune) int {
+	return xansi.StringWidth(string(r))
+}
+
+// styledCells returns the byte offset into s covering at most n visible cells,
+// skipping ANSI escape sequences so the cut point lands on a character boundary
+// and not inside a style escape. It is the single source of truth for "advance N
+// visible cells" used by the blockquote bar helpers.
+func styledCells(s string, n int) int {
+	i := 0
+	seen := 0
+	for i < len(s) && seen < n {
+		if s[i] == '\x1b' {
+			i = skipEscape(s, i)
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		r, _ := utf8.DecodeRuneInString(s[i:])
+		seen += cellWidth(r)
+		i += size
+	}
+	return i
+}
+
 // fixBlockquoteRewrap repairs a glamour wrapping bug where, at many content
 // widths, a short word inside a blockquote is split onto its own line that
 // loses the blockquote "│" prefix (glamour re-wraps the blockquote wider than
@@ -131,9 +156,6 @@ var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]
 func fixBlockquoteRewrap(rendered string) string {
 	lines := strings.Split(rendered, "\n")
 	for i := 0; i < len(lines); i++ {
-		if !isBarLine(lines[i]) && !isOrphanLine(lines, i) {
-			continue
-		}
 		if !isBarLine(lines[i]) {
 			continue
 		}
@@ -178,36 +200,36 @@ func isBarLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(xansi.Strip(line)), "│")
 }
 
-// isOrphanLine reports whether the line is a short, bar-less word left behind
-// inside a blockquote by glamour's mis-wrapping (between two bar lines).
+// isOrphanLine reports whether the line is a short, bar-less word stranded
+// inside a blockquote by glamour's mis-wrapping. An orphan is the head of a
+// contiguous run of stranded words that ends at the next bar line, so consecutive
+// orphans are folded too. The width threshold (smaller than the nearest
+// preceding bar line) keeps ordinary paragraph text from being swallowed.
 func isOrphanLine(lines []string, i int) bool {
 	if i == 0 || i+1 >= len(lines) {
 		return false
 	}
 	vis := strings.TrimSpace(xansi.Strip(lines[i]))
-	return vis != "" && !strings.HasPrefix(vis, "│") &&
-		xansi.StringWidth(vis) < xansi.StringWidth(lines[i-1]) && isBarLine(lines[i-1]) && isBarLine(lines[i+1])
+	if vis == "" || strings.HasPrefix(vis, "│") {
+		return false
+	}
+	if !isBarLine(lines[i+1]) && !isOrphanLine(lines, i+1) {
+		return false
+	}
+	for p := i - 1; p >= 0; p-- {
+		if isBarLine(lines[p]) {
+			return xansi.StringWidth(vis) < xansi.StringWidth(lines[p])
+		}
+	}
+	return false
 }
 
 // splitBar splits a processed blockquote line into its styled "│ " prefix and
 // the remaining styled content, walking visible cells (not bytes) so ANSI
 // escape sequences in the prefix do not offset the content.
 func splitBar(line string) (prefix, content string) {
-	w := 0
-	i := 0
-	for i < len(line) && w < 2 {
-		if line[i] == '\x1b' {
-			i = skipEscape(line, i)
-			continue
-		}
-		_, size := utf8.DecodeRuneInString(line[i:])
-		r, _ := utf8.DecodeRuneInString(line[i:])
-		if !unicode.IsControl(r) {
-			w += runewidth.RuneWidth(r)
-		}
-		i += size
-	}
-	return line[:i], line[i:]
+	k := styledCells(line, 2)
+	return line[:k], line[k:]
 }
 
 // barContent returns the styled content of a blockquote line minus its "│ "
@@ -222,21 +244,7 @@ func barContent(line string) string {
 // cells, walking visible cells (not bytes) so ANSI escape sequences do not
 // shift the cut point.
 func cutStyledWidth(s string, w int) string {
-	i := 0
-	seen := 0
-	for i < len(s) && seen < w {
-		if s[i] == '\x1b' {
-			i = skipEscape(s, i)
-			continue
-		}
-		_, size := utf8.DecodeRuneInString(s[i:])
-		r, _ := utf8.DecodeRuneInString(s[i:])
-		if !unicode.IsControl(r) {
-			seen += runewidth.RuneWidth(r)
-		}
-		i += size
-	}
-	return s[:i]
+	return s[:styledCells(s, w)]
 }
 
 // skipEscape advances i past the escape/OSC/CSI sequence starting at i.
@@ -305,7 +313,23 @@ func (m *Model) renderMarkdown(md string, contentW int) string {
 	}
 	out, err := r.Render(md)
 	if err != nil {
-		return md
+		return markdownToPlainText(md)
 	}
 	return fixBlockquoteRewrap(indentListContinuations(strings.Trim(out, "\n")))
+}
+
+// markdownToPlainText strips commonmark block and inline markers from markdown
+// source, leaving readable plain text. It is used only as a graceful fallback
+// when the glamour renderer fails, so it prioritizes readability over fidelity;
+// visible link text and URLs are preserved as plain text.
+func markdownToPlainText(md string) string {
+	reLink := regexp.MustCompile(`!?\[([^\]]*)\]\(([^)]*)\)`)
+	reCode := regexp.MustCompile("`[^`]*`")
+	reBlock := regexp.MustCompile(`(?m)^#{1,6}\s+|^>\s+|^[ \t]*[-*+][ \t]+|^[ \t]*\d+[.)][ \t]+`)
+	md = reLink.ReplaceAllString(md, "$1 $2") // [text](url) / ![alt](url) -> "text url"
+	md = reCode.ReplaceAllString(md, "")     // `code` removed
+	md = reBlock.ReplaceAllString(md, "")   // headings, blockquotes, list markers
+	md = regexp.MustCompile(`[*_]+`).ReplaceAllString(md, "")
+	md = strings.ReplaceAll(md, "\\", "")
+	return strings.TrimSpace(md)
 }

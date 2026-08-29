@@ -261,3 +261,61 @@ func TestRenderMarkdownBlockquoteNoClip(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownToPlainTextFallback(t *testing.T) {
+	got := markdownToPlainText("**bold** and [world](https://example.com/post)\n\n# Title\n\n> quote\n\n* item")
+	if strings.Contains(got, "**") {
+		t.Errorf("plain-text fallback should not contain emphasis markers: %q", got)
+	}
+	if strings.Contains(got, "[") || strings.Contains(got, "]") {
+		t.Errorf("plain-text fallback should not contain link syntax: %q", got)
+	}
+	if !strings.Contains(got, "bold") || !strings.Contains(got, "world") || !strings.Contains(got, "https://example.com/post") {
+		t.Errorf("plain-text fallback should keep visible text and URL: %q", got)
+	}
+	if !strings.Contains(got, "Title") || !strings.Contains(got, "quote") || !strings.Contains(got, "item") {
+		t.Errorf("plain-text fallback should keep headings/blockquote/list text: %q", got)
+	}
+}
+
+func TestFixBlockquoteRewrapConsecutiveOrphans(t *testing.T) {
+	// glamour can strand two words back-to-back before the next bar line; the
+	// run scan must fold both under the quote bar with no content lost.
+	bar := "\x1b[38;5;252m│ \x1b[m"
+	in := bar + "notions! Even the elementary concepts of time and space have begun        \n" +
+		"to\n" +
+		"time\n" +
+		bar + "vacillate. Space is killed by the railways, and we are left with   \n" +
+		bar + "alone."
+	got := ansi.Strip(fixBlockquoteRewrap(in))
+	for _, line := range strings.Split(got, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "to" || trimmed == "time" {
+			t.Errorf("consecutive orphan words still stranded: %q", line)
+		}
+		if trimmed != "" && !strings.HasPrefix(line, "│") {
+			t.Errorf("blockquote line missing '│' bar: %q", line)
+		}
+	}
+	compact := strings.Join(strings.Fields(got), " ")
+	for _, want := range []string{"have begun to", "to time", "vacillate", "left with", "alone"} {
+		if !strings.Contains(compact, want) {
+			t.Errorf("rewrap should keep %q in order:\n%q", want, got)
+		}
+	}
+}
+
+func TestStyledCellsSkipsEscapesAndWideChars(t *testing.T) {
+	// The bar prefix is escape-heavy: cutting 2 visible cells must land exactly
+	// after the styled "│ ", regardless of the bytes the escapes occupy.
+	bar := "\x1b[38;5;252m│ \x1b[m"
+	if got, want := styledCells(bar+"world", 2), len("\x1b[38;5;252m│ "); got != want {
+		t.Errorf("styledCells over ANSI prefix = %d, want %d", got, want)
+	}
+	if cellWidth('世') != 2 {
+		t.Errorf("wide rune width = %d, want 2", cellWidth('世'))
+	}
+	if cellWidth('\u0301') != 0 {
+		t.Errorf("combining mark width = %d, want 0", cellWidth('\u0301'))
+	}
+}

@@ -558,20 +558,27 @@ wraps its output to the content width. The renderer SHALL follow the configured
 display theme: in `dark` mode it SHALL use the dark theme, in `light` mode the
 light theme, and in `auto` mode the theme SHALL be chosen from the terminal's
 preferred background. Inline `<img>` elements SHALL be rendered as `[alt]` using
-the image's alt text, or `[image]` if no alt text is available. A
-publisher-attached lead image (from `<enclosure>` or `media:thumbnail`) is
-rendered separately as an inline halfblocks image block above the rendered
-article content and is not affected by this placeholder rule. `<strong>` and
-`<b>` SHALL render with the theme's bold styling and `<em>`/`<i>` with its
-italic styling, not as literal markdown markers. Hyperlinks SHALL render as the
-styled link text followed by the URL (`text url`) and SHALL be wrapped in OSC 8
-hyperlink escape sequences carrying the URL. Structured HTML
-SHALL render as styled markdown: ordered and unordered lists (including nested
-lists) with correct bullet markers and indentation, blockquotes, code blocks,
-and tables. When a link's rendered text does not fit on the current line, the
-renderer SHALL wrap it onto a new line. When a URL is too long to fit on a
-single line by itself, the renderer SHALL wrap it across lines; it SHALL NOT
-truncate the displayed URL. Non-link text SHALL be unaffected.
+the image's alt text, or `[image]` if no alt text is available; the alt text
+SHALL be rendered literally, so markdown special characters in the alt text
+(such as `*`, `_`, `[`, or `]`) SHALL NOT be interpreted as styling or link
+syntax. A publisher-attached lead image (from `<enclosure>` or
+`media:thumbnail`) is rendered separately as an inline halfblocks image block
+above the rendered article content and is not affected by this placeholder rule.
+`<strong>` and `<b>` SHALL render with the theme's bold styling and
+`<em>`/`<i>` with its italic styling, not as literal markdown markers.
+Hyperlinks SHALL render as the styled link text followed by the URL
+(`text url`) and SHALL be wrapped in OSC 8 hyperlink escape sequences carrying
+the URL. Structured HTML SHALL render as styled markdown: ordered and unordered
+lists (including nested lists) with correct bullet markers and indentation,
+blockquotes, code blocks, and tables. When a link's rendered text does not fit
+on the current line, the renderer SHALL wrap it onto a new line. When a URL is
+too long to fit on a single line by itself, the renderer SHALL wrap it across
+lines; it SHALL NOT truncate the displayed URL. Non-link text SHALL be
+unaffected. When HTML-to-markdown conversion fails, the system SHALL render the
+article body as plain text with HTML markup removed rather than displaying the
+raw HTML source. When markdown rendering fails, the system SHALL display the
+article text without markdown formatting markers (no literal `**` or
+`[text](url)` syntax) rather than the raw markdown source.
 
 #### Scenario: HTML content rendered as styled markdown with paragraph breaks
 
@@ -613,6 +620,11 @@ truncate the displayed URL. Non-link text SHALL be unaffected.
 - **WHEN** an article contains an `<img>` element with alt text "photo of a cat"
 - **THEN** the reader displays `[photo of a cat]` in place of the image
 
+#### Scenario: Image alt text with markdown characters renders literally
+
+- **WHEN** an article contains an `<img>` element with alt text "a *b* [c]"
+- **THEN** the reader displays `[a *b* [c]]` literally, with the `*` and `[`/`]` shown as plain characters and no styled or link formatting applied
+
 #### Scenario: Link rendered as styled text followed by the URL
 
 - **WHEN** an article contains `<a href="https://example.com/post">world</a>` and is displayed in the reader view
@@ -627,6 +639,16 @@ truncate the displayed URL. Non-link text SHALL be unaffected.
 
 - **WHEN** a URL is too long to fit on a single display line by itself
 - **THEN** the displayed URL is wrapped across multiple lines and is not truncated or elided
+
+#### Scenario: Conversion failure renders plain text, not raw HTML
+
+- **WHEN** HTML-to-markdown conversion of the article content fails
+- **THEN** the reader displays the article's plain text with HTML markup removed, and no `<p>`/`<a>`/`<div>` tag text is shown
+
+#### Scenario: Markdown render failure shows text without markdown markers
+
+- **WHEN** the markdown renderer fails to render the article content
+- **THEN** the reader displays the article text without literal markdown formatting markers such as `**` or `[text](url)`
 
 ### Requirement: Article lead image rendering
 
