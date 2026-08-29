@@ -292,8 +292,8 @@ append an ellipsis.
 ### Requirement: Keyboard navigation
 
 The system SHALL support both vi-style and arrow-key navigation. Page navigation
-(PgUp/PgDn, Ctrl-F/Ctrl-B) SHALL scroll by a full viewport page. Half-page
-navigation (Ctrl-D/Ctrl-U, Space) SHALL scroll by half a viewport. `g` or
+(PgUp/PgDn, Ctrl-F/Ctrl-B, Space) SHALL scroll by a full viewport page. Half-page
+navigation (Ctrl-D/Ctrl-U) SHALL scroll by half a viewport. `g` or
 Ctrl-Up SHALL move to the top; `G` or Ctrl-Down SHALL move to the bottom. In the
 list view, up/down moves selection across visible rows (day headers and expanded
 articles); in the article view, up/down scrolls the article by one line. `Enter`,
