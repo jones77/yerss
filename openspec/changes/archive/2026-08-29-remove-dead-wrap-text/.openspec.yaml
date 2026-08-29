@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-29
+goal: Remove the dead `convert.WrapText` text wrapper and its tests, which have
+  no production call sites
+skip_specs: true
