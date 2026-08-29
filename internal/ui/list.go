@@ -134,6 +134,20 @@ func (m *Model) articleCount() int {
 	return n
 }
 
+// selectedArticlePosition returns the 1-based position of the article under the
+// cursor among the loaded article rows (day headers are not counted) and the
+// total number of articles in the store. A cursor on a day header reports the
+// position of the article just above it (0 when no articles precede it).
+func (m *Model) selectedArticlePosition() (n, total int) {
+	rows := m.visibleRows()
+	for i := 0; i <= m.list.cursor && i < len(rows); i++ {
+		if rows[i].kind == rowArticle {
+			n++
+		}
+	}
+	return n, m.list.total
+}
+
 // clampCursor keeps the cursor within the flattened visible-row list.
 func (m *Model) clampCursor() {
 	n := len(m.visibleRows())
@@ -356,7 +370,12 @@ func (m *Model) renderStatusBar() string {
 	} else if m.refreshing {
 		left = "refreshing..."
 	} else {
-		left = fmt.Sprintf("%d/%d articles", m.articleCount(), m.list.total)
+		n, total := m.selectedArticlePosition()
+		pct := 0
+		if total > 0 {
+			pct = int(float64(n)/float64(total)*100 + 0.5)
+		}
+		left = fmt.Sprintf("%d%% · %d/%d", pct, n, total)
 	}
 	if m.list.filter != "" && (m.statusMsg == "" || !time.Now().Before(m.statusExpires)) {
 		left += " · filter " + m.list.filter

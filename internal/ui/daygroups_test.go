@@ -195,8 +195,10 @@ func TestStatusBarShowsNT(t *testing.T) {
 	insertArticle(t, st, "two", nil)
 	m.loadList()
 
-	if got := m.renderStatusBar(); !strings.Contains(got, "2/2 articles") {
-		t.Errorf("status bar = %q, want 2/2 articles", got)
+	// rows: [header, one, two]; select the second article (position 2 of 2).
+	m.list.cursor = 2
+	if got := m.renderStatusBar(); !strings.Contains(got, "100% · 2/2") {
+		t.Errorf("status bar = %q, want 100%% · 2/2", got)
 	}
 
 	m.popupData = popupState{
@@ -204,9 +206,11 @@ func TestStatusBarShowsNT(t *testing.T) {
 		cursor: 0,
 	}
 	m.confirmTagSelection()
+	// filtered to [header, one]; select article one (position 1 of 2 total).
+	m.list.cursor = 1
 	got := m.renderStatusBar()
-	if !strings.Contains(got, "1/2 articles") {
-		t.Errorf("filtered status bar = %q, want 1/2 articles", got)
+	if !strings.Contains(got, "50% · 1/2") {
+		t.Errorf("filtered status bar = %q, want 50%% · 1/2", got)
 	}
 	if !strings.Contains(got, "filter tech") {
 		t.Errorf("filtered status bar missing filter name: %q", got)
