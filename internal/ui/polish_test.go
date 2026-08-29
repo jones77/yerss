@@ -223,6 +223,42 @@ func TestWrapTextTruncatesOverlongURL(t *testing.T) {
 	}
 }
 
+func TestWrapTextLinkTextStaysTogether(t *testing.T) {
+	url := "http://reallylong.com/link/that/stretches/across/a/link"
+	link := ansi.SetHyperlink(url) + "[link text followed by]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText(link, 30, "…")
+	lines := strings.Split(out, "\n")
+	for i, l := range lines {
+		if ansi.StringWidth(l) > 30 {
+			t.Errorf("line %d exceeds width 30: %q", i, ansi.Strip(l))
+		}
+	}
+	first := ansi.Strip(lines[0])
+	if first != "[link text followed by]" {
+		t.Errorf("link text should stay whole on its own line, got %q", first)
+	}
+	last := ansi.Strip(lines[len(lines)-1])
+	if !strings.HasPrefix(last, "(") || !strings.HasSuffix(last, "…)") {
+		t.Errorf("URL should break after the bracket and truncate, got %q", last)
+	}
+}
+
+func TestWrapTextLinkEndsLine(t *testing.T) {
+	url := "example.com/a"
+	link := ansi.SetHyperlink(url) + "[text]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText("see "+link+" now", 40, "…")
+	lines := strings.Split(out, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %q", len(lines), out)
+	}
+	if ansi.Strip(lines[0]) != "see [text](example.com/a)" {
+		t.Errorf("line 0 should end with the link: %q", ansi.Strip(lines[0]))
+	}
+	if ansi.Strip(lines[1]) != "now" {
+		t.Errorf("line 1 should hold the text after the link: %q", ansi.Strip(lines[1]))
+	}
+}
+
 func TestActionLabel(t *testing.T) {
 	cases := map[config.Action]string{
 		config.OpenArticle:  "Open Article",
