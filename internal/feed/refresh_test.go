@@ -247,3 +247,43 @@ func TestFetchFeedsAtomEntryIDAsLink(t *testing.T) {
 		t.Errorf("article Link = %q, want the entry id URL", arts[0].Link)
 	}
 }
+
+func TestFetchFeedsRecordsOutcomes(t *testing.T) {
+	st := newTestFeedStore(t)
+
+	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		fmt.Fprint(w, `<rss version="2.0"><channel><title>OK</title><item><title>a</title><guid>g1</guid></item><item><title>b</title><guid>g2</guid></item></channel></rss>`)
+	}))
+	defer okSrv.Close()
+
+	emptySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		fmt.Fprint(w, `<rss version="2.0"><channel><title>Empty</title></channel></rss>`)
+	}))
+	defer emptySrv.Close()
+
+	notFoundSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	defer notFoundSrv.Close()
+
+	res := FetchFeeds(st, []string{okSrv.URL, emptySrv.URL, notFoundSrv.URL})
+	if len(res.Outcomes) != 3 {
+		t.Fatalf("outcomes = %d, want 3: %+v", len(res.Outcomes), res.Outcomes)
+	}
+
+	byURL := map[string]FeedOutcome{}
+	for _, o := range res.Outcomes {
+		byURL[o.URL] = o
+	}
+	if o := byURL[okSrv.URL]; o.Err != nil || o.Articles != 2 {
+		t.Errorf("ok feed outcome = %+v, want 2 articles and no error", o)
+	}
+	if o := byURL[emptySrv.URL]; o.Err != nil || o.Articles != 0 {
+		t.Errorf("empty feed outcome = %+v, want 0 articles and no error", o)
+	}
+	if o := byURL[notFoundSrv.URL]; o.Status != http.StatusNotFound || o.Err == nil || o.Articles != 0 {
+		t.Errorf("404 feed outcome = %+v, want status 404 with an error", o)
+	}
+}

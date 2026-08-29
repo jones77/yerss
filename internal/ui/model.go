@@ -63,6 +63,8 @@ type Model struct {
 	lastRefreshedAt time.Time
 	refreshing      bool
 
+	feedOutcomes []feed.FeedOutcome
+
 	dbSize int64
 
 	keys map[config.View]map[string]config.Action
@@ -216,6 +218,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.lastRefreshedAt = msg.fetchedAt
 			m.setStatus(fmt.Sprintf("Refreshed: %d new, %d updated", msg.result.New, msg.result.Updated))
+			// The latest pass's per-URL outcomes are what exit diagnostics
+			// report; a failed pass leaves the previous outcomes standing.
+			m.feedOutcomes = msg.result.Outcomes
 		}
 		m.loadList()
 		return m, nil
@@ -247,6 +252,13 @@ func (m *Model) View() string {
 		s = overlay(s, m.renderHelp())
 	}
 	return s
+}
+
+// FeedOutcomes returns the per-URL outcomes of the most recent completed
+// refresh pass, for exit diagnostics. It is empty until the first pass
+// completes.
+func (m *Model) FeedOutcomes() []feed.FeedOutcome {
+	return m.feedOutcomes
 }
 
 func (m *Model) setStatus(msg string) {

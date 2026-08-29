@@ -285,3 +285,42 @@ exit with code 3 without entering the TUI.
 
 - **WHEN** the gate performs a verification fetch (no previously-verified feed)
 - **THEN** the system prints a `verifying feeds...` notice to stderr before the fetch begins
+### Requirement: Exit diagnostics for failed feed URLs
+
+After the TUI exits, the system SHALL print per-URL fetch diagnostics to
+stderr, prefixed with the program's basename (`<basename>: `). Each URL from
+the most recent completed refresh pass SHALL produce exactly one line: an
+`error: <status>, url: <URL>` line when the fetch failed with an HTTP error
+status (for example `404`), an `error: <error>, url: <URL>` line when the
+fetch failed for any other reason (for example a connection error or invalid
+feed), and a `warning: no articles returned, url: <URL>` line when the feed
+parsed successfully but returned no articles. Healthy feeds SHALL produce no
+output. A later refresh pass replaces the recorded outcomes, and a refresh
+that fails to start leaves the previous pass's outcomes standing. The
+diagnostics SHALL print after the terminal is restored so they never disturb
+the live display.
+
+#### Scenario: HTTP failure reported as an error line
+
+- **WHEN** a refresh pass fetched `https://example.com/rss` and the server answered 404, and the TUI exits
+- **THEN** stderr contains `yerss: error: 404, url: https://example.com/rss` (prefixed with the running program's basename)
+
+#### Scenario: Non-HTTP failure reported with the error text
+
+- **WHEN** a refresh pass failed to fetch a URL with a non-HTTP error (for example a connection refusal), and the TUI exits
+- **THEN** stderr contains an `<basename>: error: <error text>, url: <URL>` line for that URL
+
+#### Scenario: Empty feed reported as a warning line
+
+- **WHEN** a refresh pass parsed `https://example.com/rss` successfully but the feed returned no articles, and the TUI exits
+- **THEN** stderr contains `<basename>: warning: no articles returned, url: https://example.com/rss`
+
+#### Scenario: Healthy feeds are silent
+
+- **WHEN** a refresh pass fetched and parsed a feed that returned articles, and the TUI exits
+- **THEN** no diagnostics line is printed for that URL
+
+#### Scenario: Diagnostics reflect the most recent pass
+
+- **WHEN** a URL failed in an earlier refresh pass but succeeded in the most recent one, and the TUI exits
+- **THEN** no diagnostics line is printed for that URL

@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,10 +16,22 @@ import (
 
 // FetchResult summarizes a refresh pass.
 type FetchResult struct {
-	Feeds   int
-	New     int
-	Updated int
-	Errors  []error
+	Feeds    int
+	New      int
+	Updated  int
+	Errors   []error
+	Outcomes []FeedOutcome
+}
+
+// FeedOutcome records the per-URL result of one fetch pass: the HTTP status
+// code when the fetch failed with an HTTP error, the non-HTTP error
+// otherwise, and the number of articles the feed returned when it parsed
+// successfully.
+type FeedOutcome struct {
+	URL      string
+	Status   int
+	Err      error
+	Articles int
 }
 
 // refreshPerFeedTimeout and refreshOverallTimeout bound the TUI's startup and
@@ -88,12 +101,19 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 			if err != nil {
 				mu.Lock()
 				res.Errors = append(res.Errors, err)
+				outcome := FeedOutcome{URL: url, Err: err}
+				var httpErr gofeed.HTTPError
+				if errors.As(err, &httpErr) {
+					outcome.Status = httpErr.StatusCode
+				}
+				res.Outcomes = append(res.Outcomes, outcome)
 				mu.Unlock()
 				return
 			}
 
 			mu.Lock()
 			res.Feeds++
+			res.Outcomes = append(res.Outcomes, FeedOutcome{URL: url, Articles: len(feed.Items)})
 			if err := st.UpsertFeed(url, feed.Title, now); err != nil {
 				res.Errors = append(res.Errors, err)
 			}

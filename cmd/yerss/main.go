@@ -2,17 +2,22 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
 
 	"yerss/internal/config"
+	"yerss/internal/feed"
 	"yerss/internal/store"
 	"yerss/internal/ui"
 )
 
 func main() {
+	base := filepath.Base(os.Args[0])
+
 	var editFeeds, editConfig, jsonOut, ascii bool
 	pflag.BoolVarP(&editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
 	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
@@ -26,13 +31,13 @@ func main() {
 
 	cfg, err := config.Load("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "yerss: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", base, err)
 		os.Exit(1)
 	}
 
 	st, err := store.Open(cfg.DBPath())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "yerss: cannot initialize database\n")
+		fmt.Fprintf(os.Stderr, "%s: cannot initialize database\n", base)
 		fmt.Fprintf(os.Stderr, "database path: %s\n", cfg.DBPath())
 		fmt.Fprintf(os.Stderr, "set [data] dir in your config to use a different location\n")
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -52,8 +57,30 @@ func main() {
 	applyAsciiFlag(m, ascii)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "yerss: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", base, err)
 		os.Exit(1)
+	}
+	// The TUI has left the alternate screen; per-URL fetch diagnostics print
+	// after exit so they never disturb the live display.
+	feedDiagnostics(os.Stderr, base, m.FeedOutcomes())
+}
+
+// feedDiagnostics prints per-URL fetch diagnostics to stderr: an error line
+// for each URL that failed to load (the HTTP status code when the server
+// answered with one, the error text otherwise) and a warning line for each
+// URL whose feed returned no articles. base is the program's basename.
+func feedDiagnostics(w io.Writer, base string, outcomes []feed.FeedOutcome) {
+	for _, o := range outcomes {
+		switch {
+		case o.Err != nil:
+			if o.Status != 0 {
+				fmt.Fprintf(w, "%s: error: %d, url: %s\n", base, o.Status, o.URL)
+			} else {
+				fmt.Fprintf(w, "%s: error: %v, url: %s\n", base, o.Err, o.URL)
+			}
+		case o.Articles == 0:
+			fmt.Fprintf(w, "%s: warning: no articles returned, url: %s\n", base, o.URL)
+		}
 	}
 }
 
