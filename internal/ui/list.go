@@ -85,22 +85,17 @@ func bucketDayGroups(arts []store.Article) []dayGroup {
 		}
 		item := articleItem{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt, Link: a.Link, FeedURL: a.FeedURL}
 
-		key := "undated"
-		t := a.PublishedAt.Local()
-		if !a.PublishedAt.IsZero() {
-			day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-			key = day.Format("20060102")
-			t = day
-		}
-
+		key := dayKey(a.PublishedAt)
 		i, ok := idx[key]
 		if !ok {
 			label := "Undated"
+			var date time.Time
 			if key != "undated" {
-				label = longDate(t)
+				date = dayStart(a.PublishedAt)
+				label = longDate(date)
 			}
 			i = len(groups)
-			groups = append(groups, dayGroup{date: t, label: label})
+			groups = append(groups, dayGroup{date: date, label: label})
 			idx[key] = i
 		}
 		groups[i].articles = append(groups[i].articles, item)
@@ -214,11 +209,7 @@ func (m *Model) renderList() string {
 		}
 	} else {
 		rows := m.visibleRows()
-		visible := m.height - 1
-		if visible < 1 {
-			visible = 1
-		}
-		start, end := listWindow(len(rows), m.list.cursor, visible)
+		start, end := listWindow(len(rows), m.list.cursor, m.pageSize())
 		for i := start; i < end; i++ {
 			row := rows[i]
 			if row.kind == rowHeader {
@@ -498,18 +489,13 @@ func (m *Model) handleListClick(y int) tea.Cmd {
 	if len(rows) == 0 {
 		return nil
 	}
-	visible := m.height - 1
-	if visible < 1 {
-		visible = 1
-	}
-	start, _ := listWindow(len(rows), m.list.cursor, visible)
+	start, _ := listWindow(len(rows), m.list.cursor, m.pageSize())
 	idx := start + y
 	if idx < 0 || idx >= len(rows) {
 		return nil
 	}
-	row := rows[idx]
-	if row.kind == rowHeader {
-		m.toggle(row.groupIdx)
+	if rows[idx].kind == rowHeader {
+		m.toggle(rows[idx].groupIdx)
 		return nil
 	}
 	m.list.cursor = idx
@@ -529,22 +515,28 @@ func (m *Model) moveListCursor(delta int) {
 	if n == 0 {
 		return
 	}
-	m.list.cursor = (m.list.cursor + delta) % n
-	if m.list.cursor < 0 {
-		m.list.cursor += n
-	}
+	m.list.cursor = wrapIndex(m.list.cursor, delta, n)
 }
 
-func (m *Model) toggleReadAtCursor() {
+// articleAtCursor returns the article item under the list cursor, or false when
+// the cursor is out of range or on a day-header row.
+func (m *Model) articleAtCursor() (*articleItem, bool) {
 	rows := m.visibleRows()
 	if m.list.cursor < 0 || m.list.cursor >= len(rows) {
-		return
+		return nil, false
 	}
 	row := rows[m.list.cursor]
 	if row.kind != rowArticle {
+		return nil, false
+	}
+	return &m.list.groups[row.groupIdx].articles[row.artIdx], true
+}
+
+func (m *Model) toggleReadAtCursor() {
+	item, ok := m.articleAtCursor()
+	if !ok {
 		return
 	}
-	item := &m.list.groups[row.groupIdx].articles[row.artIdx]
 	item.Read = !item.Read
 	_ = m.store.SetRead(item.ID, item.Read)
 }

@@ -54,15 +54,10 @@ func (s textSelection) rangeFor() (lo, hi cell) {
 }
 
 func (m *Model) openArticle() tea.Cmd {
-	rows := m.visibleRows()
-	if m.list.cursor < 0 || m.list.cursor >= len(rows) {
+	item, ok := m.articleAtCursor()
+	if !ok {
 		return nil
 	}
-	row := rows[m.list.cursor]
-	if row.kind != rowArticle {
-		return nil
-	}
-	item := &m.list.groups[row.groupIdx].articles[row.artIdx]
 	full, err := m.store.GetArticle(item.ID)
 	if err == nil && full != nil {
 		m.article = m.newArticleState(*full)
@@ -76,14 +71,7 @@ func (m *Model) openArticle() tea.Cmd {
 
 func (m *Model) newArticleState(a store.Article) articleState {
 	padX, padY := m.cfg.Display.PaddingX, m.cfg.Display.PaddingY
-	contentW := m.width - 2*padX - 2
-	if contentW < 1 {
-		contentW = 1
-	}
-	vpH := m.height - 2*padY - 2
-	if vpH < 1 {
-		vpH = 1
-	}
+	contentW, vpH, _ := contentGeom(m.width, m.height, padX, padY)
 	imgStart, imgEnd := -1, -1
 	imgBlock := m.articleImageBlock(a, contentW, vpH)
 	rendered := m.renderMarkdown(renderArticleMarkdown(a), contentW)
@@ -247,15 +235,7 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 // content begins at column padX+1 and row effPadY+1.
 func (m *Model) contentRect() (x0, y0, w, h int) {
 	padX := m.cfg.Display.PaddingX
-	effPadY := clampPadY(m.cfg.Display.PaddingY, m.height)
-	w = m.width - 2*padX - 2
-	if w < 1 {
-		w = 1
-	}
-	h = m.height - 2*effPadY - 2
-	if h < 1 {
-		h = 1
-	}
+	w, h, effPadY := contentGeom(m.width, m.height, padX, m.cfg.Display.PaddingY)
 	return 1 + padX, 1 + effPadY, w, h
 }
 

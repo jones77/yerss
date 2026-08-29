@@ -33,10 +33,7 @@ func (m *Model) articleImageBlock(a store.Article, contentW, vpH int) []string {
 	if header := m.renderMarkdown(articleHeaderMarkdown(a), contentW); header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-	maxH := vpH - headerLines - 1
-	if maxH < 1 {
-		maxH = 1
-	}
+	maxH := max(1, vpH-headerLines-1)
 	lines, err := m.imgRenderer.Render(img, contentW, maxH)
 	if err != nil {
 		return nil

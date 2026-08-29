@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-29
+goal: Eliminate duplicated content-geometry math and repeated helper logic in
+  the UI package
+skip_specs: true

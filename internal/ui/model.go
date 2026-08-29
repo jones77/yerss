@@ -307,18 +307,8 @@ func overlay(base, pop string) string {
 func spliceStyled(baseRow, popRow string, bx, pw int) string {
 	left := ansi.Truncate(baseRow, bx, "")
 	if ansi.StringWidth(left) < bx {
-		left = padToWidth(left, bx)
+		left = padRight(left, bx)
 	}
 	right := ansi.Cut(baseRow, bx+pw, ansi.StringWidth(baseRow))
 	return left + popRow + right
-}
-
-// padToWidth pads s with trailing spaces to at least width display columns,
-// ignoring ANSI escape sequences.
-func padToWidth(s string, width int) string {
-	w := ansi.StringWidth(s)
-	if w >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-w)
 }

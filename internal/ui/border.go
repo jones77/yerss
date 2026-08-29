@@ -31,8 +31,8 @@ func glyphsFor(ascii bool) borderGlyphs {
 
 // clampPadY clamps the vertical content padding so the article frame (top +
 // 2*padY + viewport + bottom) never exceeds the terminal height on degenerate
-// terminals. It is shared by the border renderer and the mouse coordinate
-// mapping so both agree on the content area layout.
+// terminals. It is shared by the content geometry so the border renderer and
+// the mouse coordinate mapping agree on the content area layout.
 func clampPadY(padY, h int) int {
 	if maxPad := (h - 3) / 2; padY > maxPad {
 		padY = maxPad
@@ -54,27 +54,9 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	if h < 1 {
 		h = 1
 	}
-	// Clamp padY so the frame (top + padY + viewport + padY + bottom = 2 +
-	// 2*padY + viewportH) never exceeds the terminal height. This only
-	// activates on degenerate terminals where h - 2*padY - 2 < 1.
-	effPadY := clampPadY(padY, h)
-	interiorW := w - 2
-	if interiorW < 1 {
-		interiorW = 1
-	}
-	textW := interiorW - 2*padX
-	if textW < 1 {
-		textW = 1
-	}
-	viewportH := h - 2*effPadY - 2
-	if viewportH < 1 {
-		viewportH = 1
-	}
-
-	interiorH := viewportH + 2*effPadY
-	if interiorH < 1 {
-		interiorH = 1
-	}
+	textW, viewportH, effPadY := contentGeom(w, h, padX, padY)
+	interiorW := max(1, w-2)
+	interiorH := max(1, viewportH+2*effPadY)
 	thumbTop, thumbH := sc.thumb(interiorH)
 
 	border := lipgloss.NewStyle().Foreground(p.Border)
@@ -137,14 +119,8 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	leftRail := g.tl + g.h
 	rightRail := g.h + g.tr
-	innerW := w - 2
-	if innerW < 1 {
-		innerW = 1
-	}
-	coreW := innerW - 2
-	if coreW < 1 {
-		coreW = 1
-	}
+	innerW := max(1, w-2)
+	coreW := max(1, innerW-2)
 	prefix := " " + date + " " + g.bullet + " "
 	if date == "" {
 		prefix = " "
@@ -180,10 +156,7 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	hint := "o: open in browser"
 	indicator := fmt.Sprintf("%d%% %s %d/%d", sc.percent(), g.bullet, sc.bottomLine(), sc.totalH)
-	inner := w - 2
-	if inner < 1 {
-		inner = 1
-	}
+	inner := max(1, w-2)
 	// The fixed chrome is 8 columns: corner+h+space on each side plus a space
 	// either side of the dash fill, leaving inner-6 for hint+indicator+fill.
 	// When that is too tight, the indicator (then the hint) is truncated.

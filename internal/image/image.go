@@ -152,12 +152,8 @@ func (Halfblocks) Render(img image.Image, width, maxHeight int) ([]string, error
 // halfblock cell renders two source pixels vertically, so a source of srcW×srcH
 // at w cells wide is h = w*srcH/(2*srcW) rows tall.
 func fitDims(srcW, srcH, width, maxHeight int) (w, h int) {
-	if width < 1 {
-		width = 1
-	}
-	if maxHeight < 1 {
-		maxHeight = 1
-	}
+	width = max(1, width)
+	maxHeight = max(1, maxHeight)
 	w = width
 	h = (w*srcH + srcW*2 - 1) / (srcW * 2)
 	if h < 1 {

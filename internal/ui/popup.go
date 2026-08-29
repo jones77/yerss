@@ -91,10 +91,7 @@ func (m *Model) movePopupCursor(delta int) {
 	if n == 0 {
 		return
 	}
-	m.popupData.cursor = (m.popupData.cursor + delta) % n
-	if m.popupData.cursor < 0 {
-		m.popupData.cursor += n
-	}
+	m.popupData.cursor = wrapIndex(m.popupData.cursor, delta, n)
 }
 
 func (m *Model) renderTagPopup() string {

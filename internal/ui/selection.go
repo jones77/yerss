@@ -14,20 +14,13 @@ func (m *Model) persistSelection() {
 			sel.ArticleID = m.article.id
 			sel.ArticleOffset = m.article.viewport.YOffset
 		}
+	} else if item, ok := m.articleAtCursor(); ok {
+		sel.ArticleID = item.ID
 	} else {
 		rows := m.visibleRows()
-		if m.list.cursor >= 0 && m.list.cursor < len(rows) {
-			r := rows[m.list.cursor]
-			if r.kind == rowHeader {
-				g := &m.list.groups[r.groupIdx]
-				if g.date.IsZero() {
-					sel.HeaderKey = "undated"
-				} else {
-					sel.HeaderKey = g.date.Format("20060102")
-				}
-			} else {
-				sel.ArticleID = m.list.groups[r.groupIdx].articles[r.artIdx].ID
-			}
+		if m.list.cursor >= 0 && m.list.cursor < len(rows) && rows[m.list.cursor].kind == rowHeader {
+			g := &m.list.groups[rows[m.list.cursor].groupIdx]
+			sel.HeaderKey = dayKey(g.date)
 		}
 	}
 	_ = m.store.SaveLastSelection(sel)
@@ -45,12 +38,7 @@ func (m *Model) restoreSelection() {
 	}
 	if sel.HeaderKey != "" {
 		for gi := range m.list.groups {
-			g := &m.list.groups[gi]
-			key := "undated"
-			if !g.date.IsZero() {
-				key = g.date.Format("20060102")
-			}
-			if key == sel.HeaderKey {
+			if dayKey(m.list.groups[gi].date) == sel.HeaderKey {
 				rows := m.visibleRows()
 				for i, r := range rows {
 					if r.kind == rowHeader && r.groupIdx == gi {
