@@ -213,6 +213,32 @@ func TestStatusBarShowsNT(t *testing.T) {
 	}
 }
 
+func TestStatusBarShowsDBSize(t *testing.T) {
+	m, st := newTestModel(t)
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+
+	got := m.renderStatusBar()
+	if m.dbSize <= 0 {
+		t.Fatalf("expected dbSize set by loadList, got %d", m.dbSize)
+	}
+	if !strings.Contains(got, formatSize(m.dbSize)) {
+		t.Errorf("status bar = %q, want size %s", got, formatSize(m.dbSize))
+	}
+	if !strings.Contains(got, "never refreshed") {
+		t.Errorf("status bar = %q, want size alongside refresh info", got)
+	}
+
+	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	got = m.renderStatusBar()
+	if !strings.Contains(got, "last refresh") {
+		t.Errorf("status bar = %q, want last refresh after setting time", got)
+	}
+	if !strings.Contains(got, formatSize(m.dbSize)) {
+		t.Errorf("status bar = %q, want size with refresh date", got)
+	}
+}
+
 func TestArticleRowShowsLocalTime(t *testing.T) {
 	withLocalZone(t, time.FixedZone("UTC-5", -5*60*60))
 	m, st := newTestModel(t)

@@ -36,7 +36,8 @@ type TagCount struct {
 
 // Store wraps the SQLite connection.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 // Open creates (if needed) and opens the SQLite database at path, runs
@@ -65,7 +66,7 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("database %s: %w", path, err)
 		}
 	}
-	st := &Store{db: db}
+	st := &Store{db: db, path: path}
 	if err := st.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("database %s: %w", path, err)
@@ -76,6 +77,23 @@ func Open(path string) (*Store, error) {
 // Close closes the underlying database.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// DBSize returns the on-disk size in bytes of the database, including the WAL
+// sidecar file when present. A missing main file is an error; a missing
+// sidecar contributes zero.
+func (s *Store) DBSize() (int64, error) {
+	fi, err := os.Stat(s.path)
+	if err != nil {
+		return 0, err
+	}
+	total := fi.Size()
+	if wal, err := os.Stat(s.path + "-wal"); err == nil {
+		total += wal.Size()
+	} else if !os.IsNotExist(err) {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (s *Store) migrate() error {

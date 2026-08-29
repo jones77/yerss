@@ -53,6 +53,8 @@ type Model struct {
 	lastRefreshedAt time.Time
 	refreshing      bool
 
+	dbSize int64
+
 	keys map[config.View]map[string]config.Action
 }
 

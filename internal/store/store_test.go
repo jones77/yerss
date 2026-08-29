@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -259,5 +260,72 @@ func TestArticleCount(t *testing.T) {
 	}
 	if n != len(arts) {
 		t.Errorf("ArticleCount %d does not match len(ListArticles) %d", n, len(arts))
+	}
+}
+
+func TestDBSizeIncludesWal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "size.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpsertArticle(sampleArticle()); err != nil {
+		t.Fatal(err)
+	}
+	// Close checkpoints and detaches; the main file is stable afterwards and
+	// DBSize only stats files, so it still works.
+	st.Close()
+
+	mainFi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Ensure a clean "no wal" baseline regardless of whether Close left one.
+	_ = os.Remove(path + "-wal")
+
+	base, err := st.DBSize()
+	if err != nil {
+		t.Fatalf("DBSize baseline: %v", err)
+	}
+	if base != mainFi.Size() {
+		t.Errorf("DBSize baseline = %d, want main file size %d", base, mainFi.Size())
+	}
+
+	wal := path + "-wal"
+	if err := os.WriteFile(wal, make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	total, err := st.DBSize()
+	if err != nil {
+		t.Fatalf("DBSize with wal: %v", err)
+	}
+	if want := mainFi.Size() + 4096; total != want {
+		t.Errorf("DBSize with wal = %d, want %d", total, want)
+	}
+
+	if err := os.Remove(wal); err != nil {
+		t.Fatal(err)
+	}
+	noWal, err := st.DBSize()
+	if err != nil {
+		t.Fatalf("DBSize after wal removal: %v", err)
+	}
+	if noWal != mainFi.Size() {
+		t.Errorf("DBSize after wal removal = %d, want main size %d", noWal, mainFi.Size())
+	}
+}
+
+func TestDBSizeMissingMainFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DBSize(); err == nil {
+		t.Error("expected error when main DB file is missing")
 	}
 }

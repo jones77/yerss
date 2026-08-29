@@ -62,6 +62,9 @@ func (m *Model) loadList() {
 	if total, err := m.store.ArticleCount(); err == nil {
 		m.list.total = total
 	}
+	if size, err := m.store.DBSize(); err == nil {
+		m.dbSize = size
+	}
 	m.clampCursor()
 }
 
@@ -298,6 +301,9 @@ func (m *Model) renderStatusBar() string {
 		right = "never refreshed"
 	} else {
 		right = "last refresh " + m.lastRefreshedAt.Format("2006-01-02 15:04")
+	}
+	if m.dbSize > 0 {
+		right = formatSize(m.dbSize) + " · " + right
 	}
 
 	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(right)
