@@ -243,6 +243,52 @@ func TestWrapTextLinkTextStaysTogether(t *testing.T) {
 	}
 }
 
+func TestWrapTextLinkStaysTogetherOnOwnLine(t *testing.T) {
+	url := "https://example.com/post"
+	link := ansi.SetHyperlink(url) + "[world]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText("Read the full story here: "+link+" more", 50, "…")
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d: %q", len(lines), out)
+	}
+	if ansi.Strip(lines[0]) != "Read the full story here:" {
+		t.Errorf("line 0 = %q", ansi.Strip(lines[0]))
+	}
+	if ansi.Strip(lines[1]) != "[world](https://example.com/post)" {
+		t.Errorf("link should stay together on its own line: %q", ansi.Strip(lines[1]))
+	}
+	if ansi.Strip(lines[2]) != "more" {
+		t.Errorf("line 2 = %q", ansi.Strip(lines[2]))
+	}
+}
+
+func TestWrapTextKeepsTrailingPunctWithLink(t *testing.T) {
+	url := "https://example.com/post"
+	link := ansi.SetHyperlink(url) + "[world]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText("See "+link+", plus more", 40, "…")
+	lines := strings.Split(out, "\n")
+	if ansi.Strip(lines[0]) != "See [world](https://example.com/post)," {
+		t.Errorf("punctuation should stay on the link line: %q", ansi.Strip(lines[0]))
+	}
+	if ansi.Strip(lines[1]) != "plus more" {
+		t.Errorf("line 1 = %q", ansi.Strip(lines[1]))
+	}
+}
+
+func TestWrapTextTruncatesURLToKeepPunct(t *testing.T) {
+	url := "https://example.com/very-long-path-that-wont-fit"
+	link := ansi.SetHyperlink(url) + "[world]" + ansi.ResetHyperlink() + "(" + url + ")"
+	out := wrapText(link+".", 30, "…")
+	lines := strings.Split(out, "\n")
+	last := ansi.Strip(lines[len(lines)-1])
+	if ansi.StringWidth(last) > 30 {
+		t.Errorf("line exceeds width 30: %q", last)
+	}
+	if !strings.HasSuffix(last, ").") {
+		t.Errorf("punctuation should stay with the truncated link: %q", last)
+	}
+}
+
 func TestWrapTextLinkEndsLine(t *testing.T) {
 	url := "example.com/a"
 	link := ansi.SetHyperlink(url) + "[text]" + ansi.ResetHyperlink() + "(" + url + ")"

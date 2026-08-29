@@ -77,34 +77,57 @@ func wrapText(text string, width int, ellipsis string) string {
 		cur := ""
 		curW := 0
 		forceBreak := false
-		for _, word := range linkTokens(para) {
+		tokens := linkTokens(para)
+		for i := 0; i < len(tokens); i++ {
+			word := tokens[i]
 			if forceBreak {
 				out.WriteString(cur)
 				out.WriteString("\n")
 				cur, curW = "", 0
 				forceBreak = false
 			}
-			if i := strings.Index(word, linkBoundary); i >= 0 {
-				head := word[:i+1+len(ansi.ResetHyperlink())]
-				tail := word[i+1+len(ansi.ResetHyperlink()):]
+			if j := strings.Index(word, linkBoundary); j >= 0 {
+				head := word[:j+1+len(ansi.ResetHyperlink())]
+				tail := word[j+1+len(ansi.ResetHyperlink()):]
 				hw := ansi.StringWidth(head)
 				tw := ansi.StringWidth(tail)
-				if (cur == "" && hw+tw <= width) || (cur != "" && curW+hw+tw+1 <= width) {
+				// Keep trailing punctuation on the same line as the link,
+				// truncating the URL with an ellipsis to make room for it.
+				punct := ""
+				for i+1 < len(tokens) && isTrailingPunct(tokens[i+1]) {
+					punct += tokens[i+1]
+					i++
+				}
+				pw := ansi.StringWidth(punct)
+				full := hw + tw + pw
+				if (cur == "" && full <= width) || (cur != "" && curW+full+1 <= width) {
 					if cur != "" {
 						cur += " "
 						curW++
 					}
-					cur += word
-					curW += hw + tw
+					cur += head + tail + punct
+					curW += full
 				} else {
+					// The link does not fit on the current line; flush it and
+					// keep it together on a fresh line when it fits there,
+					// otherwise break [text] and (url) apart.
 					if cur != "" {
 						out.WriteString(cur)
 						out.WriteString("\n")
 					}
-					out.WriteString(head)
-					out.WriteString("\n")
-					cur = truncateURL(tail, width, ellipsis)
-					curW = ansi.StringWidth(cur)
+					if full <= width {
+						cur = head + tail + punct
+						curW = full
+					} else {
+						out.WriteString(head)
+						out.WriteString("\n")
+						avail := width - pw
+						if avail < 1 {
+							avail = 1
+						}
+						cur = truncateURL(tail, avail, ellipsis) + punct
+						curW = ansi.StringWidth(cur)
+					}
 				}
 				forceBreak = true
 				continue
@@ -127,6 +150,19 @@ func wrapText(text string, width int, ellipsis string) string {
 		out.WriteString("\n")
 	}
 	return strings.TrimSuffix(out.String(), "\n")
+}
+
+// isTrailingPunct reports whether s is punctuation that belongs on the same
+// line as a preceding markdown link.
+func isTrailingPunct(s string) bool {
+	for _, r := range s {
+		switch r {
+		case ',', '.', ';', ':', '!', '?', ')', '"', '\'':
+		default:
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // linkOpenSeq is the start of an OSC 8 hyperlink escape sequence.
