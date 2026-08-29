@@ -40,8 +40,8 @@ type Model struct {
 	width  int
 	height int
 
-	list     listState
-	article  articleState
+	list      listState
+	article   articleState
 	popupData popupState
 
 	palette Palette
@@ -65,9 +65,13 @@ type refreshFinishedMsg struct {
 	fetchedAt time.Time
 }
 
-// urlActionMsg reports the outcome of an open/copy URL command.
+// urlActionMsg reports the outcome of an open/copy command: opening an article
+// URL, or copying text (a URL, the full article text, or a mouse selection) to
+// the clipboard. label is the success status line; action names the operation
+// for the failure status line.
 type urlActionMsg struct {
 	action string
+	label  string
 	err    error
 }
 
@@ -176,12 +180,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.popup != noPopup {
 			return m, nil
 		}
+		var cmd tea.Cmd
 		if m.view == viewList {
 			m.updateListMouse(msg)
 		} else {
-			m.updateArticleMouse(msg)
+			cmd = m.updateArticleMouse(msg)
 		}
-		return m, nil
+		return m, cmd
 	case refreshFinishedMsg:
 		m.refreshing = false
 		if msg.err != nil {
@@ -196,7 +201,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.setStatus(msg.action + " failed: " + msg.err.Error())
 		} else {
-			m.setStatus(msg.action + "ed URL")
+			m.setStatus(msg.label)
 		}
 		return m, nil
 	}

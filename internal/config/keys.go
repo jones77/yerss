@@ -10,24 +10,25 @@ import (
 type Action string
 
 const (
-	Quit          Action = "quit"
-	Refresh       Action = "refresh"
-	OpenArticle   Action = "open_article"
-	Back          Action = "back"
-	MoveUp        Action = "move_up"
-	MoveDown      Action = "move_down"
-	PageUp        Action = "page_up"
-	PageDown      Action = "page_down"
-	HalfPageUp    Action = "half_page_up"
-	HalfPageDown  Action = "half_page_down"
-	Top           Action = "top"
-	Bottom        Action = "bottom"
-	TagPopup      Action = "tag_popup"
-	ToggleRead    Action = "toggle_read"
-	MarkAllRead   Action = "mark_all_read"
-	OpenURL       Action = "open_url"
-	CopyURL       Action = "copy_url"
-	Help          Action = "help"
+	Quit            Action = "quit"
+	Refresh         Action = "refresh"
+	OpenArticle     Action = "open_article"
+	Back            Action = "back"
+	MoveUp          Action = "move_up"
+	MoveDown        Action = "move_down"
+	PageUp          Action = "page_up"
+	PageDown        Action = "page_down"
+	HalfPageUp      Action = "half_page_up"
+	HalfPageDown    Action = "half_page_down"
+	Top             Action = "top"
+	Bottom          Action = "bottom"
+	TagPopup        Action = "tag_popup"
+	ToggleRead      Action = "toggle_read"
+	MarkAllRead     Action = "mark_all_read"
+	OpenURL         Action = "open_url"
+	CopyURL         Action = "copy_url"
+	CopyArticleText Action = "copy_article_text"
+	Help            Action = "help"
 )
 
 // View identifies a TUI view context for key dispatch and conflict
@@ -46,24 +47,25 @@ type Keymap map[Action][]string
 // DefaultKeybindings returns the built-in key map.
 func DefaultKeybindings() Keymap {
 	return Keymap{
-		Quit:         {"q", "ctrl+c"},
-		Refresh:      {"R", "r", "ctrl+r", "f5"},
-		OpenArticle:  {"enter", "l", "o"},
-		Back:         {"esc", "enter", "h", "b"},
-		MoveUp:       {"up", "k"},
-		MoveDown:     {"down", "j"},
-		PageUp:       {"pgup", "ctrl+b"},
-		PageDown:     {"pgdn", "ctrl+f"},
-		HalfPageUp:   {"ctrl+u"},
-		HalfPageDown: {"ctrl+d", "space"},
-		Top:          {"g", "ctrl+up"},
-		Bottom:       {"G", "ctrl+down"},
-		TagPopup:     {"T", "t"},
-		ToggleRead:   {"m"},
-		MarkAllRead:  {"a"},
-		OpenURL:      {"o"},
-		CopyURL:      {"c"},
-		Help:         {"?"},
+		Quit:            {"q", "ctrl+c"},
+		Refresh:         {"R", "r", "ctrl+r", "f5"},
+		OpenArticle:     {"enter", "l", "o"},
+		Back:            {"esc", "enter", "h", "b"},
+		MoveUp:          {"up", "k"},
+		MoveDown:        {"down", "j"},
+		PageUp:          {"pgup", "ctrl+b"},
+		PageDown:        {"pgdn", "ctrl+f"},
+		HalfPageUp:      {"ctrl+u"},
+		HalfPageDown:    {"ctrl+d", "space"},
+		Top:             {"g", "ctrl+up"},
+		Bottom:          {"G", "ctrl+down"},
+		TagPopup:        {"T", "t"},
+		ToggleRead:      {"m"},
+		MarkAllRead:     {"a"},
+		OpenURL:         {"o"},
+		CopyURL:         {"c"},
+		CopyArticleText: {"C"},
+		Help:            {"?"},
 	}
 }
 
@@ -154,7 +156,7 @@ var allActions = func() map[Action]bool {
 	for _, a := range []Action{
 		Quit, Refresh, OpenArticle, Back, MoveUp, MoveDown,
 		PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom,
-		TagPopup, ToggleRead, MarkAllRead, OpenURL, CopyURL, Help,
+		TagPopup, ToggleRead, MarkAllRead, OpenURL, CopyURL, CopyArticleText, Help,
 	} {
 		m[a] = true
 	}
@@ -166,7 +168,7 @@ func actionsForView(v View) []Action {
 	case ViewList:
 		return []Action{Quit, Refresh, OpenArticle, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, ToggleRead, MarkAllRead, Help}
 	case ViewArticle:
-		return []Action{Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, ToggleRead, OpenURL, CopyURL, Help}
+		return []Action{Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, ToggleRead, OpenURL, CopyURL, CopyArticleText, Help}
 	case ViewPopup:
 		return []Action{Quit, MoveUp, MoveDown, Back, Help}
 	}

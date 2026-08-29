@@ -81,6 +81,7 @@ func (m *Model) confirmTagSelection() (tea.Model, tea.Cmd) {
 	m.popup = noPopup
 	m.list.filter = t.Name
 	m.view = viewList
+	m.article.sel = textSelection{}
 	m.loadList()
 	return m, nil
 }
@@ -164,7 +165,7 @@ func (m *Model) renderHelp() string {
 		config.MoveUp, config.MoveDown, config.PageUp, config.PageDown,
 		config.HalfPageUp, config.HalfPageDown, config.Top, config.Bottom,
 		config.TagPopup, config.ToggleRead, config.MarkAllRead,
-		config.OpenURL, config.CopyURL, config.Help,
+		config.OpenURL, config.CopyURL, config.CopyArticleText, config.Help,
 	} {
 		keys := strings.Join(m.cfg.Keybindings[a], ", ")
 		if keys == "" {

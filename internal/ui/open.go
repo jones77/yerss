@@ -28,12 +28,15 @@ func openURLCmd(url string) tea.Cmd {
 		if err := openCommand(url).Run(); err != nil {
 			return urlActionMsg{action: "open", err: err}
 		}
-		return urlActionMsg{action: "open"}
+		return urlActionMsg{action: "open", label: "opened URL"}
 	}
 }
 
-// copyURLCmd copies url to the system clipboard via a tea.Cmd.
-func copyURLCmd(url string) tea.Cmd {
+// copyTextCmd copies text to the system clipboard via a tea.Cmd. The text is
+// piped to the platform clipboard helper's standard input without a shell, so
+// feed-controlled content cannot inject commands. label is the success status
+// line (e.g. "copied article text").
+func copyTextCmd(text, label string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
@@ -44,10 +47,15 @@ func copyURLCmd(url string) tea.Cmd {
 		default:
 			cmd = exec.Command("xclip", "-selection", "clipboard")
 		}
-		cmd.Stdin = strings.NewReader(url)
+		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err != nil {
 			return urlActionMsg{action: "copy", err: err}
 		}
-		return urlActionMsg{action: "copy"}
+		return urlActionMsg{action: "copy", label: label}
 	}
+}
+
+// copyURLCmd copies url to the system clipboard via a tea.Cmd.
+func copyURLCmd(url string) tea.Cmd {
+	return copyTextCmd(url, "copied URL")
 }

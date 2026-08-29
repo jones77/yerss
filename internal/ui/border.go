@@ -14,11 +14,11 @@ import (
 // edge acts as a scrollbar: the unfilled track is a grey single line and the
 // filled thumb is a bright double line (`║` Unicode, `|` ASCII).
 type borderGlyphs struct {
-	tl, bl, tr, br string
-	h, v           string
-	fill, unfill   string
-	ellipsis       string
-	bullet         string
+	tl, bl, tr, br   string
+	h, v             string
+	fill, unfill     string
+	ellipsis         string
+	bullet           string
 	expand, collapse string
 }
 
@@ -27,6 +27,20 @@ func glyphsFor(ascii bool) borderGlyphs {
 		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: ".", expand: "v", collapse: ">"}
 	}
 	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·", expand: "▾", collapse: "▸"}
+}
+
+// clampPadY clamps the vertical content padding so the article frame (top +
+// 2*padY + viewport + bottom) never exceeds the terminal height on degenerate
+// terminals. It is shared by the border renderer and the mouse coordinate
+// mapping so both agree on the content area layout.
+func clampPadY(padY, h int) int {
+	if maxPad := (h - 3) / 2; padY > maxPad {
+		padY = maxPad
+	}
+	if padY < 0 {
+		return 0
+	}
+	return padY
 }
 
 // renderArticleBorder draws the article reader frame: a thin border with the
@@ -43,13 +57,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	// Clamp padY so the frame (top + padY + viewport + padY + bottom = 2 +
 	// 2*padY + viewportH) never exceeds the terminal height. This only
 	// activates on degenerate terminals where h - 2*padY - 2 < 1.
-	effPadY := padY
-	if maxPad := (h - 3) / 2; effPadY > maxPad {
-		effPadY = maxPad
-	}
-	if effPadY < 0 {
-		effPadY = 0
-	}
+	effPadY := clampPadY(padY, h)
 	interiorW := w - 2
 	if interiorW < 1 {
 		interiorW = 1

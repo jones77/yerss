@@ -167,14 +167,3 @@ func TestArticleWheelScrollsViewport(t *testing.T) {
 		t.Errorf("wheel up offset = %d, want %d", m.article.viewport.YOffset, start)
 	}
 }
-
-func TestArticleClickIsNoop(t *testing.T) {
-	m, _ := newTestModel(t)
-	m.article = m.newArticleState(store.Article{Title: "t", Content: "<p>x</p>"})
-	start := m.article.viewport.YOffset
-
-	m.updateArticleMouse(mouseClick(5, 5))
-	if m.article.viewport.YOffset != start {
-		t.Errorf("click in article view should be a no-op, offset = %d", m.article.viewport.YOffset)
-	}
-}

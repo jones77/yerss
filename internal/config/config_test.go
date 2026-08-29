@@ -163,6 +163,12 @@ func TestDefaultKeyAliases(t *testing.T) {
 	if articleEff["o"] != OpenURL {
 		t.Errorf("o in article view should map to open_url, got %v", articleEff["o"])
 	}
+	if articleEff["c"] != CopyURL {
+		t.Errorf("c in article view should map to copy_url, got %v", articleEff["c"])
+	}
+	if articleEff["C"] != CopyArticleText {
+		t.Errorf("C in article view should map to copy_article_text, got %v", articleEff["C"])
+	}
 	for _, view := range []View{ViewList, ViewArticle} {
 		eff, err := km.EffectiveKeys(view)
 		if err != nil {
