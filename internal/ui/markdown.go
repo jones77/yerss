@@ -41,8 +41,24 @@ func glamourStyleConfig(style string) ansi.StyleConfig {
 	}
 	zero := uint(0)
 	cfg.Document.Margin = &zero
+	truePtr := true
 	falsePtr := false
 	cfg.Link.Underline = &falsePtr
+	// Drop the visible "#"/"##"/"###" markers that glamour's built-in heading
+	// styles prepend to each level, so article subtitles render as clean
+	// highlighted lines instead of raw markdown. The heading text keeps its
+	// own color/bold styling.
+	cfg.Heading.Prefix = ""
+	cfg.H1.Prefix = ""
+	cfg.H2.Prefix = ""
+	cfg.H3.Prefix = ""
+	cfg.H4.Prefix = ""
+	cfg.H5.Prefix = ""
+	cfg.H6.Prefix = ""
+	// H2 and H3 both inherit the base Heading's bold, so give the depths a
+	// weight difference: H2 stays bold, H3 renders plain (same accent color).
+	cfg.H2.Bold = &truePtr
+	cfg.H3.Bold = &falsePtr
 	return cfg
 }
 

@@ -149,3 +149,28 @@ func TestIndentListContinuationsSkipsPlainParagraph(t *testing.T) {
 		t.Errorf("plain paragraph lines must be untouched, got %q", got)
 	}
 }
+
+func TestRenderMarkdownHeadingHasNoHashPrefix(t *testing.T) {
+	m, _ := newTestModel(t)
+	out := m.renderMarkdown("# Title\n\n## Section\n\n### Sub", 40)
+	for _, level := range []string{"Title", "Section", "Sub"} {
+		if strings.Contains(out, "# "+level) || strings.Contains(out, "## "+level) || strings.Contains(out, "### "+level) {
+			t.Errorf("heading %q should not carry a '#' prefix:\n%q", level, out)
+		}
+		if !strings.Contains(out, level) {
+			t.Errorf("heading text %q missing: %q", level, out)
+		}
+	}
+}
+
+func TestH2BoldH3Plain(t *testing.T) {
+	m, _ := newTestModel(t)
+	h2 := m.renderMarkdown("## Section", 40)
+	h3 := m.renderMarkdown("### Sub", 40)
+	if !strings.Contains(h2, ";1m") {
+		t.Errorf("H2 heading should render bold, got: %q", h2)
+	}
+	if strings.Contains(h3, ";1m") {
+		t.Errorf("H3 heading should render plain (not bold), got: %q", h3)
+	}
+}
