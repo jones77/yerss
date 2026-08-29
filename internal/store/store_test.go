@@ -495,3 +495,99 @@ func TestLastSelectionRoundtrip(t *testing.T) {
 		t.Errorf("overwrite roundtrip = %+v, want %+v", got, sel2)
 	}
 }
+
+func TestChunkIDs(t *testing.T) {
+	ids := make([]int64, 1200)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	chunks := chunkIDs(ids, 500)
+	if len(chunks) != 3 {
+		t.Fatalf("chunkIDs = %d chunks, want 3", len(chunks))
+	}
+	if len(chunks[0]) != 500 || len(chunks[1]) != 500 || len(chunks[2]) != 200 {
+		t.Fatalf("chunk sizes = %d/%d/%d, want 500/500/200",
+			len(chunks[0]), len(chunks[1]), len(chunks[2]))
+	}
+	if chunks[1][0] != 501 {
+		t.Errorf("second chunk starts at %d, want 501", chunks[1][0])
+	}
+	if empty := chunkIDs(nil, 500); len(empty) != 0 {
+		t.Errorf("chunkIDs(nil) = %d chunks, want 0", len(empty))
+	}
+}
+
+func TestMarkAllReadAcrossChunks(t *testing.T) {
+	st := newTestStore(t)
+	const total = 520 // exceeds one chunk of 500
+	var ids []int64
+	for i := 0; i < total; i++ {
+		a := sampleArticle()
+		a.GUID = fmt.Sprintf("g%d", i)
+		id, err := st.UpsertArticle(a)
+		if err != nil {
+			t.Fatalf("UpsertArticle: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := st.MarkAllRead(ids); err != nil {
+		t.Fatalf("MarkAllRead: %v", err)
+	}
+	arts, err := st.ListArticles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arts) != total {
+		t.Fatalf("listed %d articles, want %d", len(arts), total)
+	}
+	for _, a := range arts {
+		if !a.Read {
+			t.Errorf("article %d not marked read", a.ID)
+		}
+	}
+}
+
+func TestUpsertArticleReturnedIDMatchesRow(t *testing.T) {
+	st := newTestStore(t)
+	a := sampleArticle()
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != id {
+		t.Errorf("GetArticle(id).ID = %d, want %d", got.ID, id)
+	}
+	a.Title = "Updated"
+	id2, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id2 != id {
+		t.Errorf("conflict-update returned id %d, want %d", id2, id)
+	}
+}
+
+func TestSetArticleTagsDedupesAndSkipsEmpty(t *testing.T) {
+	st := newTestStore(t)
+	id, err := st.UpsertArticle(sampleArticle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleTags(id, []string{"tech", "tech", "", "news", "news"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Categories) != 2 {
+		t.Fatalf("categories = %v, want 2", got.Categories)
+	}
+	if got.Categories[0] != "news" || got.Categories[1] != "tech" {
+		t.Errorf("categories = %v, want [news tech]", got.Categories)
+	}
+}

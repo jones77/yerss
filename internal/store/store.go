@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
@@ -300,7 +301,8 @@ func (s *Store) UpsertArticle(a Article) (int64, error) {
 	if _, err := s.db.Exec(`INSERT OR IGNORE INTO feeds (url) VALUES (?)`, a.FeedURL); err != nil {
 		return 0, err
 	}
-	_, err := s.db.Exec(`
+	var id int64
+	err := s.db.QueryRow(`
 INSERT INTO articles (feed_url, guid, title, link, author, published_at, content, description, fetched_at, image_url)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(feed_url, guid) DO UPDATE SET
@@ -311,16 +313,12 @@ ON CONFLICT(feed_url, guid) DO UPDATE SET
   content = excluded.content,
   description = excluded.description,
   fetched_at = excluded.fetched_at,
-  image_url = excluded.image_url`,
+  image_url = excluded.image_url
+RETURNING id`,
 		a.FeedURL, a.GUID, a.Title, a.Link, a.Author, unixOrNull(a.PublishedAt),
-		a.Content, a.Description, a.FetchedAt.Unix(), nullIfEmpty(a.ImageURL))
+		a.Content, a.Description, a.FetchedAt.Unix(), nullIfEmpty(a.ImageURL)).Scan(&id)
 	if err != nil {
 		return 0, err
-	}
-	var id int64
-	err = s.db.QueryRow(`SELECT id FROM articles WHERE feed_url = ? AND guid = ?`, a.FeedURL, a.GUID).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("resolve article id: %w", err)
 	}
 	return id, nil
 }
@@ -350,18 +348,32 @@ func (s *Store) SetArticleTags(articleID int64, names []string) error {
 	if _, err := tx.Exec(`DELETE FROM article_categories WHERE article_id = ?`, articleID); err != nil {
 		return err
 	}
+
+	seen := map[string]bool{}
+	var catIDs []int64
 	for _, name := range names {
-		if name == "" {
+		if name == "" || seen[name] {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO categories (name) VALUES (?)`, name); err != nil {
-			return err
-		}
+		seen[name] = true
 		var catID int64
-		if err := tx.QueryRow(`SELECT id FROM categories WHERE name = ?`, name).Scan(&catID); err != nil {
+		if err := tx.QueryRow(`INSERT INTO categories (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name = excluded.name RETURNING id`, name).Scan(&catID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO article_categories (article_id, category_id) VALUES (?, ?)`, articleID, catID); err != nil {
+		catIDs = append(catIDs, catID)
+	}
+	if len(catIDs) > 0 {
+		var b strings.Builder
+		b.WriteString(`INSERT INTO article_categories (article_id, category_id) VALUES `)
+		args := make([]any, 0, len(catIDs)*2)
+		for i, id := range catIDs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("(?, ?)")
+			args = append(args, articleID, id)
+		}
+		if _, err := tx.Exec(b.String(), args...); err != nil {
 			return err
 		}
 	}
@@ -483,6 +495,10 @@ ORDER BY total DESC, c.name ASC`)
 	return tags, rows.Err()
 }
 
+// markAllChunkSize bounds the number of ids in a single IN clause so each
+// UPDATE stays well under SQLite's bound-parameter limit.
+const markAllChunkSize = 500
+
 // MarkAllRead sets the read flag on every article with one of the given IDs.
 func (s *Store) MarkAllRead(ids []int64) error {
 	tx, err := s.db.Begin()
@@ -490,12 +506,38 @@ func (s *Store) MarkAllRead(ids []int64) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, id := range ids {
-		if _, err := tx.Exec(`UPDATE articles SET read = 1 WHERE id = ?`, id); err != nil {
+	for _, chunk := range chunkIDs(ids, markAllChunkSize) {
+		if len(chunk) == 0 {
+			continue
+		}
+		args := make([]any, len(chunk))
+		ph := make([]string, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+			ph[i] = "?"
+		}
+		stmt := `UPDATE articles SET read = 1 WHERE id IN (` + strings.Join(ph, ", ") + `)`
+		if _, err := tx.Exec(stmt, args...); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// chunkIDs splits ids into slices of at most n elements, preserving order.
+func chunkIDs(ids []int64, n int) [][]int64 {
+	if n <= 0 {
+		n = 1
+	}
+	var chunks [][]int64
+	for i := 0; i < len(ids); i += n {
+		end := i + n
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunks = append(chunks, ids[i:end])
+	}
+	return chunks
 }
 
 func (s *Store) articleCategories(articleID int64) ([]string, error) {
