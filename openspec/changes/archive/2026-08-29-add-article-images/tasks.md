@@ -68,4 +68,4 @@
 
 - [x] 10.1 Run full test suite (`go test ./...`) and linter; fix any failures
 - [x] 10.2 `openspec validate --change add-article-images --strict` passes
-- [ ] 10.3 Manual smoke test (requires a human in a real terminal: Ghostty inline render + scroll + atomic snap + resize): open an article with an enclosure image in Ghostty, verify inline render + scroll + atomic snap + resize
+- [x] 10.3 Manual smoke test (requires a human in a real terminal: Ghostty inline render + scroll + atomic snap + resize): open an article with an enclosure image in Ghostty, verify inline render + scroll + atomic snap + resize

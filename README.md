@@ -14,14 +14,14 @@ Add URLS, one per line, to:
 `$XDG_CONFIG_HOME/yerss/feeds.txt`;
 fallback `~/.config/yerss/feeds.txt`
 
-Blank lines and lines starting with `#` are ignored, so you can comment out
-feeds. The seeded file includes a commented-out example feed.
+Blank lines and lines starting with `#` are ignored,
+so you can comment out feeds.
+The seeded file includes a commented-out example feed.
 
 ### `config.toml`
 
 `$XDG_CONFIG_HOME/yerss/config.toml`;
 fallback `~/.config/yerss/config.toml`
-
 
 ### Database
 
