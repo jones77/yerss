@@ -45,6 +45,9 @@ func TestLoadMissingConfigUsesDefaults(t *testing.T) {
 	if cfg.Cooldown() != 60e9 {
 		t.Errorf("default cooldown = %v", cfg.Cooldown())
 	}
+	if cfg.Display.Images != "auto" {
+		t.Errorf("default images = %q, want auto", cfg.Display.Images)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -79,6 +82,38 @@ padding_y = 2
 	}
 	if cfg.Display.PaddingX != 4 || cfg.Display.PaddingY != 2 {
 		t.Errorf("padding = %d/%d", cfg.Display.PaddingX, cfg.Display.PaddingY)
+	}
+}
+
+func TestImagesOptionParsed(t *testing.T) {
+	withXDG(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+images = "off"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.Images != "off" {
+		t.Errorf("images = %q, want off", cfg.Display.Images)
+	}
+}
+
+func TestInvalidImagesFallsBackToAuto(t *testing.T) {
+	withXDG(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+images = "sometimes"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.Images != "auto" {
+		t.Errorf("invalid images value = %q, want auto", cfg.Display.Images)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	ext "github.com/mmcdole/gofeed/extensions"
 	"yerss/internal/store"
 )
 
@@ -149,6 +150,61 @@ func TestItemToArticleNonURLGUIDNoFallback(t *testing.T) {
 	a := itemToArticle("https://example.com/feed", item)
 	if a.Link != "" {
 		t.Errorf("Link should stay empty for a non-URL GUID, got %q", a.Link)
+	}
+}
+
+func TestLeadImageURLFromEnclosure(t *testing.T) {
+	item := &gofeed.Item{
+		Enclosures: []*gofeed.Enclosure{
+			{Type: "audio/mpeg", URL: "https://example.com/pod.mp3"},
+			{Type: "image/jpeg", URL: "https://example.com/lead.jpg"},
+			{Type: "image/png", URL: "https://example.com/other.png"},
+		},
+	}
+	if got := leadImageURL(item); got != "https://example.com/lead.jpg" {
+		t.Errorf("leadImageURL = %q, want the first image enclosure", got)
+	}
+}
+
+func TestLeadImageURLFromMediaThumbnail(t *testing.T) {
+	item := &gofeed.Item{
+		Extensions: map[string]map[string][]ext.Extension{
+			"media": {
+				"thumbnail": {{Attrs: map[string]string{"url": "https://example.com/thumb.png"}}},
+			},
+		},
+	}
+	if got := leadImageURL(item); got != "https://example.com/thumb.png" {
+		t.Errorf("leadImageURL = %q, want the media thumbnail", got)
+	}
+}
+
+func TestLeadImageURLIgnoresNonImageEnclosure(t *testing.T) {
+	item := &gofeed.Item{
+		Enclosures: []*gofeed.Enclosure{{Type: "audio/mpeg", URL: "https://example.com/pod.mp3"}},
+	}
+	if got := leadImageURL(item); got != "" {
+		t.Errorf("non-image enclosure should not set a lead image, got %q", got)
+	}
+}
+
+func TestLeadImageURLNotFromInlineContent(t *testing.T) {
+	item := &gofeed.Item{Content: `<p>see <img src="https://cdn.example.com/track.png"> now</p>`}
+	if got := leadImageURL(item); got != "" {
+		t.Errorf("inline content <img> must not become a lead image, got %q", got)
+	}
+}
+
+func TestItemToArticleCapturesLeadImage(t *testing.T) {
+	item := &gofeed.Item{
+		GUID:      "g1",
+		Title:     "t",
+		Content:   "<p>body</p>",
+		Enclosures: []*gofeed.Enclosure{{Type: "image/jpeg", URL: "https://example.com/lead.jpg"}},
+	}
+	a := itemToArticle("https://example.com/feed", item)
+	if a.ImageURL != "https://example.com/lead.jpg" {
+		t.Errorf("ImageURL = %q, want the enclosure URL", a.ImageURL)
 	}
 }
 

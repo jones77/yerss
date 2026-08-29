@@ -436,7 +436,7 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.MoveUp:
 		m.moveListCursor(-1)
 	case config.OpenArticle:
-		m.openArticle()
+		cmd = m.openArticle()
 	case config.Back:
 		if m.list.filter != "" {
 			m.clearFilter()
@@ -475,26 +475,28 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // cursor by one row, a left-click on an article row selects and opens it, and
 // a left-click on a day-header row toggles that group's fold. Clicks on the
 // status bar (the bottom line) are ignored.
-func (m *Model) updateListMouse(msg tea.MouseMsg) {
+func (m *Model) updateListMouse(msg tea.MouseMsg) tea.Cmd {
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress:
 		m.moveListCursor(-1)
 	case msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress:
 		m.moveListCursor(1)
 	case msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress:
-		m.handleListClick(msg.Y)
+		return m.handleListClick(msg.Y)
 	}
+	return nil
 }
 
 // handleListClick maps a screen row to a visible-row index via the list window
-// start offset and dispatches on the row kind found there.
-func (m *Model) handleListClick(y int) {
+// start offset and dispatches on the row kind found there. It returns the open
+// article's image-load command when an article row is clicked.
+func (m *Model) handleListClick(y int) tea.Cmd {
 	if y >= m.height-1 {
-		return
+		return nil
 	}
 	rows := m.visibleRows()
 	if len(rows) == 0 {
-		return
+		return nil
 	}
 	visible := m.height - 1
 	if visible < 1 {
@@ -503,15 +505,15 @@ func (m *Model) handleListClick(y int) {
 	start, _ := listWindow(len(rows), m.list.cursor, visible)
 	idx := start + y
 	if idx < 0 || idx >= len(rows) {
-		return
+		return nil
 	}
 	row := rows[idx]
 	if row.kind == rowHeader {
 		m.toggle(row.groupIdx)
-		return
+		return nil
 	}
 	m.list.cursor = idx
-	m.openArticle()
+	return m.openArticle()
 }
 
 func (m *Model) pageSize() int {

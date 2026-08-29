@@ -12,6 +12,7 @@ import (
 
 	"yerss/internal/config"
 	"yerss/internal/feed"
+	"yerss/internal/image"
 	"yerss/internal/store"
 )
 
@@ -52,6 +53,9 @@ type Model struct {
 	mdRendererW     int
 	mdRendererStyle string
 
+	imgRenderer image.Renderer
+	imgCache    *image.Cache
+
 	statusMsg     string
 	statusExpires time.Time
 
@@ -87,13 +91,15 @@ func New(cfg *config.Config, st *store.Store) *Model {
 		km = cfg.Keybindings
 	}
 	m := &Model{
-		cfg:     cfg,
-		store:   st,
-		view:    viewList,
-		palette: resolvePalette(cfg.Display.Theme),
-		ascii:   cfg.Display.Ascii || detectAsciiNeeded(),
-		width:   80,
-		height:  24,
+		cfg:         cfg,
+		store:       st,
+		view:        viewList,
+		palette:     resolvePalette(cfg.Display.Theme),
+		ascii:       cfg.Display.Ascii || detectAsciiNeeded(),
+		imgRenderer: image.Halfblocks{},
+		imgCache:    image.NewCache(),
+		width:       80,
+		height:      24,
 	}
 	m.keys = make(map[config.View]map[string]config.Action)
 	for _, v := range []config.View{config.ViewList, config.ViewArticle, config.ViewPopup} {
@@ -187,11 +193,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		if m.view == viewList {
-			m.updateListMouse(msg)
+			cmd = m.updateListMouse(msg)
 		} else {
 			cmd = m.updateArticleMouse(msg)
 		}
 		return m, cmd
+	case image.LoadedMsg:
+		m.onImageLoaded(msg)
+		return m, nil
+	case image.FailedMsg:
+		m.onImageFailed(msg)
+		return m, nil
 	case refreshFinishedMsg:
 		m.refreshing = false
 		if msg.err != nil {

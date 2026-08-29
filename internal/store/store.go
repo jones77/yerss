@@ -25,6 +25,7 @@ type Article struct {
 	Read        bool
 	FetchedAt   time.Time
 	Categories  []string
+	ImageURL    string
 }
 
 // TagCount is an aggregate count for a tag.
@@ -132,7 +133,57 @@ CREATE TABLE IF NOT EXISTS state (
   value TEXT
 );
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateImageColumns()
+}
+
+// migrateImageColumns adds the nullable image_url and image_data columns to the
+// articles table when they are absent. SQLite has no ADD COLUMN IF NOT EXISTS,
+// so the guard queries PRAGMA table_info and issues one ALTER per missing
+// column. It is idempotent: on an already-migrated database it is a no-op.
+func (s *Store) migrateImageColumns() error {
+	cols, err := s.articleColumns()
+	if err != nil {
+		return err
+	}
+	if !cols["image_url"] {
+		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_url TEXT`); err != nil {
+			return err
+		}
+	}
+	if !cols["image_data"] {
+		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_data BLOB`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// articleColumns returns the set of column names on the articles table.
+func (s *Store) articleColumns() (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(articles)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid  int
+			name string
+			typ  string
+			notN int
+			dflt sql.NullString
+			pk   int
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notN, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }
 
 // UpsertFeed records a feed and its last fetch time.
@@ -250,8 +301,8 @@ func (s *Store) UpsertArticle(a Article) (int64, error) {
 		return 0, err
 	}
 	_, err := s.db.Exec(`
-INSERT INTO articles (feed_url, guid, title, link, author, published_at, content, description, fetched_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO articles (feed_url, guid, title, link, author, published_at, content, description, fetched_at, image_url)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(feed_url, guid) DO UPDATE SET
   title = excluded.title,
   link = excluded.link,
@@ -259,9 +310,10 @@ ON CONFLICT(feed_url, guid) DO UPDATE SET
   published_at = excluded.published_at,
   content = excluded.content,
   description = excluded.description,
-  fetched_at = excluded.fetched_at`,
+  fetched_at = excluded.fetched_at,
+  image_url = excluded.image_url`,
 		a.FeedURL, a.GUID, a.Title, a.Link, a.Author, unixOrNull(a.PublishedAt),
-		a.Content, a.Description, a.FetchedAt.Unix())
+		a.Content, a.Description, a.FetchedAt.Unix(), nullIfEmpty(a.ImageURL))
 	if err != nil {
 		return 0, err
 	}
@@ -322,10 +374,31 @@ func (s *Store) SetRead(id int64, read bool) error {
 	return err
 }
 
+// SetImageData persists the raw fetched bytes of an article's lead image. The
+// bytes are stored as-is (the compressed JPEG/PNG stream), not decoded pixels.
+func (s *Store) SetImageData(id int64, data []byte) error {
+	_, err := s.db.Exec(`UPDATE articles SET image_data = ? WHERE id = ?`, data, id)
+	return err
+}
+
+// GetImageData returns the stored raw lead-image bytes for an article, or nil
+// when none have been stored.
+func (s *Store) GetImageData(id int64) ([]byte, error) {
+	var data []byte
+	err := s.db.QueryRow(`SELECT image_data FROM articles WHERE id = ?`, id).Scan(&data)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // GetArticle returns an article by ID, including its categories.
 func (s *Store) GetArticle(id int64) (*Article, error) {
 	a, err := s.scanArticle(s.db.QueryRow(`
-SELECT id, feed_url, guid, title, link, author, published_at, content, description, read, fetched_at
+SELECT id, feed_url, guid, title, link, author, published_at, content, description, read, fetched_at, image_url
 FROM articles WHERE id = ?`, id))
 	if err != nil {
 		return nil, err
@@ -342,7 +415,7 @@ FROM articles WHERE id = ?`, id))
 // those associated with a tag name.
 func (s *Store) ListArticles(filterTag string) ([]Article, error) {
 	query := `
-SELECT a.id, a.feed_url, a.guid, a.title, a.link, a.author, a.published_at, a.content, a.description, a.read, a.fetched_at
+SELECT a.id, a.feed_url, a.guid, a.title, a.link, a.author, a.published_at, a.content, a.description, a.read, a.fetched_at, a.image_url
 FROM articles a
 `
 	args := []any{}
@@ -477,14 +550,15 @@ type scanner interface {
 
 func (s *Store) scanArticle(row scanner) (*Article, error) {
 	var (
-		a      Article
-		author sql.NullString
-		link   sql.NullString
-		desc   sql.NullString
-		pub    sql.NullInt64
+		a       Article
+		author  sql.NullString
+		link    sql.NullString
+		desc    sql.NullString
+		pub     sql.NullInt64
 		fetched sql.NullInt64
+		imgURL  sql.NullString
 	)
-	err := row.Scan(&a.ID, &a.FeedURL, &a.GUID, &a.Title, &link, &author, &pub, &a.Content, &desc, &a.Read, &fetched)
+	err := row.Scan(&a.ID, &a.FeedURL, &a.GUID, &a.Title, &link, &author, &pub, &a.Content, &desc, &a.Read, &fetched, &imgURL)
 	if err != nil {
 		return nil, err
 	}
@@ -503,6 +577,9 @@ func (s *Store) scanArticle(row scanner) (*Article, error) {
 	if fetched.Valid {
 		a.FetchedAt = time.Unix(fetched.Int64, 0)
 	}
+	if imgURL.Valid {
+		a.ImageURL = imgURL.String
+	}
 	return &a, nil
 }
 
@@ -511,4 +588,11 @@ func unixOrNull(t time.Time) any {
 		return nil
 	}
 	return t.Unix()
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

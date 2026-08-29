@@ -19,6 +19,8 @@ type articleState struct {
 	viewport   viewport.Model
 	readMarked bool
 	sel        textSelection
+	imgStart   int
+	imgEnd     int
 }
 
 // textSelection tracks a mouse text selection in the article viewport. Cells
@@ -51,23 +53,25 @@ func (s textSelection) rangeFor() (lo, hi cell) {
 	return lo, hi
 }
 
-func (m *Model) openArticle() {
+func (m *Model) openArticle() tea.Cmd {
 	rows := m.visibleRows()
 	if m.list.cursor < 0 || m.list.cursor >= len(rows) {
-		return
+		return nil
 	}
 	row := rows[m.list.cursor]
 	if row.kind != rowArticle {
-		return
+		return nil
 	}
 	item := &m.list.groups[row.groupIdx].articles[row.artIdx]
 	full, err := m.store.GetArticle(item.ID)
 	if err == nil && full != nil {
 		m.article = m.newArticleState(*full)
-	} else {
-		m.article = m.newArticleState(store.Article{ID: item.ID, Title: item.Title, Read: item.Read})
+		m.view = viewArticle
+		return m.fireImageLoad(*full)
 	}
+	m.article = m.newArticleState(store.Article{ID: item.ID, Title: item.Title, Read: item.Read})
 	m.view = viewArticle
+	return nil
 }
 
 func (m *Model) newArticleState(a store.Article) articleState {
@@ -80,8 +84,13 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	if vpH < 1 {
 		vpH = 1
 	}
-	md := renderArticleMarkdown(a)
-	rendered := m.renderMarkdown(md, contentW)
+	imgStart, imgEnd := -1, -1
+	imgBlock := m.articleImageBlock(a, contentW, vpH)
+	rendered := m.renderMarkdown(renderArticleMarkdown(a), contentW)
+	if len(imgBlock) > 0 {
+		imgStart, imgEnd = 0, len(imgBlock)-1
+		rendered = strings.Join(imgBlock, "\n") + "\n" + rendered
+	}
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
 	st := articleState{
@@ -89,6 +98,8 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		article:  &a,
 		lines:    strings.Split(rendered, "\n"),
 		viewport: vp,
+		imgStart: imgStart,
+		imgEnd:   imgEnd,
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.store)
@@ -96,11 +107,9 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	return st
 }
 
-// renderArticleMarkdown builds the article's markdown source: a header (bold
-// title, italic author, and the article URL as a markdown link when present)
-// followed by the converted HTML body. The glamour renderer styles the whole
-// document, so links stay OSC 8 clickable.
-func renderArticleMarkdown(a store.Article) string {
+// articleHeaderMarkdown builds the markdown for the reader header: a bold
+// title, italic author, and the article URL as a markdown link when present.
+func articleHeaderMarkdown(a store.Article) string {
 	var b strings.Builder
 	if a.Title != "" {
 		b.WriteString("**" + escapeMarkdownText(a.Title) + "**\n")
@@ -111,6 +120,15 @@ func renderArticleMarkdown(a store.Article) string {
 	if a.Link != "" {
 		b.WriteString(markdownLink(a.Link) + "\n")
 	}
+	return b.String()
+}
+
+// renderArticleMarkdown builds the article's markdown source: the header
+// followed by the converted HTML body. The glamour renderer styles the whole
+// document, so links stay OSC 8 clickable.
+func renderArticleMarkdown(a store.Article) string {
+	var b strings.Builder
+	b.WriteString(articleHeaderMarkdown(a))
 	b.WriteString("\n")
 	b.WriteString(convert.Convert(a.Content))
 	return b.String()
@@ -131,24 +149,24 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.article.sel = textSelection{}
 		m.loadList()
 	case config.MoveDown:
-		m.article.viewport.ScrollDown(1)
+		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) })
 		m.article.markRead(m.store)
 	case config.MoveUp:
-		m.article.viewport.ScrollUp(1)
+		m.scrollArticle(func() { m.article.viewport.ScrollUp(1) })
 	case config.PageDown:
-		m.article.viewport.PageDown()
+		m.scrollArticle(func() { m.article.viewport.PageDown() })
 		m.article.markRead(m.store)
 	case config.PageUp:
-		m.article.viewport.PageUp()
+		m.scrollArticle(func() { m.article.viewport.PageUp() })
 	case config.HalfPageDown:
-		m.article.viewport.HalfPageDown()
+		m.scrollArticle(func() { m.article.viewport.HalfPageDown() })
 		m.article.markRead(m.store)
 	case config.HalfPageUp:
-		m.article.viewport.HalfPageUp()
+		m.scrollArticle(func() { m.article.viewport.HalfPageUp() })
 	case config.Top:
 		m.article.viewport.GotoTop()
 	case config.Bottom:
-		m.article.viewport.GotoBottom()
+		m.scrollArticle(func() { m.article.viewport.GotoBottom() })
 	case config.ToggleRead:
 		m.article.toggleRead(m.store)
 	case config.OpenURL:
@@ -180,9 +198,9 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	if tea.MouseEvent(msg).IsWheel() && msg.Action == tea.MouseActionPress {
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			m.article.viewport.ScrollUp(1)
+			m.scrollArticle(func() { m.article.viewport.ScrollUp(1) })
 		case tea.MouseButtonWheelDown:
-			m.article.viewport.ScrollDown(1)
+			m.scrollArticle(func() { m.article.viewport.ScrollDown(1) })
 			m.article.markRead(m.store)
 		}
 		return nil

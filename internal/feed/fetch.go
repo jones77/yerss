@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -165,7 +166,38 @@ func itemToArticle(feedURL string, item *gofeed.Item) store.Article {
 		Content:     item.Content,
 		Description: item.Description,
 		Categories:  item.Categories,
+		ImageURL:    leadImageURL(item),
 	}
+}
+
+// leadImageURL extracts the publisher-attached lead image URL for a feed item:
+// the first enclosure whose MIME type is an image type, falling back to the
+// media:thumbnail extension's url attribute. Inline <img> elements in the
+// article HTML content are never considered — only publisher-attached
+// enclosure/thumbnail metadata.
+func leadImageURL(item *gofeed.Item) string {
+	for _, enc := range item.Enclosures {
+		if enc == nil {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(enc.Type), "image/") {
+			if u := strings.TrimSpace(enc.URL); u != "" {
+				return u
+			}
+		}
+	}
+	if exts, ok := item.Extensions["media"]; ok {
+		if thumbs, ok := exts["thumbnail"]; ok {
+			for _, t := range thumbs {
+				if u, ok := t.Attrs["url"]; ok {
+					if u = strings.TrimSpace(u); u != "" {
+						return u
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // isAbsoluteURL reports whether s parses as an absolute URL with a host. It is

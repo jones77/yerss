@@ -329,6 +329,137 @@ func TestDBSizeMissingMainFile(t *testing.T) {
 		t.Error("expected error when main DB file is missing")
 	}
 }
+func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "img.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cols, err := st.articleColumns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cols["image_url"] || !cols["image_data"] {
+		t.Errorf("first migration missing image columns: %v", cols)
+	}
+	st.Close()
+
+	// Re-opening the same database must be a no-op (idempotent).
+	st2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	cols, err = st2.articleColumns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cols["image_url"] || !cols["image_data"] {
+		t.Errorf("re-migration dropped image columns: %v", cols)
+	}
+}
+
+func TestImageColumnsExistingRowsRetainData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := sampleArticle()
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The article was written without an image URL; its row must survive the
+	// additive migration with null image fields.
+	st.Close()
+
+	st2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	got, err := st2.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != a.Title || got.Content != a.Content {
+		t.Errorf("existing row data lost: %+v", got)
+	}
+	if got.ImageURL != "" {
+		t.Errorf("legacy row image_url = %q, want empty", got.ImageURL)
+	}
+	data, err := st2.GetImageData(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data != nil {
+		t.Errorf("legacy row image_data = %v, want nil", data)
+	}
+}
+
+func TestImageURLCapturedAndRestored(t *testing.T) {
+	st := newTestStore(t)
+	a := sampleArticle()
+	a.ImageURL = "https://example.com/lead.jpg"
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ImageURL != a.ImageURL {
+		t.Errorf("image_url = %q, want %q", got.ImageURL, a.ImageURL)
+	}
+	list, err := st.ListArticles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ImageURL != a.ImageURL {
+		t.Errorf("list scan image_url wrong: %+v", list)
+	}
+	// Clearing the URL on re-upsert persists NULL.
+	a.ImageURL = ""
+	if _, err := st.UpsertArticle(a); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ImageURL != "" {
+		t.Errorf("cleared image_url = %q, want empty", got.ImageURL)
+	}
+}
+
+func TestImageDataRoundtrip(t *testing.T) {
+	st := newTestStore(t)
+	id, err := st.UpsertArticle(sampleArticle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := st.GetImageData(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != nil {
+		t.Errorf("fresh article image_data = %v, want nil", before)
+	}
+	want := []byte("fake-jpeg-bytes")
+	if err := st.SetImageData(id, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetImageData(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("image_data roundtrip = %q, want %q", got, want)
+	}
+}
+
 func TestLastSelectionRoundtrip(t *testing.T) {
 	st := newTestStore(t)
 

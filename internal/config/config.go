@@ -32,6 +32,7 @@ type RefreshOptions struct {
 type Display struct {
 	Theme    string
 	Ascii    bool
+	Images   string
 	PaddingX int
 	PaddingY int
 }
@@ -48,7 +49,7 @@ type Config struct {
 func Default() *Config {
 	return &Config{
 		Refresh:     RefreshOptions{MinInterval: "15m", Cooldown: "60s"},
-		Display:     Display{Theme: "auto", PaddingX: 2, PaddingY: 1},
+		Display:     Display{Theme: "auto", Images: "auto", PaddingX: 2, PaddingY: 1},
 		Keybindings: DefaultKeybindings(),
 	}
 }
@@ -104,8 +105,19 @@ func (c *Config) Cooldown() time.Duration {
 	return d
 }
 
+// normalizeImages maps an images config value to the supported set
+// (auto/on/off), treating any unrecognized value as the auto default.
+func normalizeImages(v string) string {
+	switch v {
+	case "auto", "on", "off":
+		return v
+	}
+	return "auto"
+}
+
 type displayOpts struct {
 	Theme    string `toml:"theme"`
+	Images   string `toml:"images"`
 	PaddingX *int   `toml:"padding_x"`
 	PaddingY *int   `toml:"padding_y"`
 	Ascii    *bool  `toml:"ascii"`
@@ -158,6 +170,9 @@ func Load(path string) (*Config, error) {
 	}
 	if raw.Display.Theme != "" {
 		cfg.Display.Theme = raw.Display.Theme
+	}
+	if raw.Display.Images != "" {
+		cfg.Display.Images = normalizeImages(raw.Display.Images)
 	}
 	if raw.Display.PaddingX != nil {
 		cfg.Display.PaddingX = *raw.Display.PaddingX
