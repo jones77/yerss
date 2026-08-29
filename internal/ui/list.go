@@ -288,7 +288,7 @@ func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool
 	if item.Read {
 		titleStyle = lipgloss.NewStyle().Foreground(m.palette.Dim)
 	} else {
-		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold)
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright)
 	}
 	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
 	bar := lipgloss.NewStyle()
@@ -331,7 +331,7 @@ func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool
 	}
 
 	var b strings.Builder
-	b.WriteString(bar.Render(rail))
+	b.WriteString(dim.Render(rail))
 	b.WriteString(dim.Render(ts))
 	b.WriteString(bar.Render(" "))
 	b.WriteString(titleStyle.Render(title))

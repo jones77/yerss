@@ -139,20 +139,20 @@ func (m *Model) renderTagPopup() string {
 	}
 
 	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.Accent).Render(title))
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar).Render(title))
 	for i, t := range m.popupData.tags {
 		cursor := "  "
 		if i == m.popupData.cursor {
 			cursor = "> "
 		}
 		plain, bold := tagCountText(t.Unread, t.Total)
-		boldPart := lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold).Render(bold)
+		boldPart := lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright).Render(bold)
 		plainPart := lipgloss.NewStyle().Foreground(m.palette.Dim).Render(plain)
 		lines = append(lines, cursor+t.Name+" "+boldPart+plainPart)
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.palette.Accent).
+		BorderForeground(m.palette.StatusBar).
 		Width(w).
 		Height(h).
 		Padding(0, 1)
@@ -172,7 +172,7 @@ func (m *Model) renderLinksPopup() string {
 	}
 
 	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.Accent).Render("Links"))
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar).Render("Links"))
 	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
 	for i, l := range m.popupData.links {
 		cursor := "  "
@@ -187,7 +187,7 @@ func (m *Model) renderLinksPopup() string {
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.palette.Accent).
+		BorderForeground(m.palette.StatusBar).
 		Width(w).
 		Height(h).
 		Padding(0, 1)
@@ -235,7 +235,7 @@ func (m *Model) renderHelp() string {
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.palette.Accent).
+		BorderForeground(m.palette.StatusBar).
 		Width(w).
 		Height(h).
 		Padding(0, 1)

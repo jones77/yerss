@@ -7,32 +7,37 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Palette holds the colors used across the TUI for one theme.
+// Palette holds the standard terminal colors used across the TUI for one
+// theme, named for the role each color plays:
+//
+//   - Text: the article body foreground (ANSI 7 white / 0 black).
+//   - Bright: emphasis such as unread titles (ANSI 15 bright white / 0 bold).
+//   - Dim: the grey role covering the border, rails, and muted text
+//     (ANSI 8 dark grey in both modes).
+//   - StatusBar: the blue role covering the status bar, border inline text,
+//     scrollbar thumb, and popup chrome (ANSI 12 bright blue / 4 blue).
 type Palette struct {
-	Accent    lipgloss.Color
+	Text      lipgloss.Color
+	Bright    lipgloss.Color
 	Dim       lipgloss.Color
-	Bold      lipgloss.Color
-	Border    lipgloss.Color
 	StatusBar lipgloss.Color
 }
 
 func darkPalette() Palette {
 	return Palette{
-		Accent:    lipgloss.Color("#f7768e"),
-		Dim:       lipgloss.Color("#565f89"),
-		Bold:      lipgloss.Color("#c0caf5"),
-		Border:    lipgloss.Color("#3b4261"),
-		StatusBar: lipgloss.Color("#7aa2f7"),
+		Text:      lipgloss.Color("7"),
+		Bright:    lipgloss.Color("15"),
+		Dim:       lipgloss.Color("8"),
+		StatusBar: lipgloss.Color("12"),
 	}
 }
 
 func lightPalette() Palette {
 	return Palette{
-		Accent:    lipgloss.Color("#d70062"),
-		Dim:       lipgloss.Color("#8a8a8a"),
-		Bold:      lipgloss.Color("#1c1c1c"),
-		Border:    lipgloss.Color("#a0a0a0"),
-		StatusBar: lipgloss.Color("#005f87"),
+		Text:      lipgloss.Color("0"),
+		Bright:    lipgloss.Color("0"),
+		Dim:       lipgloss.Color("8"),
+		StatusBar: lipgloss.Color("4"),
 	}
 }
 

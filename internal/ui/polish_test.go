@@ -126,7 +126,7 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	item.Link = "https://newrepublic.com/story/1"
 
 	dimEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Render("x"))
-	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold).Render("x"))
+	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright).Render("x"))
 
 	unread := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
 	if !strings.Contains(unread, boldEscape) {
@@ -155,6 +155,9 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	item := &m.list.groups[0].articles[0]
 
 	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#333333")).Render("x"))
+	// The selected rail renders its grey foreground and the selection
+	// background in a single escape; expect that combined prefix.
+	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Background(lipgloss.Color("#333333")).Render("x"))
 	unselected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
 	selected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, true)
 	if strings.Contains(unselected, bgEscape) {
@@ -164,7 +167,7 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 		t.Errorf("selected row should use the full-row background highlight: %q", selected)
 	}
 	// The highlight must start at the row's first column (the tree glyph).
-	if !strings.HasPrefix(selected, bgEscape) {
+	if !strings.HasPrefix(selected, selEscape) {
 		t.Errorf("selection background should cover the rail column: %q", selected)
 	}
 }
@@ -178,7 +181,7 @@ func TestArticleFrameBorderColors(t *testing.T) {
 	s := m.renderArticle()
 	lines := strings.Split(s, "\n")
 
-	borderColon := lipgloss.NewStyle().Foreground(m.palette.Border).Render(":")
+	borderColon := lipgloss.NewStyle().Foreground(m.palette.Dim).Render(":")
 	brightPipe := lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar).Render("|")
 
 	if !strings.HasPrefix(lines[2], borderColon) {

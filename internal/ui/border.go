@@ -59,7 +59,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	interiorH := max(1, viewportH+2*effPadY)
 	thumbTop, thumbH := sc.thumb(interiorH)
 
-	border := lipgloss.NewStyle().Foreground(p.Border)
+	border := lipgloss.NewStyle().Foreground(p.Dim)
 	thumb := lipgloss.NewStyle().Bold(true).Foreground(p.StatusBar)
 
 	ipad := strings.Repeat(" ", padX)
@@ -116,8 +116,8 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 // the title does not fit, it is truncated and ends with the ellipsis glyph and
 // the right rail keeps its single dash so the two ends mirror each other. When
 // the title fits, leftover space is filled with horizontal dashes. The date,
-// title, and ellipsis are styled in baby blue; the bullet and the rails stay in
-// the border color.
+// title, and ellipsis are styled in bright blue (12); the bullet and the rails
+// stay in the grey role (8).
 func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 	leftRail := g.tl + g.h
 	rightRail := g.h + g.tr
@@ -132,7 +132,7 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 		titleW = 0
 	}
 
-	style := lipgloss.NewStyle().Foreground(p.Border)
+	style := lipgloss.NewStyle().Foreground(p.Dim)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
 	hLeft := style.Render(leftRail)
 	hRight := style.Render(rightRail)
@@ -163,7 +163,8 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 // each inset one space from the horizontal line (like the top border's date
 // and title) and separated from the dash fill by a space. The bullet between
 // the percent and the line ratio is g.bullet. The hint, percent, and ratio are
-// styled in baby blue; the bullet and the rails stay in the border color.
+// styled in bright blue (12); the bullet and the rails stay in the grey role
+// (8).
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	hint := "o: open in browser"
 	percentStr := fmt.Sprintf("%d%%", sc.percent())
@@ -189,7 +190,7 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	if fill < 0 {
 		fill = 0
 	}
-	style := lipgloss.NewStyle().Foreground(p.Border)
+	style := lipgloss.NewStyle().Foreground(p.Dim)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
 	var ind string
 	if indicator == "" {

@@ -42,6 +42,15 @@ func glamourStyleConfig(style string) ansi.StyleConfig {
 	}
 	zero := uint(0)
 	cfg.Document.Margin = &zero
+	// Pin the base body text to the standard text role: ANSI 7 white in dark
+	// mode, ANSI 0 black in light mode, overriding glamour's default base
+	// foreground. Styled elements (headings, bold, links, blockquotes) keep
+	// their own theme colors.
+	textColor := "7"
+	if style == "light" {
+		textColor = "0"
+	}
+	cfg.Document.Color = &textColor
 	truePtr := true
 	falsePtr := false
 	cfg.Link.Underline = &falsePtr

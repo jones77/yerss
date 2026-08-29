@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
@@ -79,6 +80,28 @@ func TestMarkdownRendererRebuildsOnThemeChange(t *testing.T) {
 	}
 	if m.mdRendererStyle != "light" {
 		t.Errorf("cache style not updated: %q", m.mdRendererStyle)
+	}
+}
+
+func TestMarkdownBodyTextUsesStandardBaseColor(t *testing.T) {
+	forceTrueColor(t)
+	cfg := config.Default()
+	cfg.Display.Theme = "dark"
+	m, _ := newTestModel(t)
+	m.cfg = cfg
+
+	whiteEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Render("x"))
+	out := m.renderMarkdown("plain body text", 60)
+	if !strings.Contains(out, whiteEscape) {
+		t.Errorf("dark body text should use ANSI white (7): %q", out)
+	}
+
+	cfg.Display.Theme = "light"
+	m.cfg = cfg
+	blackEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Render("x"))
+	out = m.renderMarkdown("plain body text", 60)
+	if !strings.Contains(out, blackEscape) {
+		t.Errorf("light body text should use ANSI black (0): %q", out)
 	}
 }
 

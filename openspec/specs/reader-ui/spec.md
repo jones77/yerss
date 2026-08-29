@@ -657,7 +657,11 @@ markdown to styled terminal text using a theme-aware markdown renderer that
 wraps its output to the content width. The renderer SHALL follow the configured
 display theme: in `dark` mode it SHALL use the dark theme, in `light` mode the
 light theme, and in `auto` mode the theme SHALL be chosen from the terminal's
-preferred background. Inline `<img>` elements SHALL be rendered as `[alt]` using
+preferred background. The renderer SHALL render base (non-styled) body text in
+ANSI color 7 (white) in dark mode and ANSI color 0 (black) in light mode,
+overriding the theme's default base foreground, while styled elements (bold,
+italics, headings, links, blockquotes) keep the theme's own styling. Inline
+`<img>` elements SHALL be rendered as `[alt]` using
 the image's alt text, or `[image]` if no alt text is available; the alt text
 SHALL be rendered literally, so markdown special characters in the alt text
 (such as `*`, `_`, `[`, or `]`) SHALL NOT be interpreted as styling or link
@@ -699,6 +703,11 @@ article text without markdown formatting markers (no literal `**` or
 
 - **WHEN** the configured display theme is `dark` (or `light`, or `auto` resolving to the terminal background)
 - **THEN** the article content is rendered with glamour's matching dark (or light) theme
+
+#### Scenario: Body text uses the standard white/black base color
+
+- **WHEN** an article is displayed in the reader view in dark (or light) mode
+- **THEN** the base body text renders in ANSI color 7 (white) in dark mode and ANSI color 0 (black) in light mode, while bold text, links, and headings keep their theme styling
 
 #### Scenario: Nested list renders with correct indentation
 
@@ -1093,3 +1102,57 @@ Enter SHALL continue to close the article view and return to the list.
 
 - **WHEN** the article contains no links and the user opens the links popup
 - **THEN** the popup opens with an empty list and Enter does nothing
+
+### Requirement: Standard terminal color roles
+
+The system SHALL derive all UI foreground colors from the standard terminal
+(ANSI) palette instead of bespoke RGB values. The following color roles SHALL
+apply across the list, reader, and popup views:
+
+- **grey/dim role** — ANSI color 8 (dark grey) in both dark and light modes:
+  the article border, rails, bullets, scrollbar track, read article titles,
+  timestamps, source identifiers, day headers, image attribution, and muted
+  popup text (such as plain tag counts and link URLs).
+- **blue role** — ANSI color 12 (bright blue) in dark mode and ANSI color 4
+  (blue) in light mode: the status bar, the inline text in the article border
+  (date, title, help hint, position indicator), the scrollbar thumb, and popup
+  titles and popup borders.
+- **text role** — ANSI color 7 (white) in dark mode and ANSI color 0 (black)
+  in light mode: the article body text.
+- **bright role** — ANSI color 15 (bright white) in dark mode and ANSI color 0
+  (black) with bold weight in light mode: unread article titles and bold tag
+  counts.
+
+The selected-row background highlight SHALL remain a fixed dark grey
+(`#333333`) in both modes.
+
+#### Scenario: Border and muted text share the grey role
+
+- **WHEN** the reader or list view is rendered
+- **THEN** the article border, rails, bullets, and scrollbar track render in
+  ANSI color 8, and muted text (read titles, timestamps, source identifiers,
+  day headers, image attribution, popup URLs) renders in the same ANSI color 8
+
+#### Scenario: Status, inline border text, scrollbar thumb, and popup chrome use the blue role
+
+- **WHEN** the status bar, the article border's inline text, the scrollbar
+  thumb, or a popup's title or border is rendered in dark mode
+- **THEN** it renders in ANSI color 12 (bright blue), and in ANSI color 4
+  (blue) in light mode
+
+#### Scenario: Unread titles use the bright role
+
+- **WHEN** an unread article title is rendered in the list view in dark mode
+- **THEN** the title renders in ANSI color 15 (bright white) with bold weight,
+  and in light mode it renders in ANSI color 0 (black) with bold weight
+
+#### Scenario: Article body text uses the text role
+
+- **WHEN** article body text is rendered in dark mode
+- **THEN** it renders in ANSI color 7 (white), and in ANSI color 0 (black) in
+  light mode
+
+#### Scenario: Selection highlight keeps its fixed background
+
+- **WHEN** a row is selected in the list view in either mode
+- **THEN** the selection highlight renders with the fixed `#333333` background
