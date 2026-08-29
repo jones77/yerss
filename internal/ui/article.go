@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -22,6 +23,52 @@ type articleState struct {
 	sel        textSelection
 	imgStart   int
 	imgEnd     int
+	links      []articleLink
+}
+
+// articleLink is one hyperlink harvested from the article's markdown source.
+type articleLink struct {
+	text string
+	url  string
+}
+
+// harvestLinks extracts the hyperlinks from the article's markdown source in
+// document order, deduplicating by URL. It scans the `[text](url)` forms the
+// converter emits, tolerating `<...>`-wrapped destinations.
+func harvestLinks(md string) []articleLink {
+	re := regexp.MustCompile(`!?\[([^\]]*)\]\(([^)]+)\)`)
+	seen := map[string]bool{}
+	var out []articleLink
+	for _, m := range re.FindAllStringSubmatch(md, -1) {
+		dest := strings.TrimPrefix(strings.TrimSuffix(m[2], ">"), "<")
+		if dest == "" || seen[dest] {
+			continue
+		}
+		seen[dest] = true
+		out = append(out, articleLink{text: m[1], url: dest})
+	}
+	return out
+}
+
+// harvestArticleLinks collects every hyperlink rendered in the article — the
+// header link first, then the body links — deduplicated by URL. The header
+// URL is emitted as a bare autolink rather than a bracketed link, so it is
+// seeded explicitly to keep it in document order.
+func harvestArticleLinks(a store.Article) []articleLink {
+	seen := map[string]bool{}
+	var out []articleLink
+	add := func(text, url string) {
+		if url == "" || seen[url] {
+			return
+		}
+		seen[url] = true
+		out = append(out, articleLink{text: text, url: url})
+	}
+	add(a.Link, a.Link)
+	for _, l := range harvestLinks(convert.Convert(a.Content)) {
+		add(l.text, l.url)
+	}
+	return out
 }
 
 // textSelection tracks a mouse text selection in the article viewport. Cells
@@ -94,14 +141,21 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	contentW, vpH, _ := contentGeom(m.width, m.height, padX, padY)
 	imgStart, imgEnd := -1, -1
 	headerLines := 0
-	if header := m.renderMarkdown(articleHeaderMarkdown(a), contentW); header != "" {
+	header := m.renderHeader(a, contentW)
+	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
 	imgBlock := m.articleImageBlock(a, contentW, vpH, headerLines)
-	rendered := m.renderMarkdown(renderArticleMarkdown(a), contentW)
+	body := m.renderMarkdown(convert.Convert(a.Content), contentW)
+	rendered := body
+	if header != "" {
+		rendered = header + "\n\n" + body
+	}
 	if len(imgBlock) > 0 {
-		imgStart, imgEnd = 0, len(imgBlock)-1
-		rendered = strings.Join(imgBlock, "\n") + "\n" + rendered
+		// The block sits below the header with one blank line on each side;
+		// it covers the image lines plus the attribution line.
+		imgStart, imgEnd = headerLines+1, headerLines+len(imgBlock)
+		rendered = header + "\n\n" + strings.Join(imgBlock, "\n") + "\n\n" + body
 	}
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
@@ -112,6 +166,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		viewport: vp,
 		imgStart: imgStart,
 		imgEnd:   imgEnd,
+		links:    harvestArticleLinks(a),
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.store)
@@ -119,31 +174,40 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	return st
 }
 
-// articleHeaderMarkdown builds the markdown for the reader header: a bold
-// title, plain author, and the article URL as a markdown link when present.
-func articleHeaderMarkdown(a store.Article) string {
-	var b strings.Builder
+// renderHeader renders the reader header: the article URL as the very first
+// line (rendered exactly once by the markdown renderer's autolink handling),
+// a blank line, the bold title, and the author line directly beneath it with
+// no blank between them. Title and author are rendered as separate documents
+// and joined because the markdown renderer folds line breaks inside a
+// paragraph into spaces.
+func (m *Model) renderHeader(a store.Article, contentW int) string {
+	var meta []string
 	if a.Title != "" {
-		b.WriteString("**" + escapeMarkdownText(a.Title) + "**\n")
+		meta = append(meta, m.renderMarkdown("**"+escapeMarkdownText(a.Title)+"**", contentW))
 	}
 	if a.Author != "" {
-		b.WriteString("by " + escapeMarkdownText(a.Author) + "\n")
+		meta = append(meta, m.renderMarkdown("by "+escapeMarkdownText(a.Author), contentW))
 	}
-	if a.Link != "" {
-		b.WriteString(markdownLink(a.Link) + "\n")
+	metaBlock := strings.Join(meta, "\n")
+	if a.Link == "" {
+		return metaBlock
 	}
-	return b.String()
+	urlPart := m.renderMarkdown(headerLink(a.Link), contentW)
+	if metaBlock == "" {
+		return urlPart
+	}
+	return urlPart + "\n\n" + metaBlock
 }
 
-// renderArticleMarkdown builds the article's markdown source: the header
-// followed by the converted HTML body. The glamour renderer styles the whole
-// document, so links stay OSC 8 clickable.
-func renderArticleMarkdown(a store.Article) string {
-	var b strings.Builder
-	b.WriteString(articleHeaderMarkdown(a))
-	b.WriteString("\n")
-	b.WriteString(convert.Convert(a.Content))
-	return b.String()
+// headerLink renders a URL the markdown renderer prints exactly once. The
+// glamour renderer emits `[text](url)` as "text url", so the URL is emitted
+// bare and left to autolink detection; the angle-bracket form is used only
+// when the URL contains characters that would break plain autolink parsing.
+func headerLink(url string) string {
+	if strings.ContainsAny(url, " <>") || strings.Contains(url, ")") {
+		return "<" + url + ">"
+	}
+	return url
 }
 
 func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -157,9 +221,9 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.persistSelection()
 		return m, tea.Quit
 	case config.Back:
-		m.view = viewList
-		m.article.sel = textSelection{}
-		m.loadList()
+		m.backToList()
+	case config.LinkPopup:
+		m.openLinksPopup()
 	case config.MoveDown:
 		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) })
 		m.article.markRead(m.store)
@@ -201,9 +265,10 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // scrolls the viewport by one line, with downward scroll marking the article
 // read like the Down key. An unmodified left-button press anchors a text
 // selection, drag extends it, and release copies the selected text to the
-// clipboard and clears the selection. Presses carrying a Ctrl/Alt/Shift
-// modifier are not interpreted, so the terminal can activate OSC 8 hyperlinks
-// natively.
+// clipboard and clears the selection. An unmodified right-button press
+// returns to the list view like the Back keys. Presses carrying a Ctrl/Alt/
+// Shift modifier are not interpreted, so the terminal can activate OSC 8
+// hyperlinks natively.
 func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	if tea.MouseEvent(msg).IsWheel() && msg.Action == tea.MouseActionPress {
 		switch msg.Button {
@@ -220,6 +285,10 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	switch msg.Action {
 	case tea.MouseActionPress:
+		if msg.Button == tea.MouseButtonRight {
+			m.backToList()
+			return nil
+		}
 		if msg.Button != tea.MouseButtonLeft {
 			return nil
 		}
@@ -253,6 +322,14 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// backToList returns from the article view to the list view: the previously
+// viewed article stays selected and any active mouse selection is cleared.
+func (m *Model) backToList() {
+	m.view = viewList
+	m.article.sel = textSelection{}
+	m.loadList()
 }
 
 // contentRect returns the screen-space rectangle of the article content area

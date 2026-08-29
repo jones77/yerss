@@ -19,8 +19,93 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	if !strings.Contains(rendered, "\x1b]8;") {
 		t.Errorf("header URL not wrapped in OSC 8: %q", rendered)
 	}
-	if !strings.Contains(ansi.Strip(rendered), url) {
-		t.Errorf("visible header URL text missing: %q", ansi.Strip(rendered))
+	visible := ansi.Strip(rendered)
+	if !strings.Contains(visible, url) {
+		t.Errorf("visible header URL text missing: %q", visible)
+	}
+	if n := strings.Count(visible, url); n != 1 {
+		t.Errorf("header URL should be rendered exactly once, got %d: %q", n, visible)
+	}
+}
+
+func TestReaderHeaderOrder(t *testing.T) {
+	m, _ := newTestModel(t)
+	url := "https://example.com/post"
+	m.article = m.newArticleState(store.Article{
+		Title:   "Headline",
+		Author:  "Jane",
+		Link:    url,
+		Content: "<p>x</p>",
+	})
+
+	// Header: URL, blank line, bold title, author line directly beneath;
+	// then a blank line before the body. Title and author are joined
+	// adjacent because the user asked for no space between them.
+	lines := strippedLines(m.article.lines)
+	if strings.TrimRight(lines[0], " ") != url {
+		t.Errorf("first content line = %q, want the URL", lines[0])
+	}
+	if strings.TrimSpace(lines[1]) != "" {
+		t.Errorf("second content line = %q, want a blank line", lines[1])
+	}
+	if !strings.Contains(m.article.lines[2], "Headline") || !strings.Contains(m.article.lines[2], ";1m") {
+		t.Errorf("title line = %q, want bold-rendered title", m.article.lines[2])
+	}
+	if strings.TrimRight(lines[3], " ") != "by Jane" {
+		t.Errorf("author line = %q, want it directly beneath the title: %q", lines[3], "by Jane")
+	}
+	if strings.TrimSpace(lines[4]) != "" {
+		t.Errorf("line after the header = %q, want a blank line", lines[4])
+	}
+}
+
+func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.article = m.newArticleState(store.Article{
+		Title:   "Headline",
+		Link:    "https://example.com/post",
+		Content: "<p>x</p>",
+	})
+
+	lines := strippedLines(m.article.lines)
+	if strings.TrimRight(lines[0], " ") != "https://example.com/post" || strings.TrimSpace(lines[1]) != "" {
+		t.Errorf("header should start with the URL and a blank line: %q", lines[:3])
+	}
+	if !strings.Contains(lines[2], "Headline") || strings.HasPrefix(strings.TrimRight(lines[3], " "), "by ") {
+		t.Errorf("no-author header should have title and no author line: %q", lines[:4])
+	}
+}
+
+func TestReaderHeaderWithoutLinkStartsWithTitle(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.article = m.newArticleState(store.Article{Title: "Only title", Content: "<p>x</p>"})
+
+	lines := ansi.Strip(strings.Join(m.article.lines, "\n"))
+	if !strings.Contains(lines, "Only title") || !strings.HasPrefix(strings.Split(lines, "\n")[0], "Only title") {
+		t.Errorf("link-less header should start with the title: %q", strings.Split(lines, "\n")[0])
+	}
+}
+
+// strippedLines strips ANSI escapes from each rendered line.
+func strippedLines(lines []string) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = ansi.Strip(l)
+	}
+	return out
+}
+
+func TestHeaderLinkWrapsSpecialURLs(t *testing.T) {
+	cases := map[string]string{
+		"https://example.com/a":     "https://example.com/a",
+		"https://example.com/a_(b)": "<https://example.com/a_(b)>",
+		"https://example.com/a b":   "<https://example.com/a b>",
+		"https://example.com/<id>":  "<https://example.com/<id>>",
+	}
+	for in, want := range cases {
+		if got := headerLink(in); got != want {
+			t.Errorf("headerLink(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

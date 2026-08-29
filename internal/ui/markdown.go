@@ -291,18 +291,6 @@ func escapeMarkdownText(s string) string {
 	return b.String()
 }
 
-// markdownLink renders a link whose visible text is the URL itself, escaping
-// the text and wrapping the destination in angle brackets when it contains
-// characters (spaces, parentheses) that would break the plain `(url)` form.
-func markdownLink(url string) string {
-	text := escapeMarkdownText(url)
-	dest := url
-	if strings.ContainsAny(dest, " )") {
-		dest = "<" + dest + ">"
-	}
-	return "[" + text + "](" + dest + ")"
-}
-
 // renderMarkdown renders markdown to styled terminal text at the content
 // width, trimming glamour's surrounding blank lines. It returns the markdown
 // unchanged when no renderer is available or rendering fails.

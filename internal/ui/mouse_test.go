@@ -31,6 +31,15 @@ func mouseWheel(y int, down bool) tea.MouseMsg {
 	}
 }
 
+func rightClick(x, y int) tea.MouseMsg {
+	return tea.MouseMsg{
+		X:      x,
+		Y:      y,
+		Button: tea.MouseButtonRight,
+		Action: tea.MouseActionPress,
+	}
+}
+
 // twoArticleModel returns a model whose list is [header, a, b] with the
 // article IDs returned in visible-row order.
 func twoArticleModel(t *testing.T) (*Model, []int64) {
@@ -165,5 +174,41 @@ func TestArticleWheelScrollsViewport(t *testing.T) {
 	m.updateArticleMouse(mouseWheel(0, false)) // wheel up
 	if m.article.viewport.YOffset != start {
 		t.Errorf("wheel up offset = %d, want %d", m.article.viewport.YOffset, start)
+	}
+}
+
+func TestRightClickReturnsToList(t *testing.T) {
+	m, ids := twoArticleModel(t)
+	m.updateListMouse(mouseClick(0, 1)) // open article a
+	if m.view != viewArticle || m.article.id != ids[0] {
+		t.Fatalf("expected article a open, view = %d id = %d", m.view, m.article.id)
+	}
+
+	m.updateArticleMouse(rightClick(10, 5))
+	if m.view != viewList {
+		t.Errorf("right-click should return to the list, view = %d", m.view)
+	}
+	if m.list.cursor != 1 {
+		t.Errorf("cursor after right-click = %d, want 1 (the article row)", m.list.cursor)
+	}
+}
+
+func TestRightClickDoesNotStartSelection(t *testing.T) {
+	m, _ := twoArticleModel(t)
+	m.updateListMouse(mouseClick(0, 1))
+	m.updateArticleMouse(rightClick(10, 5))
+	if m.article.sel.active || m.article.sel.tracking {
+		t.Errorf("right-click should not anchor a selection: %+v", m.article.sel)
+	}
+}
+
+func TestRightClickWithModifierIgnored(t *testing.T) {
+	m, _ := twoArticleModel(t)
+	m.updateListMouse(mouseClick(0, 1))
+	msg := rightClick(10, 5)
+	msg.Ctrl = true
+	m.updateArticleMouse(msg)
+	if m.view != viewArticle {
+		t.Errorf("modifier right-click should be ignored, view = %d", m.view)
 	}
 }

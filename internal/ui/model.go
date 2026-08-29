@@ -30,6 +30,7 @@ const (
 	popupTagsList
 	popupTagsArticle
 	popupHelp
+	popupLinks
 )
 
 type Model struct {
@@ -117,20 +118,24 @@ func (m *Model) SetAscii(v bool) { m.ascii = v }
 // Ascii reports whether ASCII fallback glyphs are in use.
 func (m *Model) Ascii() bool { return m.ascii }
 
-// Init loads articles and kicks off a startup refresh when the gate allows.
+// Init loads articles, restores the saved reader selection (firing the
+// restored article's lead-image load), and kicks off a startup refresh when
+// the gate allows.
 func (m *Model) Init() tea.Cmd {
 	m.loadList()
-	m.restoreSelection()
+	imgLoad := m.restoreSelection()
 	last, _ := m.store.LastRefreshedAt()
 	m.lastRefreshedAt = last
+	var refresh tea.Cmd
 	if m.hasUnfetchedFeeds() {
-		return m.refreshCmd()
+		refresh = m.refreshCmd()
+	} else {
+		gate := feed.Gate{MinInterval: m.cfg.MinInterval(), Cooldown: m.cfg.Cooldown()}
+		if gate.NeedsStartupRefresh(last, time.Now()) {
+			refresh = m.refreshCmd()
+		}
 	}
-	gate := feed.Gate{MinInterval: m.cfg.MinInterval(), Cooldown: m.cfg.Cooldown()}
-	if gate.NeedsStartupRefresh(last, time.Now()) {
-		return m.refreshCmd()
-	}
-	return nil
+	return tea.Batch(imgLoad, refresh)
 }
 
 // hasUnfetchedFeeds reports whether the configured feeds file contains a URL
@@ -236,6 +241,8 @@ func (m *Model) View() string {
 	switch m.popup {
 	case popupTagsList, popupTagsArticle:
 		s = overlay(s, m.renderTagPopup())
+	case popupLinks:
+		s = overlay(s, m.renderLinksPopup())
 	case popupHelp:
 		s = overlay(s, m.renderHelp())
 	}

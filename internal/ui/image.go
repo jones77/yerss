@@ -1,8 +1,13 @@
 package ui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
+	"yerss/convert"
 	"yerss/internal/image"
 	"yerss/internal/store"
 )
@@ -14,11 +19,15 @@ func (m *Model) imagesEnabled() bool {
 	return !m.ascii && m.cfg.Display.Images != "off"
 }
 
-// articleImageBlock renders the article's lead image (when loaded and enabled)
-// as halfblock lines sized to the content width. The block height is capped so
-// the full image plus the header (headerLines, computed by the caller) and one
-// line of body fit within the viewport. It returns nil when images are
-// disabled, no URL is set, the image is not yet loaded, or rendering fails.
+// articleImageBlock renders the article's lead image (when loaded and
+// enabled) as halfblock lines with a centered, dim attribution line directly
+// beneath. The block sits below the reader header: the image height is
+// capped so the blank line above the block, the attribution line, the blank
+// line below it, and one line of body text fit within the viewport alongside
+// the header (headerLines, computed by the caller). The photo is centered as
+// a unit and the attribution is constrained to the photo's own width,
+// centered beneath it. It returns nil when images are disabled, no URL is
+// set, the image is not yet loaded, or rendering fails.
 func (m *Model) articleImageBlock(a store.Article, contentW, vpH, headerLines int) []string {
 	if !m.imagesEnabled() || a.ImageURL == "" {
 		return nil
@@ -27,12 +36,43 @@ func (m *Model) articleImageBlock(a store.Article, contentW, vpH, headerLines in
 	if !ok {
 		return nil
 	}
-	maxH := max(1, vpH-headerLines-1)
+	maxH := max(1, vpH-headerLines-4)
 	lines, err := m.imgRenderer.Render(img, contentW, maxH)
 	if err != nil {
 		return nil
 	}
-	return lines
+	imgW := 0
+	for _, l := range lines {
+		if w := ansi.StringWidth(l); w > imgW {
+			imgW = w
+		}
+	}
+	photoPad := max(0, (contentW-imgW)/2)
+	out := make([]string, 0, len(lines)+1)
+	for _, l := range lines {
+		out = append(out, strings.Repeat(" ", photoPad)+l)
+	}
+	if attr := articleAttribution(a); attr != "" {
+		attr = truncate(attr, imgW)
+		pad := photoPad + max(0, (imgW-ansi.StringWidth(attr))/2)
+		style := lipgloss.NewStyle().Foreground(m.palette.Dim)
+		out = append(out, strings.Repeat(" ", pad)+style.Render(attr))
+	}
+	return out
+}
+
+// articleAttribution returns the one-line photo attribution for the article's
+// lead image: the credit extracted from the article's HTML when present,
+// otherwise "photo: <source>" derived by the list view's source-identifier
+// rules. It returns "" when neither is available.
+func articleAttribution(a store.Article) string {
+	if credit := convert.ImageCredit(a.Content, a.ImageURL); credit != "" {
+		return credit
+	}
+	if src := sourceID(a.Link, a.FeedURL); src != "" {
+		return "photo: " + src
+	}
+	return ""
 }
 
 // fireImageLoad returns a tea.Cmd that loads the article's lead image through

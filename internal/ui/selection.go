@@ -1,6 +1,8 @@
 package ui
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
+
 	"yerss/internal/store"
 )
 
@@ -30,11 +32,13 @@ func (m *Model) persistSelection() {
 // selection and, when the reader was in the article view, reopens that
 // article. It is called once at startup after the list is loaded; a selection
 // that no longer exists (article pruned, header gone) falls back to the clamped
-// cursor.
-func (m *Model) restoreSelection() {
+// cursor. When an article is restored it returns the same lead-image load
+// command openArticle fires, so a restarted session resolves the image from
+// the cache hierarchy instead of staying imageless until re-opened.
+func (m *Model) restoreSelection() tea.Cmd {
 	sel, err := m.store.LoadLastSelection()
 	if err != nil {
-		return
+		return nil
 	}
 	if sel.HeaderKey != "" {
 		for gi := range m.list.groups {
@@ -63,6 +67,8 @@ func (m *Model) restoreSelection() {
 			m.article = m.newArticleState(*full)
 			m.article.viewport.SetYOffset(sel.ArticleOffset)
 			m.view = viewArticle
+			return m.fireImageLoad(*full)
 		}
 	}
+	return nil
 }

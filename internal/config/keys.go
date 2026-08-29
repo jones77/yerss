@@ -14,6 +14,7 @@ const (
 	Refresh         Action = "refresh"
 	OpenArticle     Action = "open_article"
 	Back            Action = "back"
+	LinkPopup       Action = "link_popup"
 	MoveUp          Action = "move_up"
 	MoveDown        Action = "move_down"
 	PageUp          Action = "page_up"
@@ -57,6 +58,7 @@ var catalog = []actionSpec{
 	{Refresh, []string{"R", "r", "ctrl+r", "f5"}, []View{ViewList}},
 	{OpenArticle, []string{"enter", "l", "o"}, []View{ViewList}},
 	{Back, []string{"esc", "enter", "h", "b"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{LinkPopup, []string{"l", "right"}, []View{ViewArticle}},
 	{MoveUp, []string{"up", "k"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{MoveDown, []string{"down", "j"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{PageUp, []string{"pgup", "ctrl+b"}, []View{ViewList, ViewArticle}},

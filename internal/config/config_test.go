@@ -161,6 +161,7 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		Refresh:         {"R", "r", "ctrl+r", "f5"},
 		OpenArticle:     {"enter", "l", "o"},
 		Back:            {"esc", "enter", "h", "b"},
+		LinkPopup:       {"l", "right"},
 		MoveUp:          {"up", "k"},
 		MoveDown:        {"down", "j"},
 		PageUp:          {"pgup", "ctrl+b"},

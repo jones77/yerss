@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -15,6 +16,7 @@ import (
 
 type popupState struct {
 	tags   []store.TagCount
+	links  []articleLink
 	cursor int
 }
 
@@ -52,6 +54,9 @@ func (m *Model) updatePopup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if msg.String() == "enter" {
+		if m.popup == popupLinks {
+			return m.confirmLinkSelection()
+		}
 		return m.confirmTagSelection()
 	}
 	act, ok := m.keys[config.ViewPopup][msg.String()]
@@ -72,6 +77,24 @@ func (m *Model) updatePopup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// openLinksPopup opens the links popup over the article view, seeded with the
+// links harvested from the current article's markdown source.
+func (m *Model) openLinksPopup() {
+	m.popup = popupLinks
+	m.popupData = popupState{links: m.article.links}
+}
+
+// confirmLinkSelection closes the links popup and opens the selected URL in
+// the system browser. An empty popup (an article without links) just closes.
+func (m *Model) confirmLinkSelection() (tea.Model, tea.Cmd) {
+	links := m.popupData.links
+	m.popup = noPopup
+	if m.popupData.cursor < 0 || m.popupData.cursor >= len(links) {
+		return m, nil
+	}
+	return m, openURLCmd(links[m.popupData.cursor].url)
+}
+
 func (m *Model) confirmTagSelection() (tea.Model, tea.Cmd) {
 	if len(m.popupData.tags) == 0 {
 		m.popup = noPopup
@@ -88,6 +111,9 @@ func (m *Model) confirmTagSelection() (tea.Model, tea.Cmd) {
 
 func (m *Model) movePopupCursor(delta int) {
 	n := len(m.popupData.tags)
+	if m.popup == popupLinks {
+		n = len(m.popupData.links)
+	}
 	if n == 0 {
 		return
 	}
@@ -123,6 +149,41 @@ func (m *Model) renderTagPopup() string {
 		boldPart := lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold).Render(bold)
 		plainPart := lipgloss.NewStyle().Foreground(m.palette.Dim).Render(plain)
 		lines = append(lines, cursor+t.Name+" "+boldPart+plainPart)
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.palette.Accent).
+		Width(w).
+		Height(h).
+		Padding(0, 1)
+	return box.Render(strings.Join(lines, "\n"))
+}
+
+// renderLinksPopup renders the article links popup: each row shows the link
+// text followed by the URL in the dim style, truncated to the box width.
+func (m *Model) renderLinksPopup() string {
+	h := m.height * 6 / 10
+	w := m.width * 6 / 10
+	if h < 3 {
+		h = 3
+	}
+	if w < 12 {
+		w = 12
+	}
+
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.Accent).Render("Links"))
+	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	for i, l := range m.popupData.links {
+		cursor := "  "
+		if i == m.popupData.cursor {
+			cursor = "> "
+		}
+		// text + separator + dim URL, truncated to the interior width.
+		innerW := w - 6
+		url := ansi.Truncate(l.url, max(1, innerW-ansi.StringWidth(l.text)-3), glyphsFor(m.ascii).ellipsis)
+		line := l.text + dim.Render(" · "+url)
+		lines = append(lines, cursor+ansi.Truncate(line, innerW, ""))
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

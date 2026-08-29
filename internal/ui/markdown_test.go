@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
-	"yerss/internal/store"
 )
 
 func TestGlamourStandardStyleMapping(t *testing.T) {
@@ -98,29 +97,6 @@ func TestEscapeMarkdownText(t *testing.T) {
 		if got := escapeMarkdownText(c.in); got != c.want {
 			t.Errorf("escapeMarkdownText(%q) = %q, want %q", c.in, got, c.want)
 		}
-	}
-}
-
-func TestMarkdownLink(t *testing.T) {
-	if got := markdownLink("https://example.com/a"); got != "[https://example.com/a](https://example.com/a)" {
-		t.Errorf("plain link = %q", got)
-	}
-	if got := markdownLink("https://example.com/a (b)"); got != "[https://example.com/a (b)](<https://example.com/a (b)>)" {
-		t.Errorf("link with parens = %q", got)
-	}
-}
-
-func TestRenderArticleMarkdownEscapesHeader(t *testing.T) {
-	md := renderArticleMarkdown(store.Article{
-		Title: "Apple's M4 *Pro* chip",
-		Link:  "https://example.com/a",
-	})
-	out := strings.TrimSuffix(md, "\n\n")
-	if strings.Contains(out, "**Apple's M4 *Pro*") {
-		t.Errorf("un-escaped title leaks markdown: %q", out)
-	}
-	if !strings.Contains(out, `**Apple's M4 \*Pro\* chip**`) {
-		t.Errorf("escaped title missing: %q", out)
 	}
 }
 
