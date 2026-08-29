@@ -14,19 +14,19 @@ import (
 // edge acts as a scrollbar: the unfilled track is a grey single line and the
 // filled thumb is a bright double line (`║` Unicode, `|` ASCII).
 type borderGlyphs struct {
-	tl, bl, tr, br   string
-	h, v             string
-	fill, unfill     string
-	ellipsis         string
-	bullet           string
-	expand, collapse string
+	tl, bl, tr, br string
+	tee            string
+	h, v           string
+	fill, unfill   string
+	ellipsis       string
+	bullet         string
 }
 
 func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
-		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: ".", expand: "v", collapse: ">"}
+		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", tee: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: "."}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·", expand: "▾", collapse: "▸"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", tee: "├", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·"}
 }
 
 // clampPadY clamps the vertical content padding so the article frame (top +

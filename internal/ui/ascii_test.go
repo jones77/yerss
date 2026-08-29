@@ -9,6 +9,22 @@ import (
 	"yerss/internal/store"
 )
 
+func TestGlyphsForASCIIAndUnicodePairs(t *testing.T) {
+	u, a := glyphsFor(false), glyphsFor(true)
+	if a.tl != "+" || a.bl != "+" || a.tr != "+" || a.br != "+" || a.tee != "+" {
+		t.Errorf("ascii corner/tee glyphs = %q%q%q%q%q, want all +", a.tl, a.bl, a.tr, a.br, a.tee)
+	}
+	if u.tl != "┌" || u.bl != "└" || u.tr != "┐" || u.br != "┘" || u.tee != "├" {
+		t.Errorf("unicode corner/tee glyphs = %q%q%q%q%q", u.tl, u.bl, u.tr, u.br, u.tee)
+	}
+	if a.h != "-" || a.bullet != "." || a.ellipsis != "..." {
+		t.Errorf("ascii misc glyphs = %q %q %q, want - . ...", a.h, a.bullet, a.ellipsis)
+	}
+	if u.h != "─" || u.bullet != "·" || u.ellipsis != "…" {
+		t.Errorf("unicode misc glyphs = %q %q %q", u.h, u.bullet, u.ellipsis)
+	}
+}
+
 func TestSetAsciiForcesAsciiGlyphs(t *testing.T) {
 	m, _ := newTestModel(t)
 	// Force ascii off regardless of what config or terminal detection chose.

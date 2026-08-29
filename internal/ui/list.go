@@ -62,7 +62,7 @@ func (m *Model) loadList() {
 		m.setStatus("load error: " + err.Error())
 		return
 	}
-	m.list.groups = bucketDayGroups(arts)
+	m.list.groups = bucketDayGroups(arts, time.Now())
 	if total, err := m.store.ArticleCount(); err == nil {
 		m.list.total = total
 	}
@@ -74,8 +74,9 @@ func (m *Model) loadList() {
 
 // bucketDayGroups buckets a reverse-chronological article list into day groups,
 // most recent day first. Articles with no publication time land in a trailing
-// "Undated" group.
-func bucketDayGroups(arts []store.Article) []dayGroup {
+// "Undated" group. now is the reference time for the today/yesterday label
+// prefixes; callers pass time.Now() and tests pass a fixed time.
+func bucketDayGroups(arts []store.Article, now time.Time) []dayGroup {
 	var groups []dayGroup
 	idx := map[string]int{}
 	for _, a := range arts {
@@ -92,7 +93,7 @@ func bucketDayGroups(arts []store.Article) []dayGroup {
 			var date time.Time
 			if key != "undated" {
 				date = dayStart(a.PublishedAt)
-				label = longDate(date)
+				label = dayLabel(date, now)
 			}
 			i = len(groups)
 			groups = append(groups, dayGroup{date: date, label: label})
@@ -101,6 +102,20 @@ func bucketDayGroups(arts []store.Article) []dayGroup {
 		groups[i].articles = append(groups[i].articles, item)
 	}
 	return groups
+}
+
+// dayLabel renders a day group's header label: the long local date, prefixed
+// with "today, " or "yesterday, " when the day is the reference day or the one
+// before it.
+func dayLabel(date, now time.Time) string {
+	today := dayStart(now)
+	switch date {
+	case today:
+		return "today, " + longDate(date)
+	case today.AddDate(0, 0, -1):
+		return "yesterday, " + longDate(date)
+	}
+	return longDate(date)
 }
 
 // visibleRows flattens the day groups into the ordered rows that are rendered
@@ -212,11 +227,12 @@ func (m *Model) renderList() string {
 		start, end := listWindow(len(rows), m.list.cursor, m.pageSize())
 		for i := start; i < end; i++ {
 			row := rows[i]
+			corner := m.railGlyph(len(rows), i)
 			if row.kind == rowHeader {
-				b.WriteString(m.renderDayHeader(&m.list.groups[row.groupIdx], i == m.list.cursor))
+				b.WriteString(m.renderDayHeader(&m.list.groups[row.groupIdx], corner, i == m.list.cursor))
 			} else {
 				g := &m.list.groups[row.groupIdx]
-				b.WriteString(m.renderArticleRow(&g.articles[row.artIdx], i == m.list.cursor))
+				b.WriteString(m.renderArticleRow(&g.articles[row.artIdx], corner, i == m.list.cursor))
 			}
 			b.WriteString("\n")
 		}
@@ -241,24 +257,31 @@ func (m *Model) renderList() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *Model) renderDayHeader(g *dayGroup, selected bool) string {
-	fold := glyphsFor(m.ascii).expand
-	if g.collapsed {
-		fold = glyphsFor(m.ascii).collapse
+// railGlyph returns the tree-rail corner for row i of n: `┌` on the first row
+// of the whole visible-row list, `└` on the last, `├` on every interior row.
+// Glyphs are computed against the full list, not the scroll window, so they do
+// not move as the window scrolls.
+func (m *Model) railGlyph(n, i int) string {
+	g := glyphsFor(m.ascii)
+	if i == 0 {
+		return g.tl
 	}
+	if i == n-1 {
+		return g.bl
+	}
+	return g.tee
+}
+
+func (m *Model) renderDayHeader(g *dayGroup, corner string, selected bool) string {
 	style := lipgloss.NewStyle().Foreground(m.palette.Dim)
 	if selected {
 		style = style.Background(lipgloss.Color("#333333"))
 	}
-	return style.Render(fold + " " + g.label)
+	return style.Render(corner + " " + g.label)
 }
 
-func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
+func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool) string {
 	g := glyphsFor(m.ascii)
-	cursor := "  "
-	if selected {
-		cursor = "> "
-	}
 	bg := lipgloss.Color("#333333")
 	var titleStyle lipgloss.Style
 	if item.Read {
@@ -280,26 +303,21 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 		ts = item.PublishedAt.Local().Format("15:04")
 	}
 
-	right := g.bullet + src + g.bullet + ts
-	if src == "" {
-		right = g.bullet + ts
+	// The row is a tree-rail prefix (corner glyph, dash, local time), the
+	// title filling the middle, and the source identifier right-aligned as
+	// the row's only right-hand field, with at least one space between the
+	// two even when the title is truncated (it then ends with an ellipsis).
+	rail := corner + g.h + " "
+	railW := ansi.StringWidth(rail) + ansi.StringWidth(ts) + 1
+	titleW := m.width - railW
+	if src != "" {
+		titleW -= ansi.StringWidth(src) + 1
 	}
-	rightW := ansi.StringWidth(right)
-
-	// The title area plus the gap before the right block must total
-	// width - cursor(2) - rightW. When the title is truncated (ends with an
-	// ellipsis) the gap is dropped so the ellipsis touches the bullet, and the
-	// title claims the gap's column to stay flush right.
-	availW := m.width - 2 - rightW
-	if availW < 1 {
-		availW = 1
+	if titleW < 1 {
+		titleW = 1
 	}
 	title := item.Title
-	titleW := availW - 1
-	truncated := false
-	if ansi.StringWidth(title) > titleW {
-		truncated = true
-		titleW = availW
+	if w := ansi.StringWidth(title); w > titleW {
 		if titleW < ansi.StringWidth(g.ellipsis) {
 			title = truncate(title, titleW)
 		} else {
@@ -310,22 +328,17 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	if pad < 0 {
 		pad = 0
 	}
-	gap := " "
-	if truncated {
-		gap = ""
-	}
 
 	var b strings.Builder
-	b.WriteString(bar.Render(cursor))
+	b.WriteString(bar.Render(rail))
+	b.WriteString(dim.Render(ts))
+	b.WriteString(bar.Render(" "))
 	b.WriteString(titleStyle.Render(title))
 	b.WriteString(bar.Render(strings.Repeat(" ", pad)))
-	b.WriteString(bar.Render(gap))
-	b.WriteString(dim.Render(g.bullet))
 	if src != "" {
+		b.WriteString(bar.Render(" "))
 		b.WriteString(dim.Render(src))
-		b.WriteString(dim.Render(g.bullet))
 	}
-	b.WriteString(dim.Render(ts))
 	return truncate(b.String(), m.width)
 }
 

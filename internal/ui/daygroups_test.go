@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +64,8 @@ func TestLongDateOrdinals(t *testing.T) {
 func TestBucketDayGroupsOrdering(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	// Input mirrors ListArticles order: reverse chronological, undated last.
+	// The reference time makes day1 "today" and day2 "yesterday".
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	arts := []store.Article{
 		{Title: "day1-1", PublishedAt: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
 		{Title: "day2-1", PublishedAt: time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)},
@@ -70,16 +73,21 @@ func TestBucketDayGroupsOrdering(t *testing.T) {
 		{Title: "day3-1", PublishedAt: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)},
 		{Title: "undated"},
 	}
-	groups := bucketDayGroups(arts)
+	groups := bucketDayGroups(arts, now)
 	if len(groups) != 4 {
 		t.Fatalf("expected 4 groups, got %d", len(groups))
 	}
 	day := func(d int) time.Time { return time.Date(2026, 8, d, 0, 0, 0, 0, time.UTC) }
-	if groups[0].label != longDate(day(28)) || groups[1].label != longDate(day(27)) || groups[2].label != longDate(day(26)) {
-		t.Errorf("groups out of descending order: %q, %q, %q", groups[0].label, groups[1].label, groups[2].label)
+	wantLabels := []string{
+		"today, " + longDate(day(28)),
+		"yesterday, " + longDate(day(27)),
+		longDate(day(26)),
+		"Undated",
 	}
-	if groups[3].label != "Undated" {
-		t.Errorf("last group should be Undated, got %q", groups[3].label)
+	for i, want := range wantLabels {
+		if groups[i].label != want {
+			t.Errorf("groups[%d].label = %q, want %q", i, groups[i].label, want)
+		}
 	}
 	if len(groups[1].articles) != 2 || groups[1].articles[0].Title != "day2-1" || groups[1].articles[1].Title != "day2-2" {
 		t.Errorf("within-day articles not reverse chronological: %+v", groups[1].articles)
@@ -291,17 +299,105 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	m.loadList()
 
 	item := &m.list.groups[0].articles[0]
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	corner := glyphsFor(m.ascii).tee
+	line := ansi.Strip(m.renderArticleRow(item, corner, false))
 	if !strings.Contains(line, "10:04") {
 		t.Errorf("row = %q, want local time 10:04 (15:04 UTC - 5h)", line)
 	}
-	if !strings.HasSuffix(line, "·example·10:04") {
-		t.Errorf("source and time should be right-aligned: %q", line)
+	if !strings.HasPrefix(line, corner+glyphsFor(m.ascii).h+" ") {
+		t.Errorf("row should start with the tree rail: %q", line)
+	}
+	if !strings.HasSuffix(line, "example") {
+		t.Errorf("source should be the only right-aligned field: %q", line)
 	}
 	if !strings.Contains(line, "timed") {
 		t.Errorf("row should contain the title: %q", line)
 	}
-	if !strings.HasPrefix(line, "  ") {
-		t.Errorf("row should keep the cursor gutter: %q", line)
+	if strings.Contains(line, glyphsFor(m.ascii).bullet) {
+		t.Errorf("row should not contain bullets: %q", line)
+	}
+}
+
+func TestTreeRailBookendGlyphs(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	insertTimedArticle(t, st, "a", now)
+	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
+	m.loadList()
+
+	// rows: [header today, a, header yesterday, b]
+	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	if !strings.HasPrefix(lines[0], "┌ ") {
+		t.Errorf("first row should be prefixed with the top corner: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "├─ ") {
+		t.Errorf("interior article row should be a tee with a dash: %q", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "├ ") {
+		t.Errorf("interior header row should be a tee with a space: %q", lines[2])
+	}
+	if !strings.HasPrefix(lines[3], "└─ ") {
+		t.Errorf("last row should be prefixed with the bottom corner: %q", lines[3])
+	}
+}
+
+func TestTreeRailStableWhileScrolling(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	// Two days of 12 articles each = 26 rows; the page window (23) covers
+	// neither the first nor the last row.
+	for i := 0; i < 12; i++ {
+		insertTimedArticle(t, st, fmt.Sprintf("a%02d", i), now.Add(-time.Duration(i)*time.Minute))
+		insertTimedArticle(t, st, fmt.Sprintf("b%02d", i), now.Add(-24*time.Hour-time.Duration(i)*time.Minute))
+	}
+	m.loadList()
+	m.list.cursor = 12
+
+	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	for i, line := range lines[:m.pageSize()] {
+		if !strings.HasPrefix(line, "├") {
+			t.Errorf("scrolled window row %d should use the interior tee, got %q", i, line)
+		}
+	}
+}
+
+func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	insertTimedArticle(t, st, "a", now)
+	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
+	m.loadList()
+	m.collapse(0)
+
+	// rows: [header today, header yesterday, b]
+	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	if !strings.HasPrefix(lines[0], "┌ ") {
+		t.Errorf("first row should stay the top corner: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "├ ") {
+		t.Errorf("middle header should be an interior tee: %q", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "└─ ") {
+		t.Errorf("last article row should take the bottom corner: %q", lines[2])
+	}
+}
+
+func TestTreeRailASCIIFallback(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	m.SetAscii(true)
+	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	insertTimedArticle(t, st, "a", now)
+	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
+	m.loadList()
+
+	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	for i, want := range []string{"+ ", "+- ", "+ ", "+- "} {
+		if !strings.HasPrefix(lines[i], want) {
+			t.Errorf("ascii rail row %d = %q, want prefix %q", i, lines[i], want)
+		}
 	}
 }

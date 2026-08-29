@@ -75,7 +75,7 @@ func TestSourceID(t *testing.T) {
 	}
 }
 
-func TestArticleRowSourceAndTimeRightAligned(t *testing.T) {
+func TestArticleRowSourceRightAligned(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
@@ -83,9 +83,12 @@ func TestArticleRowSourceAndTimeRightAligned(t *testing.T) {
 	item := &m.list.groups[0].articles[0]
 	item.Link = "https://newrepublic.com/story/1"
 
-	line := ansi.Strip(m.renderArticleRow(item, false))
-	if !strings.HasSuffix(line, "·newrepublic·15:04") {
-		t.Errorf("source and time should be right-aligned: %q", line)
+	line := ansi.Strip(m.renderArticleRow(item, glyphsFor(m.ascii).tee, false))
+	if !strings.HasSuffix(line, "newrepublic") {
+		t.Errorf("source should be the only right-aligned field: %q", line)
+	}
+	if strings.Contains(line, glyphsFor(m.ascii).bullet) {
+		t.Errorf("row should not contain bullets: %q", line)
 	}
 	if ansi.StringWidth(line) != m.width {
 		t.Errorf("row width = %d, want %d: %q", ansi.StringWidth(line), m.width, line)
@@ -101,18 +104,12 @@ func TestArticleRowTitleTruncatedWithEllipsis(t *testing.T) {
 	item.Link = "https://newrepublic.com/story/1"
 
 	g := glyphsFor(m.ascii)
-	line := ansi.Strip(m.renderArticleRow(item, false))
-	if !strings.Contains(line, g.ellipsis) {
-		t.Errorf("long title should end with an ellipsis: %q", line)
-	}
-	if !strings.Contains(line, g.ellipsis+g.bullet) {
-		t.Errorf("no space between the ellipsis and the source bullet: %q", line)
+	line := ansi.Strip(m.renderArticleRow(item, g.tee, false))
+	if !strings.HasSuffix(line, g.ellipsis+" newrepublic") {
+		t.Errorf("truncated title should end with an ellipsis and keep a space before the source: %q", line)
 	}
 	if ansi.StringWidth(line) != m.width {
 		t.Errorf("row width = %d, want %d: %q", ansi.StringWidth(line), m.width, line)
-	}
-	if !strings.HasSuffix(line, "·newrepublic·15:04") {
-		t.Errorf("right-aligned source and time should remain visible: %q", line)
 	}
 }
 
@@ -128,7 +125,7 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	dimEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Render("x"))
 	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bold).Render("x"))
 
-	unread := m.renderArticleRow(item, false)
+	unread := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
 	if !strings.Contains(unread, boldEscape) {
 		t.Errorf("unread title should be bold: %q", unread)
 	}
@@ -137,12 +134,35 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	}
 
 	item.Read = true
-	read := m.renderArticleRow(item, false)
+	read := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
 	if strings.Contains(read, boldEscape) {
 		t.Errorf("read title should not be bold: %q", read)
 	}
 	if !strings.Contains(read, dimEscape) {
 		t.Errorf("read title should be dim: %q", read)
+	}
+}
+
+func TestArticleRowSelectionBackground(t *testing.T) {
+	forceTrueColor(t)
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
+	m.loadList()
+	item := &m.list.groups[0].articles[0]
+
+	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#333333")).Render("x"))
+	unselected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
+	selected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, true)
+	if strings.Contains(unselected, bgEscape) {
+		t.Errorf("unselected row should have no background highlight: %q", unselected)
+	}
+	if !strings.Contains(selected, bgEscape) {
+		t.Errorf("selected row should use the full-row background highlight: %q", selected)
+	}
+	// The highlight must start at the row's first column (the tree glyph).
+	if !strings.HasPrefix(selected, bgEscape) {
+		t.Errorf("selection background should cover the rail column: %q", selected)
 	}
 }
 
