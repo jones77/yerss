@@ -81,32 +81,32 @@ func TestConvertSVGTagsDoNotBreakLists(t *testing.T) {
 	}
 }
 
-func TestConvertBoldRenderedAsAnsiBold(t *testing.T) {
+func TestConvertBoldRenderedAsMarkdown(t *testing.T) {
 	out := Convert("<p><strong>bold text</strong> and <b>more</b> plain</p>")
-	if !strings.Contains(out, "\x1b[1mbold text\x1b[22m") {
-		t.Errorf("strong text should carry ANSI bold: %q", out)
+	if !strings.Contains(out, "**bold text**") {
+		t.Errorf("strong text should render as markdown bold: %q", out)
 	}
-	if !strings.Contains(out, "\x1b[1mmore\x1b[22m") {
-		t.Errorf("b text should carry ANSI bold: %q", out)
+	if !strings.Contains(out, "**more**") {
+		t.Errorf("b text should render as markdown bold: %q", out)
 	}
-	if strings.Contains(out, "*bold") || strings.Contains(out, "*more") {
-		t.Errorf("markdown asterisks should be gone: %q", out)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("converter output should not contain ANSI escapes: %q", out)
 	}
 }
 
 func TestConvertBoldInsideLink(t *testing.T) {
 	out := Convert(`<p><a href="https://example.com/x"><strong>bold link</strong></a></p>`)
-	if !strings.Contains(out, "\x1b[1mbold link\x1b[22m") {
-		t.Errorf("bold inside a link should stay ANSI bold: %q", out)
+	if !strings.Contains(out, "[**bold link**](https://example.com/x)") {
+		t.Errorf("bold inside a link should stay markdown bold: %q", out)
 	}
-	if strings.Contains(out, "*bold link*") {
-		t.Errorf("markdown asterisks should be gone from link text: %q", out)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("converter output should not contain ANSI escapes: %q", out)
 	}
 }
 
 func TestConvertBoldInListItem(t *testing.T) {
 	out := Convert("<ul><li><p><strong>lead</strong> item</p></li></ul>")
-	if !strings.Contains(out, "* \x1b[1mlead\x1b[22m item") {
+	if !strings.Contains(out, "* **lead** item") {
 		t.Errorf("bold lead in a list item should render on the bullet line: %q", out)
 	}
 	if strings.Contains(out, "*\n") {
@@ -114,21 +114,18 @@ func TestConvertBoldInListItem(t *testing.T) {
 	}
 }
 
-func TestConvertWrapsLinksInOSC8(t *testing.T) {
+func TestConvertRendersLinksAsMarkdown(t *testing.T) {
 	url := "https://example.com/post"
 	html := `<p>Hello <a href="` + url + `">world</a>.</p>`
 	out := Convert(html)
 
-	if !strings.Contains(out, ansi.SetHyperlink(url)) {
-		t.Errorf("link text not wrapped in OSC 8 carrying %q: %q", url, out)
+	if !strings.Contains(out, "[world]("+url+")") {
+		t.Errorf("link should render as [world](url): %q", out)
 	}
-	if !strings.Contains(out, ansi.ResetHyperlink()) {
-		t.Errorf("missing OSC 8 hyperlink reset: %q", out)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("converter output should not contain ANSI escapes: %q", out)
 	}
-	stripped := ansi.Strip(out)
-	if !strings.Contains(stripped, "[world]("+url+")") {
-		t.Errorf("visible text should be markdown [world](url): %q", stripped)
-	}
+	stripped := out
 	if !strings.Contains(stripped, "Hello") {
 		t.Errorf("non-link text should be unaffected: %q", stripped)
 	}
@@ -138,8 +135,8 @@ func TestConvertSingleQuotedHref(t *testing.T) {
 	url := "https://example.com/post"
 	html := `<p>See <a href='` + url + `'>post</a> now.</p>`
 	out := Convert(html)
-	if !strings.Contains(out, ansi.SetHyperlink(url)) {
-		t.Errorf("single-quoted href not wrapped in OSC 8: %q", out)
+	if !strings.Contains(out, "[post]("+url+")") {
+		t.Errorf("single-quoted href should render as markdown link: %q", out)
 	}
 }
 

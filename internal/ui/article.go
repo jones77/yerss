@@ -80,14 +80,14 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	if vpH < 1 {
 		vpH = 1
 	}
-	text := renderArticleContent(a)
-	wrapped := convert.WrapText(text, contentW, glyphsFor(m.ascii).ellipsis)
+	md := renderArticleMarkdown(a)
+	rendered := m.renderMarkdown(md, contentW)
 	vp := viewport.New(contentW, vpH)
-	vp.SetContent(wrapped)
+	vp.SetContent(rendered)
 	st := articleState{
 		id:       a.ID,
 		article:  &a,
-		lines:    strings.Split(wrapped, "\n"),
+		lines:    strings.Split(rendered, "\n"),
 		viewport: vp,
 	}
 	if len(st.lines) <= vpH {
@@ -96,19 +96,20 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	return st
 }
 
-func renderArticleContent(a store.Article) string {
+// renderArticleMarkdown builds the article's markdown source: a header (bold
+// title, italic author, and the article URL as a markdown link when present)
+// followed by the converted HTML body. The glamour renderer styles the whole
+// document, so links stay OSC 8 clickable.
+func renderArticleMarkdown(a store.Article) string {
 	var b strings.Builder
 	if a.Title != "" {
-		b.WriteString(a.Title)
-		b.WriteString("\n")
+		b.WriteString("**" + escapeMarkdownText(a.Title) + "**\n")
 	}
 	if a.Author != "" {
-		b.WriteString("by " + a.Author)
-		b.WriteString("\n")
+		b.WriteString("*by " + escapeMarkdownText(a.Author) + "*\n")
 	}
 	if a.Link != "" {
-		b.WriteString(ansi.SetHyperlink(a.Link) + a.Link + ansi.ResetHyperlink())
-		b.WriteString("\n")
+		b.WriteString(markdownLink(a.Link) + "\n")
 	}
 	b.WriteString("\n")
 	b.WriteString(convert.Convert(a.Content))
@@ -159,7 +160,7 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmd = copyURLCmd(m.article.article.Link)
 		}
 	case config.CopyArticleText:
-		cmd = copyTextCmd(ansi.Strip(renderArticleContent(*m.article.article)), "copied article text")
+		cmd = copyTextCmd(ansi.Strip(strings.Join(m.article.lines, "\n")), "copied article text")
 	case config.TagPopup:
 		m.openTagPopup(popupTagsArticle)
 	case config.Help:

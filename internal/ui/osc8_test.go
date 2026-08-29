@@ -14,15 +14,12 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	url := "https://example.com/post"
 	m.article = m.newArticleState(store.Article{Title: "t", Link: url, Content: "<p>x</p>"})
 
-	text := renderArticleContent(*m.article.article)
-	if !strings.Contains(text, ansi.SetHyperlink(url)) {
-		t.Errorf("header URL not wrapped in OSC 8: %q", text)
+	rendered := strings.Join(m.article.lines, "\n")
+	if !strings.Contains(rendered, "\x1b]8;") {
+		t.Errorf("header URL not wrapped in OSC 8: %q", rendered)
 	}
-	if !strings.Contains(text, ansi.ResetHyperlink()) {
-		t.Errorf("header URL missing OSC 8 reset: %q", text)
-	}
-	if !strings.Contains(ansi.Strip(text), url) {
-		t.Errorf("visible header URL text missing: %q", ansi.Strip(text))
+	if !strings.Contains(ansi.Strip(rendered), url) {
+		t.Errorf("visible header URL text missing: %q", ansi.Strip(rendered))
 	}
 }
 
@@ -61,7 +58,7 @@ func TestArticleOSC8LinksRenderInASCIIMode(t *testing.T) {
 	})
 
 	s := m.renderArticle()
-	if !strings.Contains(s, ansi.SetHyperlink(url)) {
+	if !strings.Contains(s, "\x1b]8;") {
 		t.Errorf("ascii mode should still emit OSC 8: %q", s)
 	}
 	if !strings.Contains(ansi.Strip(s), "post") {

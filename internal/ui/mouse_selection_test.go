@@ -237,7 +237,7 @@ func TestCKeyCopiesArticleText(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("C should produce a copy command in the article view")
 	}
-	want := ansi.Strip(renderArticleContent(a))
+	want := ansi.Strip(strings.Join(m.article.lines, "\n"))
 	if !strings.Contains(want, "headline") || !strings.Contains(want, "body text") {
 		t.Errorf("article text source missing content: %q", want)
 	}

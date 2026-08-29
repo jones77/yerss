@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/glamour/v2"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -46,6 +47,10 @@ type Model struct {
 
 	palette Palette
 	ascii   bool
+
+	mdRenderer      *glamour.TermRenderer
+	mdRendererW     int
+	mdRendererStyle string
 
 	statusMsg     string
 	statusExpires time.Time
