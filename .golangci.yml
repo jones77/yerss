@@ -44,6 +44,14 @@ linters:
       - linters: [gosec]
         text: "G204"
         path: "internal/ui/open\\.go"
+      # runEditor launches $EDITOR/$VISUAL via the shell so editor strings that
+      # carry arguments (e.g. "code --wait") work, matching git/crontab. The
+      # editor command is user-controlled by design, and the target path is
+      # single-quote-escaped before it reaches the shell. G204 flags any
+      # variable command argument, which is the intended behavior here.
+      - linters: [gosec]
+        text: "G204"
+        path: "cmd/yerss/edit\\.go"
       # G104 (errors unhandled) duplicates errcheck, where intentional ignores
       # are configured above. G703 flags the config self-update writing its own
       # file, which is the function's purpose.

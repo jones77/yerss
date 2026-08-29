@@ -1,7 +1,32 @@
-# yerss
+# `yerss`
 
-A terminal RSS reader written in Go: a bubbletea/lipgloss TUI, SQLite for
-storage, and gofeed for feed parsing.
+A Go terminal RSS reader written using gofeed, bubbletea/lipgloss and SQLite.
+
+## Initial Configuration
+
+Add at least one feed URL to `feeds.txt`;
+the app won't start without a working feed.
+
+### `feeds.txt`
+
+Add URLS, one per line, to:
+
+`$XDG_CONFIG_HOME/yerss/feeds.txt`;
+fallback `~/.config/yerss/feeds.txt`
+
+Blank lines and lines starting with `#` are ignored, so you can comment out
+feeds. The seeded file includes a commented-out example feed.
+
+### `config.toml`
+
+`$XDG_CONFIG_HOME/yerss/config.toml`;
+fallback `~/.config/yerss/config.toml`
+
+
+### Database
+
+`$XDG_DATA_HOME/yerss/yerss.sqlite`;
+fallback `~/.local/share/yerss/yerss.sqlite`
 
 ## Build
 
@@ -15,19 +40,18 @@ go build ./cmd/yerss
 go run ./cmd/yerss
 ```
 
-Note: run the `cmd/yerss` package (as above), not a single file. `go run
-cmd/yerss/main.go` will not compile — `main.go` depends on sibling files in the
-same `package main` (for example `gate.go`), and single-file mode only compiles
-the one file.
+## Edit config and feeds
 
-Pass `-config <path>` to use a config file other than the default.
+Open `feeds.txt` or `config.toml` in your editor (`$EDITOR`, falling back to
+`$VISUAL`):
 
-## Data locations
+```sh
+yerss -e    # or --edit-feeds: edit feeds.txt, then continue into the TUI
+yerss -c    # or --edit-config: edit config.toml, then exit
+```
 
-- Config: `$XDG_CONFIG_HOME/yerss/config.toml` (fallback `~/.config/yerss/config.toml`)
-- Feeds: one URL per line in `$XDG_CONFIG_HOME/yerss/feeds.txt` (fallback `~/.config/yerss/feeds.txt`)
-- Database: `$XDG_DATA_HOME/yerss/yerss.sqlite` (fallback `~/.local/share/yerss/yerss.sqlite`)
-
-On first run the config directory, a commented `config.toml`, and `feeds.txt` are
-created for you. Add at least one feed URL to `feeds.txt`; the app verifies a live
-feed before starting the TUI.
+`-e` honors a `[data] feeds_file` override from `config.toml` when set. After
+`-e` the freshly-edited feeds are re-read and verified on startup. `-c` exits
+after editing because config changes (theme, keybindings, refresh) take effect
+on the next launch. If neither `$EDITOR` nor `$VISUAL` is set, yerss prints an
+error and exits; there is no built-in fallback editor.

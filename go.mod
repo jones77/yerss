@@ -13,6 +13,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mmcdole/gofeed v1.4.2
 	github.com/pelletier/go-toml/v2 v2.4.3
+	github.com/spf13/pflag v1.0.10
 )
 
 require (

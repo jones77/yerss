@@ -71,6 +71,18 @@ func (c *Config) FeedsFile() string {
 	if c.Data.FeedsFile != "" {
 		return c.Data.FeedsFile
 	}
+	return DefaultFeedsPath()
+}
+
+// DefaultConfigPath returns the XDG default config file path, without parsing
+// any config. Used when the config file itself may be the thing being fixed.
+func DefaultConfigPath() string {
+	return filepath.Join(xdg.ConfigHome, "yerss", defaultConfigFile)
+}
+
+// DefaultFeedsPath returns the XDG default feeds file path, without parsing
+// any config.
+func DefaultFeedsPath() string {
 	return filepath.Join(xdg.ConfigHome, "yerss", defaultFeedsFile)
 }
 
@@ -105,7 +117,7 @@ type displayOpts struct {
 // conflict.
 func Load(path string) (*Config, error) {
 	if path == "" {
-		path = filepath.Join(xdg.ConfigHome, "yerss", defaultConfigFile)
+		path = DefaultConfigPath()
 	}
 	cfg := Default()
 

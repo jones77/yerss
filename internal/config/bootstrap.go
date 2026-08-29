@@ -7,7 +7,12 @@ import (
 )
 
 // feedsSeed is the placeholder content written to feeds.txt on first run.
-const feedsSeed = "# one RSS URL per line\n"
+// Lines starting with '#' are ignored by the feed loader, so the example feed
+// stays inert until the user uncomments it.
+const feedsSeed = `# yerss feeds — one RSS URL per line. Lines starting with # are ignored.
+# Uncomment the line below to add Drop Site News as an example feed.
+# https://www.dropsitenews.com/feed
+`
 
 // seededConfig renders the full commented config template written on first
 // run. Every supported option appears commented out, grouped by section, with
