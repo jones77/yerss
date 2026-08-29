@@ -34,10 +34,10 @@ func TestBootstrapCreatesFiles(t *testing.T) {
 		t.Fatalf("read feeds: %v", err)
 	}
 	feedsContent := string(feedsData)
-	if !strings.Contains(feedsContent, "one RSS URL per line") {
+	if !strings.Contains(feedsContent, "one feed per line") {
 		t.Errorf("feeds.txt missing header: %q", feedsContent)
 	}
-	if !strings.Contains(feedsContent, "# https://www.dropsitenews.com/feed") {
+	if !strings.Contains(feedsContent, "# www.dropsitenews.com/feed") {
 		t.Errorf("feeds.txt missing commented-out example feed: %q", feedsContent)
 	}
 }

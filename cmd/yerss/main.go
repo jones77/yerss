@@ -23,6 +23,18 @@ func main() {
 	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
 	pflag.BoolVarP(&jsonOut, "json", "j", false, "dump articles as JSON and exit")
 	pflag.BoolVarP(&ascii, "ascii", "a", false, "force ASCII fallback glyphs")
+	pflag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", base)
+		pflag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, `
+Files:
+  config  %s   display, refresh, and keybinding settings
+  feeds   %s   one feed per line; the https:// scheme is assumed
+  db      %s   SQLite article store
+
+The config's [data] section can relocate the feeds file and database.
+`, config.DefaultConfigPath(), config.DefaultFeedsPath(), config.Default().DBPath())
+	}
 	pflag.Parse()
 
 	if code, done := runEditFlags(editConfig, editFeeds); done {

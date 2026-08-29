@@ -156,7 +156,7 @@ func (m *Model) hasUnfetchedFeeds() bool {
 		return false
 	}
 	for _, u := range urls {
-		if !verified[u] {
+		if !verified[feed.CanonicalURL(u)] {
 			return true
 		}
 	}

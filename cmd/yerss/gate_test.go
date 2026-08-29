@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,8 +13,31 @@ import (
 	"time"
 
 	"yerss/internal/config"
+	"yerss/internal/feed"
 	"yerss/internal/store"
 )
+
+// tlsGateServer starts a self-signed HTTPS test server and swaps the feed
+// client factory for one that trusts it, restoring both on cleanup. The
+// feeds file entries are scheme-less and looked up over HTTPS, so the gate's
+// network tests need a TLS server.
+func tlsGateServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewTLSServer(handler)
+	old := feed.ClientFactory
+	feed.ClientFactory = func(timeout time.Duration) *http.Client {
+		return &http.Client{
+			Timeout:   timeout,
+			// Test server only: the self-signed certificate is trusted by design.
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec
+		}
+	}
+	t.Cleanup(func() {
+		feed.ClientFactory = old
+		srv.Close()
+	})
+	return srv
+}
 
 func gateTestEnv(t *testing.T, feedsContent string) (*config.Config, *store.Store) {
 	t.Helper()
@@ -69,11 +93,10 @@ func TestGateTrustedFeedSkipsNetwork(t *testing.T) {
 }
 
 func TestGateFirstRunWorkingFeedStarts(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := tlsGateServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		fmt.Fprint(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>Test Feed</title><item><title>Hello</title><guid>g1</guid></item></channel></rss>`)
-	}))
-	defer srv.Close()
+	})
 
 	cfg, st := gateTestEnv(t, srv.URL+"\n")
 	if code := runStartupGate(cfg, st); code != 0 {
@@ -90,10 +113,9 @@ func TestGateFirstRunWorkingFeedStarts(t *testing.T) {
 }
 
 func TestGateFirstRunAllBadRefuses(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := tlsGateServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
-	}))
-	defer srv.Close()
+	})
 
 	cfg, st := gateTestEnv(t, srv.URL+"\n")
 	if code := runStartupGate(cfg, st); code != exitNoWorking {
@@ -102,11 +124,10 @@ func TestGateFirstRunAllBadRefuses(t *testing.T) {
 }
 
 func TestGatePrintsVerifyingNotice(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := tlsGateServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		fmt.Fprint(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title></channel></rss>`)
-	}))
-	defer srv.Close()
+	})
 
 	cfg, st := gateTestEnv(t, srv.URL+"\n")
 	old := os.Stderr

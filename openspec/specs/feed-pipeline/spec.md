@@ -6,11 +6,21 @@ Handles fetching RSS/Atom feeds, the refresh lifecycle (startup gate and manual 
 
 ### Requirement: Feed URL source
 
-The system SHALL read feed URLs from a plain-text file with one URL per line.
-Blank lines and lines whose first non-whitespace character is `#` SHALL be
-ignored, so the file may contain comments. The default path SHALL be
+The system SHALL read feed entries from a plain-text file with one entry per
+line. Blank lines and lines whose first non-whitespace character is `#` SHALL
+be ignored, so the file may contain comments. The default path SHALL be
 `$XDG_CONFIG_HOME/yerss/feeds.txt` (fallback `~/.config/yerss/feeds.txt`). The
 path SHALL be configurable via the TOML config file.
+
+Entries SHALL be scheme-less: the `https://` scheme is assumed on every
+lookup. When an entry carries a leading `https://`, the system SHALL strip it
+and proactively rewrite the file in place with the canonical scheme-less form,
+preserving comment and blank lines verbatim; when an entry carries a leading
+`http://`, the system SHALL silently strip it and look the feed up as
+`https://`. The rewrite is best-effort: a failure leaves the file untouched
+while the in-memory entries stay normalized. Each entry SHALL be fetched from
+and stored under its canonical `https://` URL, so article deduplication keys
+are unchanged for feeds already stored under `https://`.
 
 #### Scenario: Feeds loaded from default path
 
@@ -26,6 +36,38 @@ path SHALL be configurable via the TOML config file.
 
 - **WHEN** the feeds file contains blank lines and lines beginning with `#` interspersed with URL lines
 - **THEN** the system skips the blank and comment lines and loads only the URL lines
+
+#### Scenario: Scheme stripped and file rewritten
+
+- **WHEN** the feeds file contains entries written with a leading `https://`
+- **THEN** the entries are loaded scheme-less and the file is rewritten in place with the scheme-less form, comments and blank lines preserved
+
+#### Scenario: HTTP entries silently upgraded to HTTPS
+
+- **WHEN** the feeds file contains an entry written with a leading `http://`
+- **THEN** the scheme is silently stripped and the feed is looked up as `https://`, with no warning printed
+
+#### Scenario: Canonical lookups keep deduplication stable
+
+- **WHEN** a scheme-less entry is fetched and the store already holds that feed's articles under the `https://` URL
+- **THEN** the fetched articles deduplicate against the stored rows instead of being inserted twice
+
+#### Scenario: Rewrite failure still loads normalized entries
+
+- **WHEN** the feeds file carries schemes but cannot be rewritten (for example a read-only directory)
+- **THEN** the load succeeds with scheme-less entries and no error is surfaced
+
+### Requirement: Usage output documents the data files
+
+The system SHALL document its three data files in the CLI usage output: the
+TOML config file, the feeds.txt file, and the SQLite database — each with its
+resolved default path and a one-line description, noting that the config's
+`[data]` section can relocate the feeds file and database.
+
+#### Scenario: Usage lists the data files
+
+- **WHEN** the user runs the program with the help flag
+- **THEN** the usage output lists the resolved config, feeds, and database paths with short descriptions and the `[data]` relocation note
 
 ### Requirement: Startup refresh with 15-minute gate
 

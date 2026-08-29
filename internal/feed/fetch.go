@@ -41,6 +41,13 @@ var (
 	refreshOverallTimeout = 60 * time.Second
 )
 
+// ClientFactory builds the HTTP client for a fetch pass. It is a package
+// seam so tests can inject a client that trusts a self-signed test TLS
+// server.
+var ClientFactory = func(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout}
+}
+
 // maxConcurrentFetches caps the number of in-flight feed requests in a pass.
 const maxConcurrentFetches = 8
 
@@ -51,7 +58,7 @@ const maxConcurrentFetches = 8
 // cannot stall the pass indefinitely.
 func FetchFeeds(st *store.Store, urls []string) FetchResult {
 	parser := gofeed.NewParser()
-	parser.Client = &http.Client{Timeout: refreshPerFeedTimeout}
+	parser.Client = ClientFactory(refreshPerFeedTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), refreshOverallTimeout)
 	defer cancel()
 	return fetchFeeds(st, urls, parser, ctx)
@@ -64,7 +71,7 @@ func FetchFeeds(st *store.Store, urls []string) FetchResult {
 // feed (stamping last_fetched_at) so the startup refresh is skipped.
 func VerifyFeeds(st *store.Store, urls []string, perFeed, overall time.Duration) (FetchResult, error) {
 	parser := gofeed.NewParser()
-	parser.Client = &http.Client{Timeout: perFeed}
+	parser.Client = ClientFactory(perFeed)
 	ctx, cancel := context.WithTimeout(context.Background(), overall)
 	defer cancel()
 	res := fetchFeeds(st, urls, parser, ctx)
@@ -86,17 +93,21 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 		now = time.Now()
 	)
 	sem := make(chan struct{}, maxConcurrentFetches)
-	for _, u := range urls {
+	for _, entry := range urls {
 		if ctx.Err() != nil {
 			break
 		}
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(url string) {
+		go func(entry string) {
 			defer func() {
 				wg.Done()
 				<-sem
 			}()
+			// Feeds.txt entries are scheme-less and always looked up over
+			// HTTPS; the canonical URL is also the store key, so existing
+			// article rows deduplicate unchanged.
+			url := CanonicalURL(entry)
 			feed, err := parser.ParseURLWithContext(url, ctx)
 			if err != nil {
 				mu.Lock()
@@ -149,7 +160,7 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 				}
 				mu.Unlock()
 			}
-		}(u)
+		}(entry)
 	}
 	wg.Wait()
 	return res

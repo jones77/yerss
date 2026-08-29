@@ -1,13 +1,17 @@
 package ui
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"yerss/internal/feed"
 )
 
 // setFeedsFile writes the given URLs to a temp feeds.txt and points the model
@@ -40,6 +44,20 @@ func TestInitForcesRefreshOnNewFeed(t *testing.T) {
 	}
 }
 
+func TestInitSkipsRefreshForSchemelessKnownFeed(t *testing.T) {
+	m, st := newTestModel(t)
+	// The verified row stores the canonical https:// URL.
+	if err := st.UpsertFeed("https://example.com/known.xml", "known", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// feeds.txt lists the same feed scheme-less after the format change.
+	setFeedsFile(t, m, []string{"example.com/known.xml"})
+
+	if cmd := m.Init(); cmd != nil {
+		t.Error("a scheme-less entry matching a verified feed should not force a refresh")
+	}
+}
+
 func TestInitSkipsRefreshWhenAllFeedsVerified(t *testing.T) {
 	m, st := newTestModel(t)
 	if err := st.UpsertFeed("https://example.com/known.xml", "known", time.Now()); err != nil {
@@ -61,15 +79,26 @@ func TestInitEndToEndFetchesNewFeed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Scheme-less feeds.txt entries are looked up over HTTPS, so the test
+	// server is TLS and the feed client trusts its self-signed certificate.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		fmt.Fprint(w, `<rss version="2.0"><channel><title>Test Feed</title><link>http://example.com/</link><description>test</description><item><title>Hello from new feed</title><link>http://example.com/item/1</link><guid>e2e-guid-1</guid><pubDate>Sat, 28 Aug 2026 12:00:00 GMT</pubDate></item></channel></rss>`)
 	}))
-	defer srv.Close()
+	oldFactory := feed.ClientFactory
+	feed.ClientFactory = func(timeout time.Duration) *http.Client {
+		return &http.Client{
+			Timeout:   timeout,
+			// Test server only: the self-signed certificate is trusted by design.
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec
+		}
+	}
+	t.Cleanup(func() { feed.ClientFactory = oldFactory; srv.Close() })
 
-	// feeds.txt gains a brand-new URL pointing at the test server.
-	feedsURL := srv.URL + "/feed.xml"
-	setFeedsFile(t, m, []string{feedsURL})
+	// feeds.txt gains a brand-new scheme-less entry pointing at the test
+	// server.
+	feedsURL := feed.CanonicalURL(strings.TrimPrefix(srv.URL, "https://") + "/feed.xml")
+	setFeedsFile(t, m, []string{strings.TrimPrefix(srv.URL, "https://") + "/feed.xml"})
 
 	cmd := m.Init()
 	if cmd == nil {
