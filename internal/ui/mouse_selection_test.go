@@ -124,11 +124,8 @@ func TestArticleReleaseCopiesSelection(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("release after a drag should produce a copy command")
 	}
-	if !m.article.sel.active {
-		t.Error("released selection should remain highlighted (active)")
-	}
-	if m.article.sel.tracking {
-		t.Error("released selection should no longer track the mouse")
+	if m.article.sel.active || m.article.sel.tracking {
+		t.Error("released selection should be cleared after copying")
 	}
 	if runtime.GOOS == "darwin" {
 		if label := clipboardMsgLabel(t, cmd); label != "copied selection" {

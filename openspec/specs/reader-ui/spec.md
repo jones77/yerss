@@ -670,17 +670,16 @@ The system SHALL let the user select article text with the mouse in the article
 view and automatically copy the selected text to the system clipboard on
 release. An unmodified left-button press on the article content area SHALL
 anchor the selection at that cell. While the button is held, dragging SHALL
-extend the selection to the current cell. Releasing the button SHALL finalize
-the selection, copy the selected text to the system clipboard, and leave the
-selection highlighted in the rendered view. The selection SHALL span the
-rendered viewport cells, so it tracks the article's current scroll position and
-wrapping. The system SHALL render the selected cells with an inverted
-(highlighted) style distinct from unselected text. Copied text SHALL be the
-plain text characters within the selected region, preserving the line breaks of
-the wrapped rendering, with all ANSI styling and OSC 8 hyperlink escape
-sequences stripped. A press with an empty or zero-width selection SHALL copy
-nothing. Starting a new selection SHALL replace the previous selection. Leaving
-the article view SHALL clear the selection.
+extend the selection to the current cell. Releasing the button SHALL copy the
+selected text to the system clipboard and clear the selection highlight. The
+selection SHALL span the rendered viewport cells, so it tracks the article's
+current scroll position and wrapping. The system SHALL render the selected
+cells with an inverted (highlighted) style distinct from unselected text.
+Copied text SHALL be the plain text characters within the selected region,
+preserving the line breaks of the wrapped rendering, with all ANSI styling and
+OSC 8 hyperlink escape sequences stripped. A press with an empty or zero-width
+selection SHALL copy nothing. Starting a new selection SHALL replace the
+previous selection. Leaving the article view SHALL clear the selection.
 
 #### Scenario: Press anchors selection
 
@@ -695,7 +694,7 @@ the article view SHALL clear the selection.
 #### Scenario: Release copies selection
 
 - **WHEN** the user releases the left button after dragging a selection
-- **THEN** the selected text is copied to the system clipboard and remains highlighted
+- **THEN** the selected text is copied to the system clipboard and the selection highlight is cleared
 
 #### Scenario: Selected text is plain with escapes stripped
 

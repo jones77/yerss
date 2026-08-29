@@ -170,9 +170,10 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // updateArticleMouse handles mouse events in the article view: wheel up/down
 // scrolls the viewport by one line, with downward scroll marking the article
 // read like the Down key. An unmodified left-button press anchors a text
-// selection, drag extends it, and release finalizes it and copies the selected
-// text to the clipboard. Presses carrying a Ctrl/Alt/Shift modifier are not
-// interpreted, so the terminal can activate OSC 8 hyperlinks natively.
+// selection, drag extends it, and release copies the selected text to the
+// clipboard and clears the selection. Presses carrying a Ctrl/Alt/Shift
+// modifier are not interpreted, so the terminal can activate OSC 8 hyperlinks
+// natively.
 func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	if tea.MouseEvent(msg).IsWheel() && msg.Action == tea.MouseActionPress {
 		switch msg.Button {
@@ -212,8 +213,9 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 		if !m.article.sel.tracking {
 			return nil
 		}
-		m.article.sel.tracking = false
-		if text := m.article.selectedText(); text != "" {
+		text := m.article.selectedText()
+		m.article.sel = textSelection{}
+		if text != "" {
 			return copyTextCmd(text, "copied selection")
 		}
 	}
