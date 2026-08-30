@@ -2,14 +2,12 @@ package ui
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"golang.org/x/net/publicsuffix"
 
 	"yerss/internal/config"
 	"yerss/internal/store"
@@ -299,6 +297,9 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	}
 
 	src := sourceID(item.Link, item.FeedURL)
+	if src != "" {
+		src = elideMiddle(src, 15, g.ellipsis)
+	}
 	ts := "--:--"
 	if !item.PublishedAt.IsZero() {
 		ts = item.PublishedAt.Local().Format("15:04")
@@ -342,38 +343,13 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	return truncate(b.String(), m.width)
 }
 
-// sourceID derives a short publication identifier from a URL host: strip any
-// trailing dot and a leading "www.", take the organization label of the
-// registrable domain (the public suffix plus one, so multi-part suffixes like
-// "co.uk" are removed whole), and truncate to at most 12 characters. The
+// sourceID derives a short publication identifier from a URL host: the
+// registrable organization label of the domain (see store.SourceLabel), so
+// www.blah.com and a.lot.of.subdomains.blah.com both yield "blah". The
 // article link host is used when present; otherwise the feed URL host is
-// used. Hosts with no registrable domain (single-label hosts, IP literals)
-// fall back to dropping everything from the final dot.
+// used. The renderer middle-elides it to the news-org column width.
 func sourceID(rawURL, feedURL string) string {
-	host := ""
-	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
-		host = u.Host
-	} else if u, err := url.Parse(feedURL); err == nil && u.Host != "" {
-		host = u.Host
-	}
-	if host == "" {
-		return ""
-	}
-	h := strings.ToLower(strings.TrimSuffix(host, "."))
-	h = strings.TrimPrefix(h, "www.")
-	if etld1, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
-		if i := strings.Index(etld1, "."); i > 0 {
-			h = etld1[:i]
-		} else {
-			h = etld1
-		}
-	} else if i := strings.LastIndex(h, "."); i > 0 {
-		h = h[:i]
-	}
-	if len(h) > 12 {
-		h = h[:12]
-	}
-	return h
+	return store.SourceLabel(rawURL, feedURL)
 }
 
 func (m *Model) renderStatusBar() string {

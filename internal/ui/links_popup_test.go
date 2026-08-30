@@ -115,6 +115,36 @@ func TestLinkPopupNavigationWraps(t *testing.T) {
 	}
 }
 
+func TestLinkPopupIgnoresGridKeys(t *testing.T) {
+	m := articleWithLinks(t)
+	m.openLinksPopup()
+	m.popupData.cursor = 1
+	gridKeys := []tea.KeyMsg{
+		{Type: tea.KeyLeft},
+		{Type: tea.KeyRight},
+		{Type: tea.KeyRunes, Runes: []rune("h")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyRunes, Runes: []rune("1")},
+		{Type: tea.KeyRunes, Runes: []rune("g")},
+		{Type: tea.KeyRunes, Runes: []rune("G")},
+	}
+	for _, key := range gridKeys {
+		m.updatePopup(key)
+		if m.popupData.cursor != 1 {
+			t.Fatalf("grid key %v changed the links cursor to %d", key, m.popupData.cursor)
+		}
+	}
+	// Up/down navigation still works and wraps as before.
+	m.updatePopup(tea.KeyMsg{Type: tea.KeyDown})
+	if m.popupData.cursor != 0 {
+		t.Errorf("down should wrap the links cursor to 0, got %d", m.popupData.cursor)
+	}
+	m.updatePopup(tea.KeyMsg{Type: tea.KeyUp})
+	if m.popupData.cursor != 1 {
+		t.Errorf("up should wrap the links cursor back to 1, got %d", m.popupData.cursor)
+	}
+}
+
 func TestLinkPopupEnterOpensSelected(t *testing.T) {
 	m := articleWithLinks(t)
 	m.openLinksPopup()

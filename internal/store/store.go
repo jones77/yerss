@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
+	"golang.org/x/net/publicsuffix"
 )
 
 // Article is a single stored feed item.
@@ -29,12 +31,14 @@ type Article struct {
 	ImageURL    string
 }
 
-// TagCount is an aggregate count for a tag.
+// TagCount is an aggregate count for a tag. IsSource reports whether the tag is
+// a source-domain tag (a news organization) rather than a feed category.
 type TagCount struct {
-	Name   string
-	Unread int
-	Read   int
-	Total  int
+	Name     string
+	Unread   int
+	Read     int
+	Total    int
+	IsSource bool
 }
 
 // Store wraps the SQLite connection.
@@ -121,8 +125,9 @@ CREATE TABLE IF NOT EXISTS articles (
   UNIQUE(feed_url, guid)
 );
 CREATE TABLE IF NOT EXISTS categories (
-  id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  name   TEXT COLLATE NOCASE UNIQUE,
+  source BOOLEAN NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS article_categories (
   article_id  INTEGER REFERENCES articles(id) ON DELETE CASCADE,
@@ -145,7 +150,7 @@ CREATE TABLE IF NOT EXISTS state (
 // so the guard queries PRAGMA table_info and issues one ALTER per missing
 // column. It is idempotent: on an already-migrated database it is a no-op.
 func (s *Store) migrateImageColumns() error {
-	cols, err := s.articleColumns()
+	cols, err := s.tableColumns("articles")
 	if err != nil {
 		return err
 	}
@@ -159,12 +164,26 @@ func (s *Store) migrateImageColumns() error {
 			return err
 		}
 	}
-	return nil
+	return s.migrateCategorySource()
 }
 
-// articleColumns returns the set of column names on the articles table.
-func (s *Store) articleColumns() (map[string]bool, error) {
-	rows, err := s.db.Query(`PRAGMA table_info(articles)`)
+// migrateCategorySource adds the source flag to the categories table when it
+// is absent (pre-existing databases created before source-domain tags).
+func (s *Store) migrateCategorySource() error {
+	cols, err := s.tableColumns("categories")
+	if err != nil {
+		return err
+	}
+	if cols["source"] {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE categories ADD COLUMN source BOOLEAN NOT NULL DEFAULT 0`)
+	return err
+}
+
+// tableColumns returns the set of column names on the named table.
+func (s *Store) tableColumns(table string) (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return nil, err
 	}
@@ -339,6 +358,17 @@ func (s *Store) ArticleExists(feedURL, guid string) (bool, error) {
 
 // SetArticleTags replaces the category associations for an article.
 func (s *Store) SetArticleTags(articleID int64, names []string) error {
+	return s.setArticleTags(articleID, names, "")
+}
+
+// SetArticleTagsWithSource replaces the category associations for an article
+// and marks the named source-domain tag (when present among names) as a source
+// tag, so news organizations can be grouped ahead of categories.
+func (s *Store) SetArticleTagsWithSource(articleID int64, names []string, sourceName string) error {
+	return s.setArticleTags(articleID, names, sourceName)
+}
+
+func (s *Store) setArticleTags(articleID int64, names []string, sourceName string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -349,15 +379,31 @@ func (s *Store) SetArticleTags(articleID int64, names []string) error {
 		return err
 	}
 
+	// Tags are unique case-insensitively (the categories.name column is
+	// COLLATE NOCASE) but case-preserving: the first spelling ever inserted
+	// becomes the stored name forever, and later spellings resolve to the same
+	// row via the NOCASE conflict target. Within one batch, only the first
+	// spelling of a name is emitted, so an article never links a tag twice.
 	seen := map[string]bool{}
 	var catIDs []int64
 	for _, name := range names {
-		if name == "" || seen[name] {
+		if name == "" {
 			continue
 		}
-		seen[name] = true
+		key := strings.ToLower(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		source := 0
+		if strings.EqualFold(name, sourceName) {
+			source = 1
+		}
 		var catID int64
-		if err := tx.QueryRow(`INSERT INTO categories (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name = excluded.name RETURNING id`, name).Scan(&catID); err != nil {
+		// The NOCASE conflict target fires on any case of the same name; the
+		// existing row keeps its spelling, and source is only ever promoted so
+		// a tag marked as a news organization stays one.
+		if err := tx.QueryRow(`INSERT INTO categories (name, source) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET source = MAX(source, excluded.source) RETURNING id`, name, source).Scan(&catID); err != nil {
 			return err
 		}
 		catIDs = append(catIDs, catID)
@@ -466,18 +512,54 @@ func (s *Store) ArticleCount() (int, error) {
 	return n, err
 }
 
-// ListTags returns all tags with unread/read/total counts sorted by
-// popularity (total article count descending).
+// SourceLabel derives the registrable organization label of a URL's host,
+// used both as the list view's source identifier and as an implicit source
+// tag on every stored article. It strips a leading "www." and a trailing dot,
+// takes the organization label of the registrable domain (the public suffix
+// plus one, so multi-part suffixes like "co.uk" are removed whole), and for
+// hosts with no registrable domain (single-label hosts, IP literals) falls
+// back to dropping everything from the final dot. The raw URL host is used
+// when present; otherwise the feed URL host is used. It returns "" when
+// neither yields a host.
+func SourceLabel(rawURL, feedURL string) string {
+	host := ""
+	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
+		host = u.Host
+	} else if u, err := url.Parse(feedURL); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	if host == "" {
+		return ""
+	}
+	h := strings.ToLower(strings.TrimSuffix(host, "."))
+	h = strings.TrimPrefix(h, "www.")
+	if etld1, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
+		if i := strings.Index(etld1, "."); i > 0 {
+			h = etld1[:i]
+		} else {
+			h = etld1
+		}
+	} else if i := strings.LastIndex(h, "."); i > 0 {
+		h = h[:i]
+	}
+	return h
+}
+
+// ListTags returns all tags with unread/read/total counts, source-domain
+// (news organization) tags first and then category tags, each group ordered by
+// popularity (total article count descending) with equal-popularity tags
+// ordered alphabetically (case-insensitive, so "apple" sorts before "Zoo").
 func (s *Store) ListTags() ([]TagCount, error) {
 	rows, err := s.db.Query(`
 SELECT c.name,
+       c.source,
        COUNT(ac.article_id) AS total,
        COALESCE(SUM(CASE WHEN a.read = 0 THEN 1 ELSE 0 END), 0) AS unread
 FROM categories c
 JOIN article_categories ac ON ac.category_id = c.id
 JOIN articles a ON a.id = ac.article_id
 GROUP BY c.id
-ORDER BY total DESC, c.name ASC`)
+ORDER BY c.source DESC, total DESC, c.name COLLATE NOCASE ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -486,9 +568,11 @@ ORDER BY total DESC, c.name ASC`)
 	var tags []TagCount
 	for rows.Next() {
 		var t TagCount
-		if err := rows.Scan(&t.Name, &t.Total, &t.Unread); err != nil {
+		var source int
+		if err := rows.Scan(&t.Name, &source, &t.Total, &t.Unread); err != nil {
 			return nil, err
 		}
+		t.IsSource = source == 1
 		t.Read = t.Total - t.Unread
 		tags = append(tags, t)
 	}
@@ -499,7 +583,7 @@ func (s *Store) articleCategories(articleID int64) ([]string, error) {
 	rows, err := s.db.Query(`
 SELECT c.name FROM categories c
 JOIN article_categories ac ON ac.category_id = c.id
-WHERE ac.article_id = ? ORDER BY c.name`, articleID)
+WHERE ac.article_id = ? ORDER BY c.name COLLATE NOCASE ASC`, articleID)
 	if err != nil {
 		return nil, err
 	}

@@ -18,6 +18,8 @@ const (
 	LinkPopup       Action = "link_popup"
 	MoveUp          Action = "move_up"
 	MoveDown        Action = "move_down"
+	MoveLeft        Action = "move_left"
+	MoveRight       Action = "move_right"
 	PageUp          Action = "page_up"
 	PageDown        Action = "page_down"
 	HalfPageUp      Action = "half_page_up"
@@ -63,12 +65,14 @@ var catalog = []actionSpec{
 	{LinkPopup, []string{"l", "right"}, []View{ViewArticle}},
 	{MoveUp, []string{"up", "k"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{MoveDown, []string{"down", "j"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{MoveLeft, []string{"left", "h"}, []View{ViewPopup}},
+	{MoveRight, []string{"right", "l"}, []View{ViewPopup}},
 	{PageUp, []string{"pgup", "ctrl+b"}, []View{ViewList, ViewArticle}},
 	{PageDown, []string{"pgdn", "ctrl+f", "space"}, []View{ViewList, ViewArticle}},
 	{HalfPageUp, []string{"ctrl+u"}, []View{ViewList, ViewArticle}},
 	{HalfPageDown, []string{"ctrl+d"}, []View{ViewList, ViewArticle}},
-	{Top, []string{"1", "g", "ctrl+up"}, []View{ViewList, ViewArticle}},
-	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle}},
+	{Top, []string{"1", "g", "ctrl+up"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
 	{OpenURL, []string{"o"}, []View{ViewArticle, ViewPopup}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
@@ -292,13 +296,18 @@ func Validate(km Keymap) error {
 
 // EffectiveKeys returns the key -> action mapping for a view. The Enter key
 // bound to "back" is excluded in the list view where it opens articles, and
-// the left arrow always clears the filter in the list view. A key assigned to
-// two actions in the same view is reported as a conflict.
+// the left arrow always clears the filter in the list view. The h key bound
+// to "back" is excluded in the popup view where h moves the tag grid cursor
+// left. A key assigned to two actions in the same view is reported as a
+// conflict.
 func (km Keymap) EffectiveKeys(v View) (map[string]Action, error) {
 	m := map[string]Action{}
 	for _, act := range actionsForView(v) {
 		for _, key := range km[act] {
 			if v == ViewList && act == Back && key == "enter" {
+				continue
+			}
+			if v == ViewPopup && act == Back && key == "h" {
 				continue
 			}
 			if prev, ok := m[key]; ok && prev != act {

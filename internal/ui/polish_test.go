@@ -61,8 +61,9 @@ func TestSourceID(t *testing.T) {
 	}{
 		{"https://newrepublic.com/story/1", "", "newrepublic"},
 		{"https://www.nytimes.com/x", "", "nytimes"},
+		{"https://a.lot.of.subdomains.nytimes.com/x", "", "nytimes"},
 		{"https://sueddeutsche.de/x", "", "sueddeutsche"},
-		{"https://reallylongnewspaperdomainname.net/x", "", "reallylongne"},
+		{"https://reallylongnewspaperdomainname.net/x", "", "reallylongnewspaperdomainname"},
 		{"https://tribunemag.com./story/1", "", "tribunemag"},
 		{"https://WWW.TRIBUNEMAG.COM/x", "", "tribunemag"},
 		{"https://tribunemag.co.uk/story/1", "", "tribunemag"},
@@ -75,6 +76,39 @@ func TestSourceID(t *testing.T) {
 		if got := sourceID(c.link, c.feed); got != c.want {
 			t.Errorf("sourceID(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
 		}
+	}
+}
+
+func TestElideMiddle(t *testing.T) {
+	if got := elideMiddle("short", 15, "…"); got != "short" {
+		t.Errorf("string within the limit should be unchanged, got %q", got)
+	}
+	s := "reallylongnewspaperdomainname" // 29 columns
+	for _, e := range []string{"…", "..."} {
+		got := elideMiddle(s, 15, e)
+		if ansi.StringWidth(got) != 15 {
+			t.Errorf("elideMiddle(...,%q) width = %d, want 15: %q", e, ansi.StringWidth(got), got)
+		}
+		if !strings.Contains(got, e) {
+			t.Errorf("elided string should contain the ellipsis %q: %q", e, got)
+		}
+		if !strings.HasPrefix(got, "really") || !strings.HasSuffix(got, "name") {
+			t.Errorf("middle elision should keep both ends readable: %q", got)
+		}
+	}
+}
+
+func TestArticleRowSourceElidedToFifteen(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
+	m.loadList()
+	item := &m.list.groups[0].articles[0]
+	item.Link = "https://reallylongnewspaperdomainname.net/story/1"
+
+	line := ansi.Strip(m.renderArticleRow(item, false))
+	if !strings.HasSuffix(line, "reallyl…ainname") {
+		t.Errorf("source should be middle-elided to 15 columns at the row end: %q", line)
 	}
 }
 

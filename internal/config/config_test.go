@@ -200,6 +200,8 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		LinkPopup:       {"l", "right"},
 		MoveUp:          {"up", "k"},
 		MoveDown:        {"down", "j"},
+		MoveLeft:        {"left", "h"},
+		MoveRight:       {"right", "l"},
 		PageUp:          {"pgup", "ctrl+b"},
 		PageDown:        {"pgdn", "ctrl+f", "space"},
 		HalfPageUp:      {"ctrl+u"},
@@ -275,7 +277,7 @@ func TestHelpActionGroups(t *testing.T) {
 		}
 	}
 	want := map[string][]Action{
-		"Global":       {Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
+		"Global":       {Quit, Back, MoveUp, MoveDown, MoveLeft, MoveRight, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
 		"List view":    {Refresh, OpenArticle},
 		"Article view": {CloseArticle, LinkPopup, OpenURL, CopyURL, CopyArticleText},
 	}
@@ -328,6 +330,44 @@ func TestDefaultKeybindingsBothCases(t *testing.T) {
 	}
 	if listEff["g"] != Top || listEff["G"] != Bottom {
 		t.Errorf("g should stay top and G bottom, got %v / %v", listEff["g"], listEff["G"])
+	}
+}
+
+func TestPopupViewGridKeys(t *testing.T) {
+	km := DefaultKeybindings()
+	eff, err := km.EffectiveKeys(ViewPopup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"up", "down"} {
+		if eff[key] != MoveUp && eff[key] != MoveDown {
+			t.Errorf("key %q in popup view should map to a move action, got %v", key, eff[key])
+		}
+	}
+	if eff["left"] != MoveLeft {
+		t.Errorf("left in popup view should map to move_left, got %v", eff["left"])
+	}
+	if eff["h"] != MoveLeft {
+		t.Errorf("h in popup view should map to move_left, got %v", eff["h"])
+	}
+	if eff["right"] != MoveRight {
+		t.Errorf("right in popup view should map to move_right, got %v", eff["right"])
+	}
+	if eff["l"] != MoveRight {
+		t.Errorf("l in popup view should map to move_right, got %v", eff["l"])
+	}
+	if eff["esc"] != Back || eff["b"] != Back {
+		t.Errorf("esc and b in popup view should still map to back, got %v / %v", eff["esc"], eff["b"])
+	}
+	for _, key := range []string{"1", "g", "ctrl+up"} {
+		if eff[key] != Top {
+			t.Errorf("%q in popup view should map to top, got %v", key, eff[key])
+		}
+	}
+	for _, key := range []string{"G", "ctrl+down"} {
+		if eff[key] != Bottom {
+			t.Errorf("%q in popup view should map to bottom, got %v", key, eff[key])
+		}
 	}
 }
 

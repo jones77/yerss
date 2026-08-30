@@ -146,7 +146,13 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 					mu.Unlock()
 					continue
 				}
-				if err := st.SetArticleTags(id, art.Categories); err != nil {
+				source := store.SourceLabel(art.Link, art.FeedURL)
+				tags := make([]string, 0, len(art.Categories)+1)
+				tags = append(tags, art.Categories...)
+				if source != "" {
+					tags = append(tags, source)
+				}
+				if err := st.SetArticleTagsWithSource(id, tags, source); err != nil {
 					mu.Lock()
 					res.Errors = append(res.Errors, err)
 					mu.Unlock()

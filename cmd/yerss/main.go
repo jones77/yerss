@@ -18,11 +18,12 @@ import (
 func main() {
 	base := filepath.Base(os.Args[0])
 
-	var editFeeds, editConfig, jsonOut, ascii bool
+	var editFeeds, editConfig, jsonOut, ascii, initDB bool
 	pflag.BoolVarP(&editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
 	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
 	pflag.BoolVarP(&jsonOut, "json", "j", false, "dump articles as JSON and exit")
 	pflag.BoolVarP(&ascii, "ascii", "a", false, "force ASCII fallback glyphs")
+	pflag.BoolVarP(&initDB, "init-db", "z", false, "reinitialize the database to zero before starting")
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", base)
 		pflag.PrintDefaults()
@@ -45,6 +46,14 @@ The config's [data] section can relocate the feeds file and database.
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", base, err)
 		os.Exit(1)
+	}
+
+	if initDB {
+		if err := resetDatabase(cfg.DBPath()); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: cannot reinitialize database: %v\n", base, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "%s: reinitialized database: %s\n", base, cfg.DBPath())
 	}
 
 	st, err := store.Open(cfg.DBPath())
@@ -75,6 +84,18 @@ The config's [data] section can relocate the feeds file and database.
 	// The TUI has left the alternate screen; per-URL fetch diagnostics print
 	// after exit so they never disturb the live display.
 	feedDiagnostics(os.Stderr, base, m.FeedOutcomes())
+}
+
+// resetDatabase deletes the SQLite database file and its WAL/SHM sidecars so
+// the next open starts from zero. A missing database is not an error (the
+// first run simply creates it fresh).
+func resetDatabase(path string) error {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // feedDiagnostics prints per-URL fetch diagnostics to stderr: an error line

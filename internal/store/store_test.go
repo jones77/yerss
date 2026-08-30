@@ -131,6 +131,88 @@ func TestArticleCategoriesStored(t *testing.T) {
 	}
 }
 
+func TestSourceLabel(t *testing.T) {
+	cases := []struct {
+		link, feed, want string
+	}{
+		{"https://newrepublic.com/story/1", "", "newrepublic"},
+		{"https://www.nytimes.com/x", "", "nytimes"},
+		{"https://a.lot.of.subdomains.nytimes.com/x", "", "nytimes"},
+		{"https://reallylongnewspaperdomainname.net/x", "", "reallylongnewspaperdomainname"},
+		{"https://tribunemag.com./story/1", "", "tribunemag"},
+		{"https://WWW.TRIBUNEMAG.COM/x", "", "tribunemag"},
+		{"https://tribunemag.co.uk/story/1", "", "tribunemag"},
+		{"https://www.bbc.co.uk/news/x", "", "bbc"},
+		{"", "https://nytimes.com/rss", "nytimes"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := SourceLabel(c.link, c.feed); got != c.want {
+			t.Errorf("SourceLabel(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
+		}
+	}
+}
+
+func TestSourceDomainTagListedWithCounts(t *testing.T) {
+	st := newTestStore(t)
+	a := sampleArticle()
+	a.FeedURL = "https://www.nytimes.com/rss"
+	a.Link = "https://www.nytimes.com/1"
+	id1, _ := st.UpsertArticle(a)
+	a.GUID = "g2"
+	a.Link = "https://www.nytimes.com/2"
+	id2, _ := st.UpsertArticle(a)
+	a.GUID = "g3"
+	a.Link = "https://www.theguardian.com/1"
+	id3, _ := st.UpsertArticle(a)
+	for _, id := range []int64{id1, id2} {
+		_ = st.SetArticleTagsWithSource(id, []string{"tech", "nytimes"}, "nytimes")
+	}
+	_ = st.SetArticleTagsWithSource(id3, []string{"news", "theguardian"}, "theguardian")
+	_ = st.SetRead(id1, true)
+
+	tags, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]TagCount{}
+	var order []string
+	for _, tg := range tags {
+		byName[tg.Name] = tg
+		order = append(order, tg.Name)
+	}
+	if ny := byName["nytimes"]; ny.Total != 2 || ny.Unread != 1 || !ny.IsSource {
+		t.Errorf("nytimes counts wrong: %+v", ny)
+	}
+	if gu := byName["theguardian"]; gu.Total != 1 || gu.Unread != 1 || !gu.IsSource {
+		t.Errorf("theguardian counts wrong: %+v", gu)
+	}
+	if tech := byName["tech"]; tech.IsSource {
+		t.Errorf("category tag tech should not be a source: %+v", tech)
+	}
+	// Source-domain tags are grouped ahead of category tags.
+	lastSource := -1
+	firstCategory := len(order)
+	for i, name := range order {
+		if byName[name].IsSource {
+			lastSource = i
+		} else if firstCategory == len(order) {
+			firstCategory = i
+		}
+	}
+	if lastSource > firstCategory {
+		t.Errorf("source tags should come before category tags, order: %v", order)
+	}
+	// The domain tag filters articles like any category tag.
+	arts, err := st.ListArticles("nytimes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arts) != 2 {
+		t.Errorf("ListArticles(nytimes) = %d articles, want 2", len(arts))
+	}
+}
+
 func TestListTagsCounts(t *testing.T) {
 	st := newTestStore(t)
 	a := sampleArticle()
@@ -158,6 +240,117 @@ func TestListTagsCounts(t *testing.T) {
 	}
 	if news := byName["news"]; news.Total != 1 || news.Unread != 1 || news.Read != 0 {
 		t.Errorf("news counts wrong: %+v", news)
+	}
+}
+
+func TestListTagsAlphabeticalSecondarySort(t *testing.T) {
+	st := newTestStore(t)
+	// Equal-popularity tags sort alphabetically, case-insensitively: the byte
+	// (asciibetical) order would put "Beta" and "Zoo" ahead of "apple" because
+	// uppercase ASCII sorts first.
+	for i, name := range []string{"Zoo", "apple", "Beta", "banana"} {
+		a := sampleArticle()
+		a.GUID = fmt.Sprintf("guid-%d", i)
+		id, _ := st.UpsertArticle(a)
+		_ = st.SetArticleTags(id, []string{name})
+	}
+	// A more popular tag sorts ahead of equal-popularity tags regardless of
+	// spelling.
+	a := sampleArticle()
+	a.GUID = "guid-popular"
+	id1, _ := st.UpsertArticle(a)
+	a.GUID = "guid-popular-2"
+	id2, _ := st.UpsertArticle(a)
+	_ = st.SetArticleTags(id1, []string{"technology"})
+	_ = st.SetArticleTags(id2, []string{"technology"})
+
+	tags, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, tg := range tags {
+		order = append(order, tg.Name)
+	}
+	want := []string{"technology", "apple", "banana", "Beta", "Zoo"}
+	if len(order) != len(want) {
+		t.Fatalf("ListTags order = %v, want %v", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Errorf("ListTags order = %v, want %v (alphabetical, case-insensitive)", order, want)
+			break
+		}
+	}
+}
+
+func TestTagsCaseInsensitiveCasePreserving(t *testing.T) {
+	st := newTestStore(t)
+	// "energy" first, then "ENERGY": a single tag keeps the first spelling.
+	a := sampleArticle()
+	a.GUID = "g1"
+	id1, _ := st.UpsertArticle(a)
+	a.GUID = "g2"
+	id2, _ := st.UpsertArticle(a)
+	_ = st.SetArticleTags(id1, []string{"energy"})
+	_ = st.SetArticleTags(id2, []string{"ENERGY"})
+
+	tags, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected one tag, got %v", tags)
+	}
+	if tags[0].Name != "energy" || tags[0].Total != 2 {
+		t.Errorf("tag = %+v, want energy with total 2 (first spelling preserved)", tags[0])
+	}
+	// Filtering is case-insensitive too, matching any spelling.
+	arts, err := st.ListArticles("ENERGY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arts) != 2 {
+		t.Errorf("ListArticles(ENERGY) = %d articles, want 2", len(arts))
+	}
+}
+
+func TestTagsCaseInsensitiveFirstSeenWins(t *testing.T) {
+	st := newTestStore(t)
+	// "ENERGY" first, then "energy": the first spelling stays forever.
+	a := sampleArticle()
+	a.GUID = "g1"
+	id1, _ := st.UpsertArticle(a)
+	a.GUID = "g2"
+	id2, _ := st.UpsertArticle(a)
+	_ = st.SetArticleTags(id1, []string{"ENERGY"})
+	_ = st.SetArticleTags(id2, []string{"energy"})
+
+	tags, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 || tags[0].Name != "ENERGY" || tags[0].Total != 2 {
+		t.Fatalf("tags = %+v, want a single ENERGY tag with total 2", tags)
+	}
+}
+
+func TestTagsCaseInsensitiveSourceFlag(t *testing.T) {
+	st := newTestStore(t)
+	// The category spelling differs in case from the source label; both must
+	// resolve to one tag that carries the source flag with the first spelling.
+	a := sampleArticle()
+	id, _ := st.UpsertArticle(a)
+	_ = st.SetArticleTagsWithSource(id, []string{"Nytimes"}, "nytimes")
+	tags, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 || !tags[0].IsSource {
+		t.Fatalf("tags = %v, want a single source tag", tags)
+	}
+	if tags[0].Name != "Nytimes" {
+		t.Errorf("first spelling should be preserved, got %q", tags[0].Name)
 	}
 }
 
@@ -335,7 +528,7 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cols, err := st.articleColumns()
+	cols, err := st.tableColumns("articles")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +543,7 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st2.Close()
-	cols, err = st2.articleColumns()
+	cols, err = st2.tableColumns("articles")
 	if err != nil {
 		t.Fatal(err)
 	}
