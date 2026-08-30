@@ -125,15 +125,15 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	item := &m.list.groups[0].articles[0]
 	item.Link = "https://newrepublic.com/story/1"
 
-	dimEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Render("x"))
+	textEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Render("x"))
 	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright).Render("x"))
 
 	unread := m.renderArticleRow(item, false)
 	if !strings.Contains(unread, boldEscape) {
 		t.Errorf("unread title should be bold: %q", unread)
 	}
-	if !strings.Contains(unread, dimEscape+"newrepublic") || !strings.Contains(unread, dimEscape+"15:04") {
-		t.Errorf("source and time should be dim: %q", unread)
+	if !strings.Contains(unread, textEscape+"newrepublic") || !strings.Contains(unread, textEscape+"15:04") {
+		t.Errorf("source and time should be white: %q", unread)
 	}
 
 	item.Read = true
@@ -141,8 +141,8 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	if strings.Contains(read, boldEscape) {
 		t.Errorf("read title should not be bold: %q", read)
 	}
-	if !strings.Contains(read, dimEscape) {
-		t.Errorf("read title should be dim: %q", read)
+	if !strings.Contains(read, textEscape) {
+		t.Errorf("read title should be white: %q", read)
 	}
 }
 
@@ -157,7 +157,7 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#333333")).Render("x"))
 	// The selected rail renders its grey foreground and the selection
 	// background in a single escape; expect that combined prefix.
-	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Background(lipgloss.Color("#333333")).Render("x"))
+	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#333333")).Render("x"))
 	unselected := m.renderArticleRow(item, false)
 	selected := m.renderArticleRow(item, true)
 	if strings.Contains(unselected, bgEscape) {

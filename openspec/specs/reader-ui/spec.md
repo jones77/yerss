@@ -37,8 +37,8 @@ When a title would run into the right-aligned identifier, the system SHALL
 leave at least one space between the title and the identifier, and a truncated
 title SHALL end with an ellipsis — `…` in Unicode mode and `...` in ASCII
 fallback mode. The source identifier and the publication time SHALL always be
-rendered in the dim/grey style. Only the title SHALL change with read state:
-unread titles SHALL be bold and bright, and read titles SHALL be dim.
+rendered in the text (white) style. Only the title SHALL change with read
+state: unread titles SHALL be bold and bright, and read titles SHALL be white.
 Selection SHALL be indicated by a full-row background highlight covering the
 row's content — including the rail glyph on day-header rows — on day-header
 rows and article rows alike;
@@ -120,12 +120,12 @@ expanded articles).
 #### Scenario: Unread article title is bold
 
 - **WHEN** the article list is displayed and an article has read status false
-- **THEN** that article's title is rendered in bold bright text while its source identifier and time are dim
+- **THEN** that article's title is rendered in bold bright text while its source identifier and time are white
 
-#### Scenario: Read article title is dim
+#### Scenario: Read article title is white
 
 - **WHEN** the article list is displayed and an article has read status true
-- **THEN** that article's title, source identifier, and time are all rendered in the dim style
+- **THEN** that article's title, source identifier, and time are all rendered in the text (white) style
 
 #### Scenario: Selection is a full-row highlight
 
@@ -1111,15 +1111,15 @@ The system SHALL derive all UI foreground colors from the standard terminal
 apply across the list, reader, and popup views:
 
 - **grey/dim role** — ANSI color 8 (dark grey) in both dark and light modes:
-  the article border, rails, bullets, scrollbar track, read article titles,
-  timestamps, source identifiers, day headers, image attribution, and muted
-  popup text (such as plain tag counts and link URLs).
+  the article border, rails, bullets, scrollbar track, day headers, image
+  attribution, and muted popup text (such as plain tag counts and link URLs).
 - **blue role** — ANSI color 12 (bright blue) in dark mode and ANSI color 4
   (blue) in light mode: the status bar, the inline text in the article border
   (date, title, help hint, position indicator), the scrollbar thumb, and popup
   titles and popup borders.
 - **text role** — ANSI color 7 (white) in dark mode and ANSI color 0 (black)
-  in light mode: the article body text.
+  in light mode: the article body text and the list view's article rows (read
+  article titles, timestamps, and source identifiers).
 - **bright role** — ANSI color 15 (bright white) in dark mode and ANSI color 0
   (black) with bold weight in light mode: unread article titles and bold tag
   counts.
@@ -1130,9 +1130,8 @@ The selected-row background highlight SHALL remain a fixed dark grey
 #### Scenario: Border and muted text share the grey role
 
 - **WHEN** the reader or list view is rendered
-- **THEN** the article border, rails, bullets, and scrollbar track render in
-  ANSI color 8, and muted text (read titles, timestamps, source identifiers,
-  day headers, image attribution, popup URLs) renders in the same ANSI color 8
+- **THEN** the article border, rails, bullets, scrollbar track, day headers,
+  image attribution, and popup URLs render in ANSI color 8
 
 #### Scenario: Status, inline border text, scrollbar thumb, and popup chrome use the blue role
 
@@ -1147,9 +1146,10 @@ The selected-row background highlight SHALL remain a fixed dark grey
 - **THEN** the title renders in ANSI color 15 (bright white) with bold weight,
   and in light mode it renders in ANSI color 0 (black) with bold weight
 
-#### Scenario: Article body text uses the text role
+#### Scenario: Article text uses the text role
 
-- **WHEN** article body text is rendered in dark mode
+- **WHEN** article body text or a list article row (read title, timestamp, or
+  source identifier) is rendered in dark mode
 - **THEN** it renders in ANSI color 7 (white), and in ANSI color 0 (black) in
   light mode
 
