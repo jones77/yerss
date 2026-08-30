@@ -86,7 +86,7 @@ func TestArticleRowSourceRightAligned(t *testing.T) {
 	item := &m.list.groups[0].articles[0]
 	item.Link = "https://newrepublic.com/story/1"
 
-	line := ansi.Strip(m.renderArticleRow(item, glyphsFor(m.ascii).tee, false))
+	line := ansi.Strip(m.renderArticleRow(item, false))
 	if !strings.HasSuffix(line, "newrepublic") {
 		t.Errorf("source should be the only right-aligned field: %q", line)
 	}
@@ -107,7 +107,7 @@ func TestArticleRowTitleTruncatedWithEllipsis(t *testing.T) {
 	item.Link = "https://newrepublic.com/story/1"
 
 	g := glyphsFor(m.ascii)
-	line := ansi.Strip(m.renderArticleRow(item, g.tee, false))
+	line := ansi.Strip(m.renderArticleRow(item, false))
 	if !strings.HasSuffix(line, g.ellipsis+" newrepublic") {
 		t.Errorf("truncated title should end with an ellipsis and keep a space before the source: %q", line)
 	}
@@ -128,7 +128,7 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	dimEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Render("x"))
 	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright).Render("x"))
 
-	unread := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
+	unread := m.renderArticleRow(item, false)
 	if !strings.Contains(unread, boldEscape) {
 		t.Errorf("unread title should be bold: %q", unread)
 	}
@@ -137,7 +137,7 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	}
 
 	item.Read = true
-	read := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
+	read := m.renderArticleRow(item, false)
 	if strings.Contains(read, boldEscape) {
 		t.Errorf("read title should not be bold: %q", read)
 	}
@@ -158,8 +158,8 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	// The selected rail renders its grey foreground and the selection
 	// background in a single escape; expect that combined prefix.
 	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Dim).Background(lipgloss.Color("#333333")).Render("x"))
-	unselected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, false)
-	selected := m.renderArticleRow(item, glyphsFor(m.ascii).tee, true)
+	unselected := m.renderArticleRow(item, false)
+	selected := m.renderArticleRow(item, true)
 	if strings.Contains(unselected, bgEscape) {
 		t.Errorf("unselected row should have no background highlight: %q", unselected)
 	}

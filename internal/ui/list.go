@@ -228,12 +228,12 @@ func (m *Model) renderList() string {
 		start, end := listWindow(len(rows), m.list.cursor, m.pageSize())
 		for i := start; i < end; i++ {
 			row := rows[i]
-			corner := m.railGlyph(len(rows), i)
 			if row.kind == rowHeader {
+				corner := m.railGlyph(len(m.list.groups), row.groupIdx)
 				b.WriteString(m.renderDayHeader(&m.list.groups[row.groupIdx], corner, i == m.list.cursor))
 			} else {
 				g := &m.list.groups[row.groupIdx]
-				b.WriteString(m.renderArticleRow(&g.articles[row.artIdx], corner, i == m.list.cursor))
+				b.WriteString(m.renderArticleRow(&g.articles[row.artIdx], i == m.list.cursor))
 			}
 			b.WriteString("\n")
 		}
@@ -258,10 +258,11 @@ func (m *Model) renderList() string {
 	return strings.Join(lines, "\n")
 }
 
-// railGlyph returns the tree-rail corner for row i of n: `┌` on the first row
-// of the whole visible-row list, `└` on the last, `├` on every interior row.
-// Glyphs are computed against the full list, not the scroll window, so they do
-// not move as the window scrolls.
+// railGlyph returns the tree-rail corner for day group i of n: `┌` on the
+// first day group, `└` on the last, `├` on every interior group. Corners are
+// computed against the full group list, not the scroll window, so they do not
+// move as the window scrolls. Only day headers render a rail; article rows
+// carry no tree glyph.
 func (m *Model) railGlyph(n, i int) string {
 	g := glyphsFor(m.ascii)
 	if i == 0 {
@@ -281,7 +282,7 @@ func (m *Model) renderDayHeader(g *dayGroup, corner string, selected bool) strin
 	return style.Render(corner + " " + g.label)
 }
 
-func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool) string {
+func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	g := glyphsFor(m.ascii)
 	bg := lipgloss.Color("#333333")
 	var titleStyle lipgloss.Style
@@ -304,12 +305,12 @@ func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool
 		ts = item.PublishedAt.Local().Format("15:04")
 	}
 
-	// The row is a tree-rail prefix (corner glyph, dash, local time), the
-	// title filling the middle, and the source identifier right-aligned as
-	// the row's only right-hand field, with at least one space between the
-	// two even when the title is truncated (it then ends with an ellipsis).
-	rail := corner + g.h + " "
-	railW := ansi.StringWidth(rail) + ansi.StringWidth(ts) + 1
+	// The row starts with the local publication time, the title filling the
+	// middle, and the source identifier right-aligned as the row's only
+	// right-hand field, with at least one space between the two even when the
+	// title is truncated (it then ends with an ellipsis). Article rows carry
+	// no tree glyph; only day headers branch.
+	railW := ansi.StringWidth(ts) + 1
 	titleW := m.width - railW
 	if src != "" {
 		titleW -= ansi.StringWidth(src) + 1
@@ -331,7 +332,6 @@ func (m *Model) renderArticleRow(item *articleItem, corner string, selected bool
 	}
 
 	var b strings.Builder
-	b.WriteString(dim.Render(rail))
 	b.WriteString(dim.Render(ts))
 	b.WriteString(bar.Render(" "))
 	b.WriteString(titleStyle.Render(title))

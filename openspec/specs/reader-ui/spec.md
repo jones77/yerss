@@ -8,11 +8,11 @@ Provides the terminal user interface for browsing, reading, and filtering RSS ar
 
 The system SHALL display articles grouped under a collapsible header for each
 day, with the most recent day first and articles within a day sorted reverse
-chronologically. The list SHALL be rendered as a continuous tree rail down the
-left edge: the first row of the whole visible-row list SHALL be prefixed with
-`┌` (ASCII `+`), the last row with `└` (ASCII `+`), and every other row with
-`├` (ASCII `+`). Article rows SHALL carry a horizontal dash after the corner
-glyph (`├─`, ASCII `+-`); day-header rows SHALL carry a single space. Day
+chronologically. The day-group headers SHALL be rendered with a tree rail down
+the left edge: the first day group SHALL be prefixed with `┌` (ASCII `+`), the
+last day group with `└` (ASCII `+`), and every other day group with `├`
+(ASCII `+`), each followed by a single space. Article rows SHALL NOT carry a
+tree glyph; the publication time SHALL start the row. Day
 headers SHALL NOT display fold markers. Each day header SHALL display the long
 date in the form `Weekday Day-ordinal Month, Year` (for example
 `Saturday 20th August, 2025`), computed in the user's local timezone, where the
@@ -21,8 +21,8 @@ header for the current local calendar day SHALL be prefixed with `today, ` and
 the header for the previous local calendar day SHALL be prefixed with
 `yesterday, `; older days and the `Undated` group SHALL be unprefixed. Each
 article row SHALL show the publication time as `HH:MM` in the user's local
-timezone (`--:--` when undated) after the tree glyph, followed by the article
-title; the title SHALL NOT be preceded or followed by bullet points. The
+timezone (`--:--` when undated) at the start of the row, followed by the
+article title; the title SHALL NOT be preceded or followed by bullet points. The
 source-domain identifier SHALL be right-aligned at the content edge and SHALL
 be the only field on the right; it SHALL be derived from the article's link
 host by stripping any leading `www.`, taking the organization label of the
@@ -40,7 +40,8 @@ fallback mode. The source identifier and the publication time SHALL always be
 rendered in the dim/grey style. Only the title SHALL change with read state:
 unread titles SHALL be bold and bright, and read titles SHALL be dim.
 Selection SHALL be indicated by a full-row background highlight covering the
-tree glyph and the row's content, on day-header rows and article rows alike;
+row's content — including the rail glyph on day-header rows — on day-header
+rows and article rows alike;
 the system SHALL NOT render a cursor-gutter marker. A collapsed day header
 SHALL hide its article rows; an expanded day header SHALL show them. Selection
 SHALL wrap around when moving past the first or last visible row (headers plus
@@ -48,23 +49,23 @@ expanded articles).
 
 #### Scenario: Tree rail bookends the list
 
-- **WHEN** the article list is displayed with more than one row
-- **THEN** the first row is prefixed with `┌`, the last row with `└`, and every row between with `├`
+- **WHEN** the article list is displayed with more than one day group
+- **THEN** the first day header is prefixed with `┌`, the last day header with `└`, and every day header between with `├`
 
-#### Scenario: Article rows carry the dash, headers a space
+#### Scenario: Day headers carry the rail, article rows do not
 
 - **WHEN** the list is displayed
-- **THEN** each article row is prefixed `├─` (or `┌─`/`└─` at the bookends) and each day header is prefixed `┌`, `├`, or `└` followed by a single space
+- **THEN** each day header is prefixed `┌`, `├`, or `└` followed by a single space, and each article row carries no tree glyph, starting with its publication time
 
 #### Scenario: Tree glyphs are stable while scrolling
 
-- **WHEN** the visible window scrolls so the list's first and last rows are off screen
-- **THEN** the interior rows are all prefixed `├` and the bookend glyphs do not move to the window edges
+- **WHEN** the visible window scrolls so the list's first and last day groups are off screen
+- **THEN** the visible day headers are all prefixed `├` and the bookend glyphs stay on the first and last day groups rather than moving to the window edges
 
 #### Scenario: ASCII fallback tree glyphs
 
 - **WHEN** ASCII fallback mode is enabled
-- **THEN** the tree glyphs render as `+` (corners and tees) and `-` (article-row dash)
+- **THEN** the day-header tree glyphs render as `+` (corners and tees) and article rows carry no tree glyph
 
 #### Scenario: Day header shows the long local date
 
@@ -89,7 +90,7 @@ expanded articles).
 #### Scenario: Article row shows time and title without bullets
 
 - **WHEN** an article row is rendered for a story published at 15:04 local time
-- **THEN** the row shows `HH:MM` after the tree glyph followed by the title, with no bullet markers anywhere in the row
+- **THEN** the row shows `HH:MM` at the start of the row followed by the title, with no bullet markers anywhere in the row
 
 #### Scenario: Source identifier right-aligned at the content edge
 
@@ -129,7 +130,7 @@ expanded articles).
 #### Scenario: Selection is a full-row highlight
 
 - **WHEN** the cursor is on any visible row (day header or article)
-- **THEN** the entire row, including the tree glyph column, is rendered with the selection background and no `> ` marker is shown
+- **THEN** the entire row, including the rail glyph on day-header rows, is rendered with the selection background and no `> ` marker is shown
 
 #### Scenario: Collapsed day hides its articles
 

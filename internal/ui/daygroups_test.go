@@ -299,13 +299,12 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	m.loadList()
 
 	item := &m.list.groups[0].articles[0]
-	corner := glyphsFor(m.ascii).tee
-	line := ansi.Strip(m.renderArticleRow(item, corner, false))
+	line := ansi.Strip(m.renderArticleRow(item, false))
 	if !strings.Contains(line, "10:04") {
 		t.Errorf("row = %q, want local time 10:04 (15:04 UTC - 5h)", line)
 	}
-	if !strings.HasPrefix(line, corner+glyphsFor(m.ascii).h+" ") {
-		t.Errorf("row should start with the tree rail: %q", line)
+	if !strings.HasPrefix(line, "10:04 ") {
+		t.Errorf("row should start with the publication time: %q", line)
 	}
 	if !strings.HasSuffix(line, "example") {
 		t.Errorf("source should be the only right-aligned field: %q", line)
@@ -329,16 +328,16 @@ func TestTreeRailBookendGlyphs(t *testing.T) {
 	// rows: [header today, a, header yesterday, b]
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
 	if !strings.HasPrefix(lines[0], "┌ ") {
-		t.Errorf("first row should be prefixed with the top corner: %q", lines[0])
+		t.Errorf("first day header should be prefixed with the top corner: %q", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], "├─ ") {
-		t.Errorf("interior article row should be a tee with a dash: %q", lines[1])
+	if !strings.HasPrefix(lines[1], "12:00 ") {
+		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[1])
 	}
-	if !strings.HasPrefix(lines[2], "├ ") {
-		t.Errorf("interior header row should be a tee with a space: %q", lines[2])
+	if !strings.HasPrefix(lines[2], "└ ") {
+		t.Errorf("last day header should be prefixed with the bottom corner: %q", lines[2])
 	}
-	if !strings.HasPrefix(lines[3], "└─ ") {
-		t.Errorf("last row should be prefixed with the bottom corner: %q", lines[3])
+	if !strings.HasPrefix(lines[3], "12:00 ") {
+		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[3])
 	}
 }
 
@@ -356,9 +355,17 @@ func TestTreeRailStableWhileScrolling(t *testing.T) {
 	m.list.cursor = 12
 
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	for i, line := range lines[:m.pageSize()] {
-		if !strings.HasPrefix(line, "├") {
-			t.Errorf("scrolled window row %d should use the interior tee, got %q", i, line)
+	rows := m.visibleRows()
+	start, end := listWindow(len(rows), m.list.cursor, m.pageSize())
+	for i := start; i < end; i++ {
+		line := lines[i-start]
+		if rows[i].kind == rowHeader {
+			want := m.railGlyph(len(m.list.groups), rows[i].groupIdx)
+			if !strings.HasPrefix(line, want+" ") {
+				t.Errorf("scrolled window day header %d should use %q, got %q", i, want, line)
+			}
+		} else if strings.HasPrefix(line, "├") {
+			t.Errorf("scrolled window article row %d should carry no tree glyph, got %q", i, line)
 		}
 	}
 }
@@ -375,13 +382,13 @@ func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
 	// rows: [header today, header yesterday, b]
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
 	if !strings.HasPrefix(lines[0], "┌ ") {
-		t.Errorf("first row should stay the top corner: %q", lines[0])
+		t.Errorf("first day header should stay the top corner: %q", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], "├ ") {
-		t.Errorf("middle header should be an interior tee: %q", lines[1])
+	if !strings.HasPrefix(lines[1], "└ ") {
+		t.Errorf("last day header should take the bottom corner: %q", lines[1])
 	}
-	if !strings.HasPrefix(lines[2], "└─ ") {
-		t.Errorf("last article row should take the bottom corner: %q", lines[2])
+	if !strings.HasPrefix(lines[2], "12:00 ") {
+		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[2])
 	}
 }
 
@@ -395,7 +402,7 @@ func TestTreeRailASCIIFallback(t *testing.T) {
 	m.loadList()
 
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	for i, want := range []string{"+ ", "+- ", "+ ", "+- "} {
+	for i, want := range []string{"+ ", "12:00 ", "+ ", "12:00 "} {
 		if !strings.HasPrefix(lines[i], want) {
 			t.Errorf("ascii rail row %d = %q, want prefix %q", i, lines[i], want)
 		}
