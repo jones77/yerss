@@ -215,28 +215,69 @@ func actionLabel(a config.Action) string {
 }
 
 func (m *Model) renderHelp() string {
-	var lines []string
-	lines = append(lines, "Help - current keymap")
-	lines = append(lines, "")
-	for _, a := range config.AllActions() {
+	heading := lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar)
+
+	// actionRow renders one binding as `label  keys`, indented two spaces.
+	actionRow := func(a config.Action) string {
 		keys := strings.Join(m.cfg.Keybindings[a], ", ")
 		if keys == "" {
-			continue
+			return ""
 		}
-		lines = append(lines, fmt.Sprintf("  %-18s %s", actionLabel(a), keys))
+		return fmt.Sprintf("  %-11s %s", actionLabel(a), keys)
 	}
-	w := m.width * 3 / 4
-	h := m.height * 2 / 3
-	if w < 40 {
-		w = 40
+
+	// section renders a heading followed by its action rows.
+	section := func(label string, actions []config.Action) []string {
+		lines := []string{heading.Render(label)}
+		for _, a := range actions {
+			if r := actionRow(a); r != "" {
+				lines = append(lines, r)
+			}
+		}
+		return lines
 	}
-	if h < 10 {
-		h = 10
+
+	// Global fills the left column; List view and Article view stack in the
+	// right column, separated by a blank line.
+	left := section("Global", config.GlobalActions())
+	right := section("List view", config.ListActions())
+	right = append(right, "")
+	right = append(right, section("Article view", config.ArticleActions())...)
+
+	n := max(len(left), len(right))
+	for len(left) < n {
+		left = append(left, "")
+	}
+	for len(right) < n {
+		right = append(right, "")
+	}
+
+	leftW := 0
+	for _, l := range left {
+		leftW = max(leftW, ansi.StringWidth(l))
+	}
+	rightW := 0
+	for _, l := range right {
+		rightW = max(rightW, ansi.StringWidth(l))
+	}
+
+	// The popup including its border must not exceed 70 columns.
+	boxW := min(70, m.width, leftW+2+rightW+4)
+	innerW := max(1, boxW-4)
+
+	lines := []string{padRight("Help - current keymap", innerW)}
+	for i := 0; i < n; i++ {
+		line := padRight(left[i], leftW) + "  " + padRight(right[i], rightW)
+		lines = append(lines, padRight(truncate(line, innerW), innerW))
+	}
+
+	h := len(lines) + 2
+	if h < 6 {
+		h = 6
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.palette.StatusBar).
-		Width(w).
 		Height(h).
 		Padding(0, 1)
 	return box.Render(strings.Join(lines, "\n"))

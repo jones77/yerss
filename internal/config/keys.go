@@ -122,6 +122,52 @@ func actionsForView(v View) []Action {
 	return out
 }
 
+// GlobalActions returns every action that is not specific to a single view, in
+// catalog order: actions valid in all views (such as Quit, Back, Move Up, Move
+// Down, Help) plus navigation shared by the list and article views (such as
+// Page Up, Page Down, Top, Bottom, Tag Popup). The help popup renders these
+// under its Global heading.
+func GlobalActions() []Action {
+	var out []Action
+	for _, spec := range catalog {
+		inList := hasView(spec.views, ViewList)
+		inArticle := hasView(spec.views, ViewArticle)
+		if (inList && !inArticle) || (inArticle && !inList) {
+			continue
+		}
+		out = append(out, spec.action)
+	}
+	return out
+}
+
+// ListActions returns the actions valid only in the list view, in catalog
+// order. The help popup renders these under its List view heading.
+func ListActions() []Action {
+	return exclusiveActions(ViewList)
+}
+
+// ArticleActions returns the actions valid only in the article view, in
+// catalog order. The help popup renders these under its Article view heading.
+func ArticleActions() []Action {
+	return exclusiveActions(ViewArticle)
+}
+
+// exclusiveActions returns the actions declared valid in view v but not in the
+// other reading view, in catalog order.
+func exclusiveActions(v View) []Action {
+	other := ViewList
+	if v == ViewList {
+		other = ViewArticle
+	}
+	var out []Action
+	for _, spec := range catalog {
+		if hasView(spec.views, v) && !hasView(spec.views, other) {
+			out = append(out, spec.action)
+		}
+	}
+	return out
+}
+
 // tomlKeyArray renders a key list as a TOML string-array literal, e.g.
 // ["q", "ctrl+c"].
 func tomlKeyArray(keys []string) string {

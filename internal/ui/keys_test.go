@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
 )
@@ -134,20 +135,53 @@ func TestOOpensOnArticleRowNotHeader(t *testing.T) {
 	}
 }
 
-func TestHelpListsEveryActionInOrder(t *testing.T) {
+func TestHelpListsEveryActionGrouped(t *testing.T) {
 	m, _ := newTestModel(t)
 	help := m.renderHelp()
-	last := 0
-	for i, a := range config.AllActions() {
+	for _, a := range config.AllActions() {
 		keys := strings.Join(m.cfg.Keybindings[a], ", ")
-		line := fmt.Sprintf("  %-18s %s", actionLabel(a), keys)
-		pos := strings.Index(help, line)
-		if pos < 0 {
-			t.Fatalf("help missing %q", line)
+		line := fmt.Sprintf("  %-11s %s", actionLabel(a), keys)
+		if !strings.Contains(help, line) {
+			t.Errorf("help missing %q", line)
 		}
-		if i > 0 && pos < last {
-			t.Errorf("action %q out of order in help", a)
+	}
+	for _, want := range []string{"Global", "List view", "Article view"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help missing section %q", want)
 		}
-		last = pos
+	}
+	gi := strings.Index(help, "Global")
+	li := strings.Index(help, "List view")
+	ai := strings.Index(help, "Article view")
+	if gi >= li || li >= ai {
+		t.Errorf("help sections out of order: Global=%d List view=%d Article view=%d", gi, li, ai)
+	}
+}
+
+func TestHelpTwoColumnWithinSeventyColumns(t *testing.T) {
+	m, _ := newTestModel(t)
+	lines := strings.Split(m.renderHelp(), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("help should have content lines, got %d", len(lines))
+	}
+	// List view must sit in the second column, on the same row as Global.
+	row := ""
+	for _, l := range lines {
+		if strings.Contains(l, "Global") {
+			row = l
+			break
+		}
+	}
+	if row == "" {
+		t.Fatalf("help should render a Global row")
+	}
+	if i := strings.Index(row, "Global"); i < 0 || strings.Index(row, "List view") <= i {
+		t.Errorf("List view should be to the right of Global: %q", row)
+	}
+	// The popup including its border must not exceed 70 columns.
+	for i, l := range lines {
+		if w := ansi.StringWidth(l); w > 70 {
+			t.Errorf("help line %d is %d columns, want <= 70: %q", i, w, l)
+		}
 	}
 }

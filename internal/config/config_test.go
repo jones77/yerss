@@ -215,6 +215,41 @@ func TestKeybindingCatalogConsistency(t *testing.T) {
 	}
 }
 
+func TestHelpActionGroups(t *testing.T) {
+	groups := map[string][]Action{
+		"Global":    GlobalActions(),
+		"List view": ListActions(),
+		"Article view": ArticleActions(),
+	}
+	seen := map[Action]bool{}
+	for label, actions := range groups {
+		for _, a := range actions {
+			if seen[a] {
+				t.Errorf("action %q appears in more than one help group", a)
+			}
+			seen[a] = true
+		}
+		if len(actions) == 0 {
+			t.Errorf("help group %q is empty", label)
+		}
+	}
+	for _, a := range AllActions() {
+		if !seen[a] {
+			t.Errorf("action %q missing from every help group", a)
+		}
+	}
+	want := map[string][]Action{
+		"Global":       {Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
+		"List view":    {Refresh, OpenArticle},
+		"Article view": {LinkPopup, OpenURL, CopyURL, CopyArticleText},
+	}
+	for label, expected := range want {
+		if !reflect.DeepEqual(groups[label], expected) {
+			t.Errorf("%sActions() = %v, want %v", label, groups[label], expected)
+		}
+	}
+}
+
 func TestSeededTemplateIncludesAllAliases(t *testing.T) {
 	tmpl := seededConfig()
 	for _, want := range []string{
