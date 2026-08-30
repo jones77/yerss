@@ -56,7 +56,7 @@ func articleMouseModel(t *testing.T) *Model {
 
 func TestArticlePressAnchorsSelection(t *testing.T) {
 	m := articleMouseModel(t)
-	m.updateArticleMouse(mouseClick(10, 10)) // content cell (7, 8)
+	m.updateArticleMouse(mouseClick(10, 9)) // content cell (7, 8)
 	sel := m.article.sel
 	if !sel.active || !sel.tracking {
 		t.Fatalf("press should anchor an active tracked selection, got %+v", sel)
@@ -76,10 +76,6 @@ func TestArticlePressOutsideContentIgnored(t *testing.T) {
 	if m.article.sel.active {
 		t.Error("press in the left padding should not start a selection")
 	}
-	m.updateArticleMouse(mouseClick(5, 1)) // top padding row
-	if m.article.sel.active {
-		t.Error("press in the top padding should not start a selection")
-	}
 	m.updateArticleMouse(mouseClick(79, 23)) // bottom/right border area
 	if m.article.sel.active {
 		t.Error("press on the border should not start a selection")
@@ -88,8 +84,8 @@ func TestArticlePressOutsideContentIgnored(t *testing.T) {
 
 func TestArticleDragExtendsSelection(t *testing.T) {
 	m := articleMouseModel(t)
-	m.updateArticleMouse(mouseClick(3, 2)) // content cell (0, 0)
-	m.updateArticleMouse(mouseDrag(30, 10))
+	m.updateArticleMouse(mouseClick(3, 1)) // content cell (0, 0)
+	m.updateArticleMouse(mouseDrag(30, 9))
 	sel := m.article.sel
 	if sel.anchorX != 0 || sel.anchorY != 0 {
 		t.Errorf("drag must keep anchor at (0,0), got (%d,%d)", sel.anchorX, sel.anchorY)
@@ -101,11 +97,11 @@ func TestArticleDragExtendsSelection(t *testing.T) {
 
 func TestArticleDragClampsToContentArea(t *testing.T) {
 	m := articleMouseModel(t)
-	m.updateArticleMouse(mouseClick(3, 2))
+	m.updateArticleMouse(mouseClick(3, 1))
 	m.updateArticleMouse(mouseDrag(1000, 1000)) // far outside content
 	sel := m.article.sel
-	if sel.curX != 73 || sel.curY != 19 {
-		t.Errorf("drag outside content = (%d,%d), want clamped (73,19)", sel.curX, sel.curY)
+	if sel.curX != 73 || sel.curY != 20 {
+		t.Errorf("drag outside content = (%d,%d), want clamped (73,20)", sel.curX, sel.curY)
 	}
 	m.updateArticleMouse(mouseDrag(-100, -100))
 	sel = m.article.sel
@@ -118,9 +114,9 @@ func TestArticleReleaseCopiesSelection(t *testing.T) {
 	m := articleMouseModel(t)
 	m.article.viewport.SetContent("abcdefghij")
 	m.article.lines = []string{"abcdefghij"}
-	m.updateArticleMouse(mouseClick(3, 2)) // anchor (0,0)
-	m.updateArticleMouse(mouseDrag(8, 2))  // current (5,0)
-	cmd := m.updateArticleMouse(mouseRelease(8, 2))
+	m.updateArticleMouse(mouseClick(3, 1)) // anchor (0,0)
+	m.updateArticleMouse(mouseDrag(8, 1))  // current (5,0)
+	cmd := m.updateArticleMouse(mouseRelease(8, 1))
 	if cmd == nil {
 		t.Fatal("release after a drag should produce a copy command")
 	}

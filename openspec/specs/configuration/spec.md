@@ -1,6 +1,6 @@
 ## Purpose
 
-Provides TOML-based configuration for keybindings, display preferences (padding, theme, ASCII fallback), and file path overrides, with sensible defaults that require no configuration file to start.
+Provides TOML-based configuration for keybindings, display preferences (padding, scrollbar style, theme, ASCII fallback), and file path overrides, with sensible defaults that require no configuration file to start.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ The system SHALL load configuration from a TOML file at the XDG default path `$X
 
 ### Requirement: Configurable keybindings
 
-The system SHALL allow every keybinding to be remapped via the TOML config file. Keybindings SHALL be defined as a mapping from action name to a list of key strings. The system SHALL validate that no key is bound to more than one action and SHALL report an error if a conflict is detected at load time. Keybinding parsing SHALL be case-sensitive: a lowercase letter and its uppercase counterpart are distinct keys, so both MAY be bound to the same action without conflict. The default keybindings SHALL include `b` as an alias for the `back` action (alongside `esc`, `enter`, and `h`) and `o` as an alias for the `open_article` action in the list view (alongside `enter` and `l`). In the article view, `o` SHALL remain bound to the `open_url` action (opening the article URL in the browser); the per-view key resolution system ensures `o` resolves to `open_article` in the list view and `open_url` in the article view without conflict. Shifted-letter default bindings SHALL be reachable via both cases whenever the other case is not already bound to a different action: the tag popup SHALL be bound to both `T` and `t`, and refresh SHALL be bound to both `R` and `r`. The `bottom` action SHALL remain bound to uppercase `G` only, because lowercase `g` is already bound to `top`. The `copy_article_text` action SHALL be bound to uppercase `C` only, because lowercase `c` is already bound to `copy_url`.
+The system SHALL allow every keybinding to be remapped via the TOML config file. Keybindings SHALL be defined as a mapping from action name to a list of key strings. The system SHALL validate that no key is bound to more than one action and SHALL report an error if a conflict is detected at load time. Keybinding parsing SHALL be case-sensitive: a lowercase letter and its uppercase counterpart are distinct keys, so both MAY be bound to the same action without conflict. The default keybindings SHALL include `b` as an alias for the `back` action (alongside `esc` and `h`) and `o` as an alias for the `open_article` action in the list view (alongside `enter` and `l`). In the article view, `enter` SHALL be bound to the `close_article` action (closing the article and returning to the list), and `o` SHALL remain bound to the `open_url` action (opening the article URL in the browser); the per-view key resolution system ensures `o` resolves to `open_article` in the list view and `open_url` in the article view without conflict. Shifted-letter default bindings SHALL be reachable via both cases whenever the other case is not already bound to a different action: the tag popup SHALL be bound to both `T` and `t`, and refresh SHALL be bound to both `R` and `r`. The `bottom` action SHALL remain bound to uppercase `G` only, because lowercase `g` is already bound to `top`. The `copy_article_text` action SHALL be bound to uppercase `C` only, because lowercase `c` is already bound to `copy_url`.
 
 #### Scenario: Custom keybinding
 
@@ -36,6 +36,11 @@ The system SHALL allow every keybinding to be remapped via the TOML config file.
 
 - **WHEN** no custom keybindings are configured and the user presses `b` in the article view
 - **THEN** the article view returns to the list view, identical to pressing `esc` or `h`
+
+#### Scenario: Default enter alias for close_article
+
+- **WHEN** no custom keybindings are configured and the user presses `enter` in the article view
+- **THEN** the article view returns to the list view, identical to pressing `esc`, `h`, or `b`
 
 #### Scenario: Default o alias for open_article in list
 
@@ -54,7 +59,7 @@ The system SHALL allow every keybinding to be remapped via the TOML config file.
 
 #### Scenario: Lowercase g stays bound to top
 
-- **WHEN** no custom keybindings are configured and the user presses `g`
+- **WHEN** no custom keybindings are configured and the user presses `1` or `g`
 - **THEN** the cursor moves to the top, and `G` moves to the bottom (the two cases remain distinct)
 
 #### Scenario: Uppercase C copies article text
@@ -64,7 +69,7 @@ The system SHALL allow every keybinding to be remapped via the TOML config file.
 
 ### Requirement: Configurable article padding
 
-The system SHALL allow the horizontal and vertical padding inside the article reader border to be configured via the TOML config file. Default horizontal padding SHALL be 2 spaces and default vertical padding SHALL be 1 space.
+The system SHALL allow the horizontal and vertical padding inside the article reader border to be configured via the TOML config file. Default horizontal padding SHALL be 2 spaces and default vertical padding SHALL be 1 space. The vertical padding SHALL be applied below the article content; the content SHALL start directly beneath the top border with no padding above it.
 
 #### Scenario: Custom padding
 
@@ -132,6 +137,30 @@ The system SHALL support an `images` option under the `[display]` section of the
 
 - **WHEN** the config sets `images` to an unrecognized value
 - **THEN** the system treats it as `auto` and renders images when supported
+
+### Requirement: Configurable scrollbar style
+
+The system SHALL support a `scrollbar` option under the `[display]` section of
+the TOML config file with values `single` or `double`. The default SHALL be
+`single`. When set to `single`, the article view's scrollbar thumb SHALL render
+as a single line (`│` Unicode, `|` ASCII). When set to `double`, the thumb SHALL
+render as a double line (`║`) in Unicode mode; ASCII fallback mode has no
+double-line glyph, so the thumb remains `|`.
+
+#### Scenario: Default scrollbar is single
+
+- **WHEN** the config does not specify `scrollbar` and an article is displayed
+- **THEN** the scrollbar thumb renders as the single line `│` (Unicode) or `|` (ASCII)
+
+#### Scenario: Double scrollbar renders a double-line thumb
+
+- **WHEN** the config sets `scrollbar = "double"` and an article is displayed in Unicode mode
+- **THEN** the scrollbar thumb renders as the double line `║`
+
+#### Scenario: Invalid scrollbar value falls back to single
+
+- **WHEN** the config sets `scrollbar` to an unrecognized value
+- **THEN** the system treats it as `single`
 
 ### Requirement: First-run config bootstrap
 

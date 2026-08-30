@@ -12,7 +12,8 @@ import (
 // borderGlyphs holds the glyphs used to draw the article border. In ASCII
 // mode box-drawing characters are replaced with plain equivalents. The right
 // edge acts as a scrollbar: the unfilled track is a grey single line and the
-// filled thumb is a bright double line (`║` Unicode, `|` ASCII).
+// filled thumb is a bright single line (`│` Unicode, `|` ASCII); the model's
+// glyphs helper swaps in the double-line thumb (`║`) when configured.
 type borderGlyphs struct {
 	tl, bl, tr, br string
 	tee            string
@@ -20,13 +21,26 @@ type borderGlyphs struct {
 	fill, unfill   string
 	ellipsis       string
 	bullet         string
+	half           string
 }
 
 func glyphsFor(ascii bool) borderGlyphs {
 	if ascii {
-		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", tee: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: "."}
+		return borderGlyphs{tl: "+", bl: "+", tr: "+", br: "+", tee: "+", h: "-", v: ":", fill: "|", unfill: ":", ellipsis: "...", bullet: ".", half: "1/2"}
 	}
-	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", tee: "├", h: "─", v: "│", fill: "║", unfill: "│", ellipsis: "…", bullet: "·"}
+	return borderGlyphs{tl: "┌", bl: "└", tr: "┐", br: "┘", tee: "├", h: "─", v: "│", fill: "│", unfill: "│", ellipsis: "…", bullet: "·", half: "½"}
+}
+
+// glyphs returns the glyph set for the current mode, applying the configured
+// scrollbar thumb style: single line by default, or a double line when the
+// scrollbar option is set to "double" (Unicode only; ASCII fallback has no
+// double-line glyph).
+func (m *Model) glyphs() borderGlyphs {
+	g := glyphsFor(m.ascii)
+	if m.cfg.Display.Scrollbar == "double" && !m.ascii {
+		g.fill = "║"
+	}
+	return g
 }
 
 // clampPadY clamps the vertical content padding so the article frame (top +
@@ -56,7 +70,7 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	}
 	textW, viewportH, effPadY := contentGeom(w, h, padX, padY)
 	interiorW := max(1, w-2)
-	interiorH := max(1, viewportH+2*effPadY)
+	interiorH := max(1, h-2)
 	thumbTop, thumbH := sc.thumb(interiorH)
 
 	border := lipgloss.NewStyle().Foreground(p.Dim)
@@ -75,13 +89,11 @@ func renderArticleBorder(w, h, padX, padY int, g borderGlyphs, p Palette, date, 
 	var lines []string
 	lines = append(lines, topBorder(w, g, p, date, title))
 
+	// Content starts directly beneath the top border with no padding above it;
+	// the vertical padding pads only the bottom.
 	row := 0
 	blank := func() string {
 		return border.Render(g.v) + space + right(row)
-	}
-	for i := 0; i < effPadY; i++ {
-		lines = append(lines, blank())
-		row++
 	}
 	for i := 0; i < viewportH; i++ {
 		var line string
@@ -158,7 +170,7 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
 // horizontal line + core + horizontal line + rightCorner`, mirroring the top
-// border. The core is a left-aligned `o: open in browser` hint and a
+// border. The core is a left-aligned `o: open article in browser` hint and a
 // right-aligned `<percent>% · <bottomLine>/<totalLines>` position indicator,
 // each inset one space from the horizontal line (like the top border's date
 // and title) and separated from the dash fill by a space. The bullet between
@@ -166,7 +178,7 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 // styled in bright blue (12); the bullet and the rails stay in the grey role
 // (8).
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
-	hint := "o: open in browser"
+	hint := "o: open article in browser"
 	percentStr := fmt.Sprintf("%d%%", sc.percent())
 	ratioStr := fmt.Sprintf("%d/%d", sc.bottomLine(), sc.totalH)
 	indicator := percentStr + " " + g.bullet + " " + ratioStr

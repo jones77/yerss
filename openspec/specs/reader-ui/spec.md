@@ -149,26 +149,38 @@ expanded articles).
 
 ### Requirement: List view status bar
 
-The system SHALL display a status bar at the bottom of the list view showing the
-article count as `<n>/<total>`, where `n` is the number of articles currently
-shown (after any active tag filter) and `total` is the total number of articles
-in the database, followed by the date the feeds were last refreshed. The status
-bar SHALL also display the on-disk size of the article database, formatted as a
-human-readable value with binary unit suffixes (B, KB, MB, GB), on the same side
-of the status bar as the last-refresh date. The reported size SHALL include the
-WAL sidecar file when one is present, so it reflects the actual on-disk
-footprint. When a tag filter is active, the status bar SHALL also display the
-active filter name.
+The system SHALL display a status bar at the bottom of the list view. The
+left-most elements SHALL be the time and long-form date the feeds were last
+refreshed, formatted as `HH:MM Weekday Day-ordinal Month, Year last refresh`
+(for example `14:30 Saturday 29th August, 2026 last refresh`), with the
+`last refresh` label rendered in the dim role (#707070), or the text
+`never refreshed` when no refresh has occurred. The right-most elements SHALL
+be the on-disk size of the article database, formatted as a human-readable
+value with binary unit suffixes (B, KB, MB, GB), the scroll position percentage,
+and the article count as `<n>/<total>`, where `<n>` is the position of the
+selected article among the shown articles and `<total>` is the total number of
+articles in the database, joined by the middle-dot bullet (`·`, ASCII `.`) (for
+example `20.6 MB · 100% · 2/2`). The bullets and the `last refresh` label SHALL
+render in the dim role (#707070); the remaining status bar text SHALL render in
+the chrome role.
+The reported size SHALL include the WAL sidecar file when one is present, so it
+reflects the actual on-disk footprint. When a tag filter is active, the status
+bar SHALL also display the active filter name.
 
-#### Scenario: Status bar shows filtered/total count, size, and refresh date
+#### Scenario: Status bar shows refresh time, size, percentage, and position
 
 - **WHEN** the list view is displayed
-- **THEN** the status bar shows the article count as `<n>/<total>` (shown over total), the database size as a human-readable value, and the last-refreshed date
+- **THEN** the status bar shows the last-refresh time and date on the left as `HH:MM Weekday Day-ordinal Month, Year last refresh` and, on the right, the database size, the percentage, and the `<n>/<total>` position joined by ` · `
+
+#### Scenario: Status bar uses dim bullets and dim refresh label
+
+- **WHEN** the list view is displayed
+- **THEN** the bullets between the database size, percentage, and position render in the dim role (#707070), the `last refresh` label renders in the dim role, and the elements between the bullets render in the chrome role
 
 #### Scenario: Status bar shows active filter
 
 - **WHEN** a tag filter is active on the list view
-- **THEN** the status bar displays the filtered tag name alongside the `<n>/<total>` count, the database size, and the date
+- **THEN** the status bar displays the filtered tag name alongside the refresh time, the database size, the percentage, and the `<n>/<total>` position
 
 #### Scenario: Database size includes WAL sidecar
 
@@ -192,44 +204,50 @@ date and title SHALL appear inline with the top border. The left vertical border
 SHALL be rendered in the same grey style as the top and bottom borders, while the
 content text inside the border SHALL keep its own (bright) styling. The right
 edge SHALL act as a scrollbar: a contiguous thumb segment rendered as a bright
-double-line glyph represents the currently visible portion of the article and is
+single-line glyph represents the currently visible portion of the article and is
 positioned along the track to reflect the current scroll offset, while the rest
-of the track is rendered as a grey single-line glyph. The thumb SHALL be present
+of the track is rendered as a grey single-line glyph. The scrollbar style SHALL
+be configurable via the `scrollbar` display option: the default `single` renders
+the thumb as one line (`│` Unicode, `|` ASCII), and `double` renders it as a
+double line (`║`, Unicode only; ASCII fallback has no double-line glyph). The
+thumb SHALL be present
 from the first frame when a scrollable article is opened, sitting at the top of
 the track when the scroll offset is zero. The thumb height SHALL be proportional
 to the fraction of the article that is visible, clamped to a minimum of one row
 and a maximum of one row less than the track height (the right border's interior
 height between the top and bottom borders). The thumb SHALL never fill the entire
 track on a scrollable article, so it always reads as a movable indicator. The
-bottom border SHALL display a left-aligned permanent help hint `o: open in
-browser` and, on the right, a position indicator in the form
+bottom border SHALL display a left-aligned permanent help hint `o: open
+article in browser` and, on the right, a position indicator in the form
 `<percent>% · <bottomLine>/<totalLines>`, where `<percent>` is the scroll
 percentage, `<bottomLine>` is the line number of the last visible viewport line
 clamped to the total, and `<totalLines>` is the article's total line count;
 horizontal dashes fill the space between the hint and the indicator (for example
-at the very bottom: `o: open in browser ───── 100% · 120/120`). The bullet used
+at the very bottom: `o: open article in browser ───── 100% · 120/120`). The bullet used
 between the percent and the line ratio SHALL be the same middle-dot bullet used
 in the top border (`·`, ASCII `.`). The content area SHALL have two spaces of
-horizontal padding on each side and one space of vertical padding at the top and
-bottom. When the entire article fits within the viewport and no scrolling is
-possible, the right border SHALL be fully filled with the bright double-line
+horizontal padding on each side and one space of vertical padding below the
+content and none above it, so the first content line (the article URL) sits
+directly beneath the top border. When the entire article fits within the viewport
+and no scrolling is
+possible, the right border SHALL be fully filled with the bright single-line
 glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 `<totalLines>`.
 
 #### Scenario: Short article fully visible
 
 - **WHEN** an article is opened that fits entirely within the viewport
-- **THEN** the top border displays the date and title, the right border is fully filled with the bright double-line glyph, and the bottom border displays the help hint on the left and `100% · <n>/<n>` on the right where `<n>` is the total line count
+- **THEN** the top border displays the date and title, the right border is fully filled with the bright single-line glyph, and the bottom border displays the help hint on the left and `100% · <n>/<n>` on the right where `<n>` is the total line count
 
 #### Scenario: Scrollbar visible on open
 
 - **WHEN** a scrollable article (content taller than the viewport) is opened and the scroll offset is zero
-- **THEN** the right border renders a bright double-line thumb at least one row tall at the top of the track, with the remainder of the track as a grey single line, and the bottom border displays `0% · <viewportHeight>/<totalLines>`
+- **THEN** the right border renders a bright single-line thumb at least one row tall at the top of the track, with the remainder of the track as a grey single line, and the bottom border displays `0% · <viewportHeight>/<totalLines>`
 
 #### Scenario: Thumb moves with scroll
 
 - **WHEN** a scrollable article is displayed and the user has scrolled to 42% of the scrollable range
-- **THEN** the thumb's top row is at 42% of the thumb's travel range along the track (rounded), rendered as a bright double-line, with the rest of the track as a grey single line, and the bottom border displays `42%` and a `<bottomLine>/<totalLines>` ratio consistent with that offset
+- **THEN** the thumb's top row is at 42% of the thumb's travel range along the track (rounded), rendered as a bright single-line, with the rest of the track as a grey single line, and the bottom border displays `42%` and a `<bottomLine>/<totalLines>` ratio consistent with that offset
 
 #### Scenario: Thumb height stays within bounds
 
@@ -239,7 +257,12 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 #### Scenario: Thumb reaches the bottom at full scroll
 
 - **WHEN** a scrollable article is displayed and the user has scrolled to the very bottom (100% of the scrollable range)
-- **THEN** the thumb sits at the bottom of the track as a bright double-line, with the rest of the track as a grey single line, and the bottom border displays `100% · <totalLines>/<totalLines>`
+- **THEN** the thumb sits at the bottom of the track as a bright single-line, with the rest of the track as a grey single line, and the bottom border displays `100% · <totalLines>/<totalLines>`
+
+#### Scenario: Configurable scrollbar style
+
+- **WHEN** the `scrollbar` display option is set to `double` and an article is displayed in Unicode mode
+- **THEN** the thumb renders as the bright double-line glyph `║`; with the default `single` it renders as the single line `│`
 
 #### Scenario: Left border uses the grey border style
 
@@ -249,7 +272,7 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 #### Scenario: Bottom border shows help hint and line indicator
 
 - **WHEN** the article view is rendered
-- **THEN** the bottom border shows `o: open in browser` left-aligned and `<percent>% · <bottomLine>/<totalLines>` right-aligned, with fill dashes between them
+- **THEN** the bottom border shows `o: open article in browser` left-aligned and `<percent>% · <bottomLine>/<totalLines>` right-aligned, with fill dashes between them
 
 #### Scenario: ASCII fallback border
 
@@ -294,7 +317,7 @@ append an ellipsis.
 
 The system SHALL support both vi-style and arrow-key navigation. Page navigation
 (PgUp/PgDn, Ctrl-F/Ctrl-B, Space) SHALL scroll by a full viewport page. Half-page
-navigation (Ctrl-D/Ctrl-U) SHALL scroll by half a viewport. `g` or
+navigation (Ctrl-D/Ctrl-U) SHALL scroll by half a viewport. `1`, `g`, or
 Ctrl-Up SHALL move to the top; `G` or Ctrl-Down SHALL move to the bottom. In the
 list view, up/down moves selection across visible rows (day headers and expanded
 articles); in the article view, up/down scrolls the article by one line. `Enter`,
@@ -570,7 +593,7 @@ exceed 70 columns wide.
 #### Scenario: Help popup groups bindings by scope
 
 - **WHEN** the user presses `?` in any view
-- **THEN** the popup lists Quit, Back, Move Up, Page Down, and Tag Popup under Global, Refresh and Open Article under List view, and Link Popup, Open URL, Copy URL, and Copy Article Text under Article view
+- **THEN** the popup lists Quit, Back, Move Up, Page Down, and Tag Popup under Global, Refresh and Open Article under List view, and Close Article, Link Popup, Open URL, Copy URL, and Copy Article Text under Article view
 
 #### Scenario: Global includes all-view and shared bindings
 
@@ -1089,12 +1112,14 @@ previous selection. Leaving the article view SHALL clear the selection.
 
 The system SHALL provide a links popup in the article view, opened by pressing
 `l` or the right arrow key. The popup SHALL list every hyperlink rendered in
-the article — the header link and the body links — in document order,
+the article body (the article's own URL is not listed) in document order,
 deduplicated by URL. Each row SHALL show the link text followed by the URL
 rendered in the dim style and truncated to the popup width. Navigation SHALL
 use `j`/`k` and the arrow keys and SHALL wrap around at both ends. Enter SHALL
 open the selected URL in the system browser using the same non-shell
-single-argument opener used for other URL opens. Esc SHALL close the popup
+single-argument opener used for other URL opens. While the links popup is open,
+`o` SHALL still open the article's own URL in the system browser without closing
+the popup. Esc SHALL close the popup
 without navigating. When the article contains no links, the popup SHALL open
 with an empty list and Enter SHALL do nothing. While the popup is closed,
 Enter SHALL continue to close the article view and return to the list.
@@ -1109,10 +1134,10 @@ Enter SHALL continue to close the article view and return to the list.
 - **WHEN** the article contains `<a href="https://example.com/post">world</a>` and the links popup is open
 - **THEN** the popup shows a row with the text `world` followed by the URL `https://example.com/post` in the dim style, truncated to the popup width
 
-#### Scenario: Header link appears in the popup
+#### Scenario: Article's own URL is not listed
 
 - **WHEN** an article with a link URL is open and the links popup is opened
-- **THEN** the article's own URL appears as a row in the popup
+- **THEN** the article's own URL does not appear as a row in the popup; only the article body's hyperlinks are listed
 
 #### Scenario: Duplicate URLs are listed once
 
@@ -1128,6 +1153,11 @@ Enter SHALL continue to close the article view and return to the list.
 
 - **WHEN** the user presses Enter on a selected link row in the popup
 - **THEN** the selected URL is opened in the system browser via a non-shell single-argument opener
+
+#### Scenario: O opens the article URL while the popup is open
+
+- **WHEN** the links popup is open and the user presses `o`
+- **THEN** the article's own URL is opened in the system browser and the popup remains open
 
 #### Scenario: Esc closes the popup without navigating
 
@@ -1145,7 +1175,7 @@ The system SHALL derive all UI foreground colors from the standard terminal
 (ANSI) palette instead of bespoke RGB values. The following color roles SHALL
 apply across the list, reader, and popup views:
 
-- **grey/dim role** — ANSI color 8 (dark grey) in both dark and light modes:
+- **grey/dim role** — the colour `#707070` in both dark and light modes:
   the article border, rails, bullets, scrollbar track, day headers, image
   attribution, and muted popup text (such as plain tag counts and link URLs).
 - **blue role** — ANSI color 12 (bright blue) in dark mode and ANSI color 4
@@ -1159,14 +1189,14 @@ apply across the list, reader, and popup views:
   (black) with bold weight in light mode: unread article titles and bold tag
   counts.
 
-The selected-row background highlight SHALL remain a fixed dark grey
-(`#333333`) in both modes.
+The selected-row background highlight SHALL remain a fixed grey
+(`#707070`) in both modes.
 
 #### Scenario: Border and muted text share the grey role
 
 - **WHEN** the reader or list view is rendered
 - **THEN** the article border, rails, bullets, scrollbar track, day headers,
-  image attribution, and popup URLs render in ANSI color 8
+  image attribution, and popup URLs render in `#707070`
 
 #### Scenario: Status, inline border text, scrollbar thumb, and popup chrome use the blue role
 
@@ -1191,4 +1221,4 @@ The selected-row background highlight SHALL remain a fixed dark grey
 #### Scenario: Selection highlight keeps its fixed background
 
 - **WHEN** a row is selected in the list view in either mode
-- **THEN** the selection highlight renders with the fixed `#333333` background
+- **THEN** the selection highlight renders with the fixed `#707070` background

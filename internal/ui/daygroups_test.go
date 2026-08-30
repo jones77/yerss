@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
@@ -246,8 +247,8 @@ func TestStatusBarShowsNT(t *testing.T) {
 
 	// rows: [header, one, two]; select the second article (position 2 of 2).
 	m.list.cursor = 2
-	if got := m.renderStatusBar(); !strings.Contains(got, "100% · 2/2") {
-		t.Errorf("status bar = %q, want 100%% · 2/2", got)
+	if got := m.renderStatusBar(); !strings.Contains(got, "100% "+glyphsFor(m.ascii).bullet+" 2/2") {
+		t.Errorf("status bar = %q, want 100%% %s 2/2", got, glyphsFor(m.ascii).bullet)
 	}
 
 	m.popupData = popupState{
@@ -258,8 +259,8 @@ func TestStatusBarShowsNT(t *testing.T) {
 	// filtered to [header, one]; select article one (position 1 of 2 total).
 	m.list.cursor = 1
 	got := m.renderStatusBar()
-	if !strings.Contains(got, "50% · 1/2") {
-		t.Errorf("filtered status bar = %q, want 50%% · 1/2", got)
+	if !strings.Contains(got, "50% "+glyphsFor(m.ascii).bullet+" 1/2") {
+		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, glyphsFor(m.ascii).bullet)
 	}
 	if !strings.Contains(got, "filter tech") {
 		t.Errorf("filtered status bar missing filter name: %q", got)
@@ -283,12 +284,43 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	}
 
 	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	m.list.cursor = 1 // the single article
 	got = m.renderStatusBar()
-	if !strings.Contains(got, "last refresh") {
-		t.Errorf("status bar = %q, want last refresh after setting time", got)
+	if !strings.Contains(got, "15:04 Friday 28th August, 2026 last refresh") {
+		t.Errorf("status bar = %q, want last refresh time with long date", got)
 	}
 	if !strings.Contains(got, formatSize(m.dbSize)) {
 		t.Errorf("status bar = %q, want size with refresh date", got)
+	}
+	if !strings.Contains(got, formatSize(m.dbSize)+" "+glyphsFor(m.ascii).bullet+" 100% "+glyphsFor(m.ascii).bullet+" 1/1") {
+		t.Errorf("status bar = %q, want size %s percentage %s position", got, glyphsFor(m.ascii).bullet, glyphsFor(m.ascii).bullet)
+	}
+}
+
+func TestStatusBarBulletAndRefreshDim(t *testing.T) {
+	forceTrueColor(t)
+	m, st := newTestModel(t)
+	m.SetAscii(false)
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+	m.list.cursor = 1
+	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+
+	got := m.renderStatusBar()
+	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	bullet := glyphsFor(m.ascii).bullet
+	if !strings.Contains(got, dim.Render(bullet)) {
+		t.Errorf("bullets should render in the dim role (ANSI 8): %q", got)
+	}
+	if !strings.Contains(got, dim.Render("last refresh")) {
+		t.Errorf("last refresh label should render in the dim role (ANSI 8): %q", got)
+	}
+	if !strings.Contains(got, base.Render("100%")) {
+		t.Errorf("elements between bullets should stay in the chrome role: %q", got)
+	}
+	if !strings.Contains(got, base.Render(formatSize(m.dbSize))) {
+		t.Errorf("database size should stay in the chrome role: %q", got)
 	}
 }
 

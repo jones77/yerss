@@ -14,6 +14,7 @@ const (
 	Refresh         Action = "refresh"
 	OpenArticle     Action = "open_article"
 	Back            Action = "back"
+	CloseArticle    Action = "close_article"
 	LinkPopup       Action = "link_popup"
 	MoveUp          Action = "move_up"
 	MoveDown        Action = "move_down"
@@ -57,7 +58,8 @@ var catalog = []actionSpec{
 	{Quit, []string{"q", "ctrl+c"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{Refresh, []string{"R", "r", "ctrl+r", "f5"}, []View{ViewList}},
 	{OpenArticle, []string{"enter", "l", "o"}, []View{ViewList}},
-	{Back, []string{"esc", "enter", "h", "b"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{Back, []string{"esc", "h", "b"}, []View{ViewList, ViewArticle, ViewPopup}},
+	{CloseArticle, []string{"enter"}, []View{ViewArticle}},
 	{LinkPopup, []string{"l", "right"}, []View{ViewArticle}},
 	{MoveUp, []string{"up", "k"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{MoveDown, []string{"down", "j"}, []View{ViewList, ViewArticle, ViewPopup}},
@@ -65,10 +67,10 @@ var catalog = []actionSpec{
 	{PageDown, []string{"pgdn", "ctrl+f", "space"}, []View{ViewList, ViewArticle}},
 	{HalfPageUp, []string{"ctrl+u"}, []View{ViewList, ViewArticle}},
 	{HalfPageDown, []string{"ctrl+d"}, []View{ViewList, ViewArticle}},
-	{Top, []string{"g", "ctrl+up"}, []View{ViewList, ViewArticle}},
+	{Top, []string{"1", "g", "ctrl+up"}, []View{ViewList, ViewArticle}},
 	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle}},
 	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
-	{OpenURL, []string{"o"}, []View{ViewArticle}},
+	{OpenURL, []string{"o"}, []View{ViewArticle, ViewPopup}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
 	{CopyArticleText, []string{"C"}, []View{ViewArticle}},
 	{Help, []string{"?"}, []View{ViewList, ViewArticle, ViewPopup}},

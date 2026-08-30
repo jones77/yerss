@@ -119,6 +119,41 @@ images = "sometimes"
 	}
 }
 
+func TestScrollbarOptionParsed(t *testing.T) {
+	withXDG(t)
+	if cfg, err := Load(""); err != nil || cfg.Display.Scrollbar != "single" {
+		t.Errorf("default scrollbar = %q (err %v), want single", cfg.Display.Scrollbar, err)
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+scrollbar = "double"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.Scrollbar != "double" {
+		t.Errorf("scrollbar = %q, want double", cfg.Display.Scrollbar)
+	}
+}
+
+func TestInvalidScrollbarFallsBackToSingle(t *testing.T) {
+	withXDG(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+scrollbar = "fancy"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.Scrollbar != "single" {
+		t.Errorf("invalid scrollbar value = %q, want single", cfg.Display.Scrollbar)
+	}
+}
+
 func TestCustomKeybinding(t *testing.T) {
 	withXDG(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -160,7 +195,8 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		Quit:            {"q", "ctrl+c"},
 		Refresh:         {"R", "r", "ctrl+r", "f5"},
 		OpenArticle:     {"enter", "l", "o"},
-		Back:            {"esc", "enter", "h", "b"},
+		Back:            {"esc", "h", "b"},
+		CloseArticle:    {"enter"},
 		LinkPopup:       {"l", "right"},
 		MoveUp:          {"up", "k"},
 		MoveDown:        {"down", "j"},
@@ -168,7 +204,7 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		PageDown:        {"pgdn", "ctrl+f", "space"},
 		HalfPageUp:      {"ctrl+u"},
 		HalfPageDown:    {"ctrl+d"},
-		Top:             {"g", "ctrl+up"},
+		Top:             {"1", "g", "ctrl+up"},
 		Bottom:          {"G", "ctrl+down"},
 		TagPopup:        {"T", "t"},
 		OpenURL:         {"o"},
@@ -241,7 +277,7 @@ func TestHelpActionGroups(t *testing.T) {
 	want := map[string][]Action{
 		"Global":       {Quit, Back, MoveUp, MoveDown, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
 		"List view":    {Refresh, OpenArticle},
-		"Article view": {LinkPopup, OpenURL, CopyURL, CopyArticleText},
+		"Article view": {CloseArticle, LinkPopup, OpenURL, CopyURL, CopyArticleText},
 	}
 	for label, expected := range want {
 		if !reflect.DeepEqual(groups[label], expected) {
@@ -253,7 +289,8 @@ func TestHelpActionGroups(t *testing.T) {
 func TestSeededTemplateIncludesAllAliases(t *testing.T) {
 	tmpl := seededConfig()
 	for _, want := range []string{
-		`# back = ["esc", "enter", "h", "b"]`,
+		`# back = ["esc", "h", "b"]`,
+		`# close_article = ["enter"]`,
 		`# open_article = ["enter", "l", "o"]`,
 		`# tag_popup = ["T", "t"]`,
 		`# refresh = ["R", "r", "ctrl+r", "f5"]`,
@@ -309,6 +346,9 @@ func TestDefaultKeyAliases(t *testing.T) {
 	}
 	if articleEff["o"] != OpenURL {
 		t.Errorf("o in article view should map to open_url, got %v", articleEff["o"])
+	}
+	if articleEff["enter"] != CloseArticle {
+		t.Errorf("enter in article view should map to close_article, got %v", articleEff["enter"])
 	}
 	if articleEff["c"] != CopyURL {
 		t.Errorf("c in article view should map to copy_url, got %v", articleEff["c"])

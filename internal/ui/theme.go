@@ -13,7 +13,7 @@ import (
 //   - Text: the article body foreground (ANSI 7 white / 0 black).
 //   - Bright: emphasis such as unread titles (ANSI 15 bright white / 0 bold).
 //   - Dim: the grey role covering the border, rails, and muted text
-//     (ANSI 8 dark grey in both modes).
+//     (#707070 in both modes).
 //   - StatusBar: the blue role covering the status bar, border inline text,
 //     scrollbar thumb, and popup chrome (ANSI 12 bright blue / 4 blue).
 type Palette struct {
@@ -27,7 +27,7 @@ func darkPalette() Palette {
 	return Palette{
 		Text:      lipgloss.Color("7"),
 		Bright:    lipgloss.Color("15"),
-		Dim:       lipgloss.Color("8"),
+		Dim:       lipgloss.Color("#707070"),
 		StatusBar: lipgloss.Color("12"),
 	}
 }
@@ -36,7 +36,7 @@ func lightPalette() Palette {
 	return Palette{
 		Text:      lipgloss.Color("0"),
 		Bright:    lipgloss.Color("0"),
-		Dim:       lipgloss.Color("8"),
+		Dim:       lipgloss.Color("#707070"),
 		StatusBar: lipgloss.Color("4"),
 	}
 }

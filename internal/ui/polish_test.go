@@ -154,10 +154,10 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	m.loadList()
 	item := &m.list.groups[0].articles[0]
 
-	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#333333")).Render("x"))
+	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#707070")).Render("x"))
 	// The selected rail renders its grey foreground and the selection
 	// background in a single escape; expect that combined prefix.
-	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#333333")).Render("x"))
+	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#707070")).Render("x"))
 	unselected := m.renderArticleRow(item, false)
 	selected := m.renderArticleRow(item, true)
 	if strings.Contains(unselected, bgEscape) {
@@ -198,7 +198,7 @@ func TestArticleFrameBorderColors(t *testing.T) {
 func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	g := glyphsFor(false)
 	line := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
-	if !strings.HasPrefix(line, "└─ o: open in browser") {
+	if !strings.HasPrefix(line, "└─ o: open article in browser") {
 		t.Errorf("hint should be inset past a horizontal line: %q", line)
 	}
 	if !strings.HasSuffix(line, "100% · 120/120 ─┘") {

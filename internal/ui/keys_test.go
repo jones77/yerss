@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
+	"yerss/internal/store"
 )
 
 // sendKey routes a single rune through the active view's update handler.
@@ -55,6 +56,51 @@ func TestBKeyAliasBackFromArticle(t *testing.T) {
 	sendKey(m, 'b')
 	if m.view != viewList {
 		t.Errorf("b in article view should return to list, view = %d", m.view)
+	}
+}
+
+func TestEnterKeyClosesArticle(t *testing.T) {
+	m, st := newTestModel(t)
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+	m.list.cursor = 1 // first article row
+	m.openArticle()
+	if m.view != viewArticle {
+		t.Fatalf("expected article view, got %d", m.view)
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.view != viewList {
+		t.Errorf("enter in article view should return to list, view = %d", m.view)
+	}
+}
+
+func TestOneKeyGoesToTopOfList(t *testing.T) {
+	m, st := newTestModel(t)
+	insertArticle(t, st, "one", nil)
+	insertArticle(t, st, "two", nil)
+	m.loadList()
+	m.list.cursor = 2 // last row
+	m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	if m.list.cursor != 0 {
+		t.Errorf("1 in list should move to the top, cursor = %d", m.list.cursor)
+	}
+}
+
+func TestOneKeyGoesToTopOfArticle(t *testing.T) {
+	m, st := newTestModel(t)
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+	m.list.cursor = 1
+	m.openArticle()
+	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+	m.article.viewport.GotoBottom()
+	if m.article.viewport.YOffset == 0 {
+		t.Fatal("expected to be scrolled down before pressing 1")
+	}
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	if m.article.viewport.YOffset != 0 {
+		t.Errorf("1 in article should scroll to the top, offset = %d", m.article.viewport.YOffset)
 	}
 }
 
@@ -137,12 +183,19 @@ func TestOOpensOnArticleRowNotHeader(t *testing.T) {
 
 func TestHelpListsEveryActionGrouped(t *testing.T) {
 	m, _ := newTestModel(t)
-	help := m.renderHelp()
+	m.SetAscii(false)
+	help := ansi.Strip(m.renderHelp())
 	for _, a := range config.AllActions() {
-		keys := strings.Join(m.cfg.Keybindings[a], ", ")
-		line := fmt.Sprintf("  %-11s %s", actionLabel(a), keys)
-		if !strings.Contains(help, line) {
-			t.Errorf("help missing %q", line)
+		keys := strings.Join(displayKeys(m.cfg.Keybindings[a]), ", ")
+		found := false
+		for _, l := range strings.Split(help, "\n") {
+			if strings.Contains(l, m.helpLabel(a)) && strings.Contains(l, keys) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("help missing row for %q (%s %s)", a, m.helpLabel(a), keys)
 		}
 	}
 	for _, want := range []string{"Global", "List view", "Article view"} {
@@ -155,6 +208,54 @@ func TestHelpListsEveryActionGrouped(t *testing.T) {
 	ai := strings.Index(help, "Article view")
 	if gi >= li || li >= ai {
 		t.Errorf("help sections out of order: Global=%d List view=%d Article view=%d", gi, li, ai)
+	}
+}
+
+func TestHelpKeysStandOutInBright(t *testing.T) {
+	forceTrueColor(t)
+	m, _ := newTestModel(t)
+	m.SetAscii(false)
+	help := m.renderHelp()
+	if !strings.Contains(help, "\x1b[97mctrl+c\x1b[0m") {
+		t.Errorf("keys should render in the bright role (ANSI 15): %q", help)
+	}
+	if !strings.Contains(help, "\x1b[1;94m Key Bindings \x1b[0m") {
+		t.Errorf("Key Bindings title should render bold in the chrome role (ANSI 12): %q", help)
+	}
+	// Section headings stay in the chrome role but are no longer bold.
+	if !strings.Contains(help, "\x1b[94mGlobal\x1b[0m") {
+		t.Errorf("section headings should render plain in the chrome role: %q", help)
+	}
+	for _, l := range strings.Split(help, "\n") {
+		if strings.Contains(l, "ctrl+c") {
+			if !strings.Contains(l, "\x1b[0m, \x1b[97m") {
+				t.Errorf("commas between keys should stay uncolored: %q", l)
+			}
+			break
+		}
+	}
+}
+
+func TestHelpShowsSpaceKeyAsWord(t *testing.T) {
+	// Load normalizes "space" to a literal " " for runtime matching; the help
+	// popup must still display it as the word "space".
+	km, err := config.ParseKeybindings(config.DefaultKeybindings())
+	if err != nil {
+		t.Fatalf("ParseKeybindings: %v", err)
+	}
+	cfg := config.Default()
+	cfg.Keybindings = km
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	m := New(cfg, st)
+	m.width = 80
+	m.height = 24
+	help := ansi.Strip(m.renderHelp())
+	if !strings.Contains(help, "pgdn, ctrl+f, space") {
+		t.Errorf("help should render the space key as the word space: %q", help)
 	}
 }
 

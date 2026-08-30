@@ -20,7 +20,7 @@ func TestRenderList(t *testing.T) {
 	if !strings.Contains(s, "one") || !strings.Contains(s, "two") {
 		t.Errorf("list render missing articles: %q", s)
 	}
-	if !strings.Contains(s, "0% · 0/2") {
+	if !strings.Contains(s, "0% "+glyphsFor(m.ascii).bullet+" 0/2") {
 		t.Errorf("status bar missing position count: %q", s)
 	}
 }
@@ -54,7 +54,7 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[0], wantDate) {
 		t.Errorf("top border missing date+time %q: %q", wantDate, lines[0])
 	}
-	if !strings.Contains(lines[len(lines)-1], "o: open in browser") {
+	if !strings.Contains(lines[len(lines)-1], "o: open article in browser") {
 		t.Errorf("bottom border missing help hint: %q", lines[len(lines)-1])
 	}
 	if !strings.Contains(lines[len(lines)-1], "100% · 5/5") {
@@ -87,7 +87,7 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 		Content: "<p>a short paragraph</p>",
 	})
 	lines := strings.Split(m.renderArticle(), "\n")
-	first := ansi.Strip(lines[2])
+	first := ansi.Strip(lines[1])
 	// padX contributes two leading spaces; glamour's document margin is removed
 	// so it does not stack on top.
 	if !strings.HasPrefix(first, ":  Hello world article title") {
@@ -122,8 +122,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.ascii = true
 	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
-	// 70 content lines vs viewport height 20 (height 24, padY 1): scrollable
-	// range 50, track height 22, thumb height 22*20/70 = 6.
+	// 70 content lines vs viewport height 21 (height 24, padY 1, no top
+	// padding): scrollable range 49, track height 22, thumb height 22*21/70 = 6.
 	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 
 	cases := []struct {
@@ -132,8 +132,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 		wantTrack string
 		wantLabel string
 	}{
-		{"on open", 0, "||||||::::::::::::::::", "0% . 20/70"},
-		{"42%", 21, "::::::||||||::::::::::", "42% . 41/70"},
+		{"on open", 0, "||||||::::::::::::::::", "0% . 21/70"},
+		{"43%", 21, "::::::||||||::::::::::", "43% . 42/70"},
 		{"100%", 50, "::::::::::::::::||||||", "100% . 70/70"},
 	}
 	for _, c := range cases {

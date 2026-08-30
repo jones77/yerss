@@ -42,11 +42,11 @@ func TestHarvestLinksDeduplicatesInDocumentOrder(t *testing.T) {
 	}
 }
 
-func TestArticleStateHarvestsHeaderAndBodyLinks(t *testing.T) {
+func TestArticleStateHarvestsBodyLinks(t *testing.T) {
 	m := articleWithLinks(t)
-	urls := []string{"https://example.com/post", "https://example.com/one", "https://example.com/two"}
+	urls := []string{"https://example.com/one", "https://example.com/two"}
 	if len(m.article.links) != len(urls) {
-		t.Fatalf("links = %+v, want %d entries (header included, body deduped)", m.article.links, len(urls))
+		t.Fatalf("links = %+v, want %d body links (header excluded, deduped)", m.article.links, len(urls))
 	}
 	for i, l := range m.article.links {
 		if l.url != urls[i] {
@@ -81,10 +81,13 @@ func TestLinkPopupRowsShowTextAndDimURL(t *testing.T) {
 		t.Errorf("popup missing title: %q", s)
 	}
 	stripped := ansi.Strip(s)
-	for _, want := range []string{"post", "one", "two", "https://example.com/one", "https://example.com/two"} {
+	for _, want := range []string{"one", "two", "https://example.com/one", "https://example.com/two"} {
 		if !strings.Contains(stripped, want) {
 			t.Errorf("popup missing %q: %q", want, stripped)
 		}
+	}
+	if strings.Contains(stripped, "post") {
+		t.Errorf("popup should not list the article's own URL: %q", stripped)
 	}
 	if !strings.Contains(s, "> ") {
 		t.Errorf("popup missing the cursor marker: %q", s)
@@ -115,7 +118,7 @@ func TestLinkPopupNavigationWraps(t *testing.T) {
 func TestLinkPopupEnterOpensSelected(t *testing.T) {
 	m := articleWithLinks(t)
 	m.openLinksPopup()
-	m.popupData.cursor = 2 // https://example.com/two
+	m.popupData.cursor = 1 // https://example.com/two
 
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
@@ -152,6 +155,27 @@ func TestLinkPopupEmptyArticle(t *testing.T) {
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
 		t.Errorf("Enter on an empty popup should do nothing, got %T", cmd)
+	}
+}
+
+func TestLinkPopupOOpensArticleURL(t *testing.T) {
+	m := articleWithLinks(t)
+	m.openLinksPopup()
+	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if cmd == nil {
+		t.Fatal("o with the links popup open should open the article URL")
+	}
+	if m.popup != popupLinks {
+		t.Errorf("o should keep the popup open, popup = %d", m.popup)
+	}
+}
+
+func TestTagPopupListOOpensNothing(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.popup = popupTagsList
+	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if cmd != nil {
+		t.Errorf("o over the list tag popup should not open anything, got %T", cmd)
 	}
 }
 

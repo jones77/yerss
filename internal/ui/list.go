@@ -9,7 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
 	"golang.org/x/net/publicsuffix"
 
 	"yerss/internal/config"
@@ -264,7 +263,7 @@ func (m *Model) renderList() string {
 // move as the window scrolls. Only day headers render a rail; article rows
 // carry no tree glyph.
 func (m *Model) railGlyph(n, i int) string {
-	g := glyphsFor(m.ascii)
+	g := m.glyphs()
 	if i == 0 {
 		return g.tl
 	}
@@ -277,14 +276,14 @@ func (m *Model) railGlyph(n, i int) string {
 func (m *Model) renderDayHeader(g *dayGroup, corner string, selected bool) string {
 	style := lipgloss.NewStyle().Foreground(m.palette.Dim)
 	if selected {
-		style = style.Background(lipgloss.Color("#333333"))
+		style = style.Background(lipgloss.Color("#707070"))
 	}
 	return style.Render(corner + " " + g.label)
 }
 
 func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
-	g := glyphsFor(m.ascii)
-	bg := lipgloss.Color("#333333")
+	g := m.glyphs()
+	bg := lipgloss.Color("#707070")
 	var titleStyle lipgloss.Style
 	if item.Read {
 		titleStyle = lipgloss.NewStyle().Foreground(m.palette.Text)
@@ -378,40 +377,42 @@ func sourceID(rawURL, feedURL string) string {
 }
 
 func (m *Model) renderStatusBar() string {
+	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	bullet := m.glyphs().bullet
+
 	left := ""
 	if m.statusMsg != "" && time.Now().Before(m.statusExpires) {
-		left = m.statusMsg
+		left = base.Render(m.statusMsg)
 	} else if m.refreshing {
-		left = "refreshing..."
+		left = base.Render("refreshing...")
+	} else if m.lastRefreshedAt.IsZero() {
+		left = base.Render("never refreshed")
 	} else {
-		n, total := m.selectedArticlePosition()
-		pct := 0
-		if total > 0 {
-			pct = int(float64(n)/float64(total)*100 + 0.5)
-		}
-		left = fmt.Sprintf("%d%% · %d/%d", pct, n, total)
+		t := m.lastRefreshedAt
+		left = base.Render(t.Format("15:04")+" "+longDate(t)) + " " + dim.Render("last refresh")
 	}
 	if m.list.filter != "" && (m.statusMsg == "" || !time.Now().Before(m.statusExpires)) {
-		left += " · filter " + m.list.filter
+		left += " " + dim.Render(bullet) + " " + base.Render("filter "+m.list.filter)
 	}
 
-	right := ""
-	if m.lastRefreshedAt.IsZero() {
-		right = "never refreshed"
-	} else {
-		right = "last refresh " + m.lastRefreshedAt.Format("2006-01-02 15:04")
+	n, total := m.selectedArticlePosition()
+	pct := 0
+	if total > 0 {
+		pct = int(float64(n)/float64(total)*100 + 0.5)
 	}
+	right := base.Render(fmt.Sprintf("%d%%", pct)) + " " + dim.Render(bullet) + " " + base.Render(fmt.Sprintf("%d/%d", n, total))
 	if m.dbSize > 0 {
-		right = formatSize(m.dbSize) + " · " + right
+		right = base.Render(formatSize(m.dbSize)) + " " + dim.Render(bullet) + " " + right
 	}
 
-	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(right)
+	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if pad < 1 {
 		pad = 1
 	}
 	line := left + strings.Repeat(" ", pad) + right
 	line = truncate(line, m.width)
-	return lipgloss.NewStyle().Foreground(m.palette.StatusBar).Render(line)
+	return base.Render(line)
 }
 
 func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

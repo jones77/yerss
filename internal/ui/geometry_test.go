@@ -13,11 +13,11 @@ func TestContentGeom(t *testing.T) {
 		w, h, padX, padY             int
 		wantTextW, wantViewportH, wantEffPadY int
 	}{
-		{"normal", 80, 24, 2, 1, 74, 20, 1},
+		{"normal", 80, 24, 2, 1, 74, 21, 1},
 		{"no padding", 80, 24, 0, 0, 78, 22, 0},
 		{"degenerate height", 80, 2, 2, 1, 74, 1, 0},
-		{"padding exceeds height", 30, 6, 2, 2, 24, 2, 1},
-		{"zero width", 0, 24, 2, 1, 1, 20, 1},
+		{"padding exceeds height", 30, 6, 2, 2, 24, 3, 1},
+		{"zero width", 0, 24, 2, 1, 1, 21, 1},
 		{"zero height", 80, 0, 2, 1, 74, 1, 0},
 	}
 	for _, tc := range cases {

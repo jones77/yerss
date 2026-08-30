@@ -30,11 +30,12 @@ type RefreshOptions struct {
 
 // Display holds rendering preferences.
 type Display struct {
-	Theme    string
-	Ascii    bool
-	Images   string
-	PaddingX int
-	PaddingY int
+	Theme     string
+	Ascii     bool
+	Images    string
+	PaddingX  int
+	PaddingY  int
+	Scrollbar string
 }
 
 // Config is the fully-resolved application configuration.
@@ -49,7 +50,7 @@ type Config struct {
 func Default() *Config {
 	return &Config{
 		Refresh:     RefreshOptions{MinInterval: "15m", Cooldown: "60s"},
-		Display:     Display{Theme: "auto", Images: "auto", PaddingX: 2, PaddingY: 1},
+		Display:     Display{Theme: "auto", Images: "auto", PaddingX: 2, PaddingY: 1, Scrollbar: "single"},
 		Keybindings: DefaultKeybindings(),
 	}
 }
@@ -115,12 +116,23 @@ func normalizeImages(v string) string {
 	return "auto"
 }
 
+// normalizeScrollbar maps a scrollbar config value to the supported set
+// (single/double), treating any unrecognized value as the single default.
+func normalizeScrollbar(v string) string {
+	switch v {
+	case "single", "double":
+		return v
+	}
+	return "single"
+}
+
 type displayOpts struct {
-	Theme    string `toml:"theme"`
-	Images   string `toml:"images"`
-	PaddingX *int   `toml:"padding_x"`
-	PaddingY *int   `toml:"padding_y"`
-	Ascii    *bool  `toml:"ascii"`
+	Theme     string `toml:"theme"`
+	Images    string `toml:"images"`
+	PaddingX  *int   `toml:"padding_x"`
+	PaddingY  *int   `toml:"padding_y"`
+	Ascii     *bool  `toml:"ascii"`
+	Scrollbar *string `toml:"scrollbar"`
 }
 
 // Load reads configuration from path, falling back to the default XDG
@@ -182,6 +194,9 @@ func Load(path string) (*Config, error) {
 	}
 	if raw.Display.Ascii != nil {
 		cfg.Display.Ascii = *raw.Display.Ascii
+	}
+	if raw.Display.Scrollbar != nil {
+		cfg.Display.Scrollbar = normalizeScrollbar(*raw.Display.Scrollbar)
 	}
 
 	if len(raw.Keybindings) > 0 {

@@ -88,15 +88,21 @@ func TestMigrateFileAppendsNewOptions(t *testing.T) {
 	}
 	content := string(s)
 	if !strings.Contains(content, "# new in v1") {
-		t.Errorf("missing banner: %q", content)
+		t.Errorf("missing v1 banner: %q", content)
+	}
+	if !strings.Contains(content, "# new in v2") {
+		t.Errorf("missing v2 banner: %q", content)
 	}
 	if !strings.Contains(content, "# dir = \"\"") {
 		t.Errorf("missing appended option: %q", content)
 	}
+	if !strings.Contains(content, "# scrollbar = \"single\"") {
+		t.Errorf("missing appended scrollbar option: %q", content)
+	}
 	if !strings.Contains(content, "# [keybindings]") {
 		t.Errorf("missing appended section: %q", content)
 	}
-	if !strings.Contains(content, "# yerss config — schema v1") {
+	if !strings.Contains(content, fmt.Sprintf("# yerss config — schema v%d", ConfigSchemaVersion)) {
 		t.Errorf("header not bumped: %q", content)
 	}
 }

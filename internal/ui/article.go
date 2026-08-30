@@ -50,10 +50,8 @@ func harvestLinks(md string) []articleLink {
 	return out
 }
 
-// harvestArticleLinks collects every hyperlink rendered in the article — the
-// header link first, then the body links — deduplicated by URL. The header
-// URL is emitted as a bare autolink rather than a bracketed link, so it is
-// seeded explicitly to keep it in document order.
+// harvestArticleLinks collects every hyperlink rendered in the article body —
+// the markdown links, not the article's own header URL — deduplicated by URL.
 func harvestArticleLinks(a store.Article) []articleLink {
 	seen := map[string]bool{}
 	var out []articleLink
@@ -64,7 +62,6 @@ func harvestArticleLinks(a store.Article) []articleLink {
 		seen[url] = true
 		out = append(out, articleLink{text: text, url: url})
 	}
-	add(a.Link, a.Link)
 	for _, l := range harvestLinks(convert.Convert(a.Content)) {
 		add(l.text, l.url)
 	}
@@ -220,7 +217,7 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.Quit:
 		m.persistSelection()
 		return m, tea.Quit
-	case config.Back:
+	case config.Back, config.CloseArticle:
 		m.backToList()
 	case config.LinkPopup:
 		m.openLinksPopup()
@@ -334,11 +331,12 @@ func (m *Model) backToList() {
 
 // contentRect returns the screen-space rectangle of the article content area
 // (origin column/row plus width/height in cells), matching renderArticleBorder:
-// content begins at column padX+1 and row effPadY+1.
+// content begins at column padX+1 and row 1, directly beneath the top border
+// with no padding above it.
 func (m *Model) contentRect() (x0, y0, w, h int) {
 	padX := m.cfg.Display.PaddingX
-	w, h, effPadY := contentGeom(m.width, m.height, padX, m.cfg.Display.PaddingY)
-	return 1 + padX, 1 + effPadY, w, h
+	w, h, _ = contentGeom(m.width, m.height, padX, m.cfg.Display.PaddingY)
+	return 1 + padX, 1, w, h
 }
 
 // contentCell maps a screen cell to a content-area cell, reporting ok=false
@@ -523,7 +521,7 @@ func (m *Model) renderArticle() string {
 	if title == "" {
 		title = "(untitled)"
 	}
-	g := glyphsFor(m.ascii)
+	g := m.glyphs()
 	content := m.article.viewport.View()
 	lines := highlightSelection(strings.Split(content, "\n"), m.article.sel)
 	sc := scrollState{
