@@ -209,6 +209,7 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		Top:             {"1", "g", "ctrl+up"},
 		Bottom:          {"G", "ctrl+down"},
 		TagPopup:        {"T", "t"},
+		ExpandToggle:    {"x"},
 		OpenURL:         {"o"},
 		CopyURL:         {"c"},
 		CopyArticleText: {"C"},
@@ -278,7 +279,7 @@ func TestHelpActionGroups(t *testing.T) {
 	}
 	want := map[string][]Action{
 		"Global":       {Quit, Back, MoveUp, MoveDown, MoveLeft, MoveRight, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
-		"List view":    {Refresh, OpenArticle},
+		"List view":    {Refresh, OpenArticle, ExpandToggle},
 		"Article view": {CloseArticle, LinkPopup, OpenURL, CopyURL, CopyArticleText},
 	}
 	for label, expected := range want {

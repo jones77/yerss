@@ -155,17 +155,24 @@ refreshed, formatted as `HH:MM Weekday Day-ordinal Month, Year last refresh`
 (for example `14:30 Saturday 29th August, 2026 last refresh`), with the
 `last refresh` label rendered in the dim role (#707070), or the text
 `never refreshed` when no refresh has occurred. The right-most elements SHALL
-be the on-disk size of the article database, formatted as a human-readable
+be a literal `?: help` hint followed by the bullet and
+the on-disk size of the article database, formatted as a human-readable
 value with binary unit suffixes (B, KB, MB, GB), the scroll position percentage,
 and the article count as `<n>/<total>`, where `<n>` is the position of the
 selected article among the shown articles and `<total>` is the total number of
 articles in the database, joined by the middle-dot bullet (`·`, ASCII `.`) (for
-example `20.6 MB · 100% · 2/2`). The bullets and the `last refresh` label SHALL
-render in the dim role (#707070); the remaining status bar text SHALL render in
-the chrome role.
+example `?: help · 20.6 MB · 100% · 2/2`). The bullets and the `last refresh`
+label SHALL render in the dim role (#707070); the remaining status bar text
+SHALL render in the chrome role.
 The reported size SHALL include the WAL sidecar file when one is present, so it
 reflects the actual on-disk footprint. When a tag filter is active, the status
 bar SHALL also display the active filter name.
+
+#### Scenario: Status bar leads the right side with the help hint
+
+- **WHEN** the list view is displayed
+- **THEN** the status bar's right side reads `?: help · <size> · <percent>% ·
+  <n>/<total>`, with `?: help` as the first right-aligned element
 
 #### Scenario: Status bar shows refresh time, size, percentage, and position
 
@@ -218,14 +225,17 @@ and a maximum of one row less than the track height (the right border's interior
 height between the top and bottom borders). The thumb SHALL never fill the entire
 track on a scrollable article, so it always reads as a movable indicator. The
 bottom border SHALL display a left-aligned permanent help hint `o: open
-article in browser` and, on the right, a position indicator in the form
-`<percent>% · <bottomLine>/<totalLines>`, where `<percent>` is the scroll
-percentage, `<bottomLine>` is the line number of the last visible viewport line
-clamped to the total, and `<totalLines>` is the article's total line count;
-horizontal dashes fill the space between the hint and the indicator (for example
-at the very bottom: `o: open article in browser ───── 100% · 120/120`). The bullet used
-between the percent and the line ratio SHALL be the same middle-dot bullet used
-in the top border (`·`, ASCII `.`). The content area SHALL have two spaces of
+article in browser` and, on the right, a position indicator led by a literal
+`?: help` hint in the form
+`?: help · <percent>% · <bottomLine>/<totalLines>`, where `<percent>` is the
+scroll percentage, `<bottomLine>` is the line number of the last visible
+viewport line clamped to the total, and `<totalLines>` is the article's total
+line count; horizontal dashes fill the space between the hint and the indicator
+(for example at the very bottom:
+`o: open article in browser ───── ?: help · 100% · 120/120`). The bullets used
+between the help affordance and the percent and between the percent and the
+line ratio SHALL be the same middle-dot bullet used in the top border (`·`,
+ASCII `.`). The content area SHALL have two spaces of
 horizontal padding on each side and one space of vertical padding below the
 content and none above it, so the first content line (the article URL) sits
 directly beneath the top border. When the entire article fits within the viewport
@@ -268,6 +278,12 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 
 - **WHEN** the article view is rendered
 - **THEN** the left vertical border is drawn in the same grey style as the top and bottom borders, and the content text retains its own bright styling
+
+#### Scenario: Bottom border leads the right side with the help hint
+
+- **WHEN** the article view is rendered
+- **THEN** the bottom border's right side reads `?: help · <percent>% ·
+  <bottomLine>/<totalLines>`, with `?: help` as the first right-aligned element
 
 #### Scenario: Bottom border shows help hint and line indicator
 
@@ -333,6 +349,10 @@ on a header row. When the cursor is on an article row, `Tab` SHALL toggle the
 expansion of that article's day group, and the existing bindings (`h`/`b` clear
 the filter or are a no-op, `l`/Enter/`o` open the article, Space half-pages)
 SHALL apply unchanged.
+The system SHALL provide an `x` key in the list view that toggles all day groups
+at once: when every day group is expanded it SHALL collapse them all, and
+otherwise (some or all collapsed, including a mixed state) it SHALL expand them
+all.
 
 #### Scenario: Open article from list
 
@@ -348,6 +368,22 @@ SHALL apply unchanged.
 
 - **WHEN** the list cursor is on an article row and the user presses Tab
 - **THEN** the day group containing that article toggles its expansion
+
+#### Scenario: Toggle all collapses an all-expanded list
+
+- **WHEN** every day group is expanded in the list view and the user presses `x`
+- **THEN** every day group collapses and only the day headers remain visible
+
+#### Scenario: Toggle all expands a fully collapsed list
+
+- **WHEN** every day group is collapsed in the list view and the user presses `x`
+- **THEN** every day group expands and all articles become visible
+
+#### Scenario: Toggle all expands a mixed list
+
+- **WHEN** some day groups are expanded and others are collapsed in the list
+  view and the user presses `x`
+- **THEN** every day group expands (a mixed state defaults to expand all)
 
 #### Scenario: Return to list from article
 

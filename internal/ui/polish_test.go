@@ -241,8 +241,8 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	if !strings.Contains(line, "browser ─") {
 		t.Errorf("space between the hint and the border fill: %q", line)
 	}
-	if !strings.Contains(line, "─ 100%") {
-		t.Errorf("space between the border fill and the percentage: %q", line)
+	if !strings.Contains(line, "─ ?: help") {
+		t.Errorf("space between the border fill and the position indicator: %q", line)
 	}
 	if ansi.StringWidth(line) != 80 {
 		t.Errorf("bottom border width = %d, want 80: %q", ansi.StringWidth(line), line)
@@ -251,6 +251,20 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	fits := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 4, viewportH: 20, offset: 0}))
 	if !strings.Contains(fits, "100% · 4/4") {
 		t.Errorf("short article indicator should be 100%% · 4/4: %q", fits)
+	}
+}
+
+func TestBottomBorderHelpHintTrailing(t *testing.T) {
+	g := glyphsFor(false)
+	line := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
+	// hint = "o: open article in browser" (26), indicator = "?: help · 100% ·
+	// 120/120" (24); fill = 80-2-6-26-24 = 22.
+	want := "└─ o: open article in browser " + strings.Repeat("─", 22) + " ?: help · 100% · 120/120 ─┘"
+	if line != want {
+		t.Errorf("bottom border = %q, want %q", line, want)
+	}
+	if ansi.StringWidth(line) != 80 {
+		t.Errorf("bottom border width = %d, want 80: %q", ansi.StringWidth(line), line)
 	}
 }
 

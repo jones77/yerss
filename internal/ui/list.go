@@ -189,6 +189,24 @@ func (m *Model) toggle(i int) {
 	m.clampCursor()
 }
 
+// expandToggle expands every day group when any is collapsed and collapses
+// them all when every group is already expanded, so a mixed state expands.
+// The new state is applied uniformly and the cursor is clamped because the
+// visible-row list may shrink or grow.
+func (m *Model) expandToggle() {
+	anyCollapsed := false
+	for i := range m.list.groups {
+		if m.list.groups[i].collapsed {
+			anyCollapsed = true
+			break
+		}
+	}
+	for i := range m.list.groups {
+		m.list.groups[i].collapsed = !anyCollapsed
+	}
+	m.clampCursor()
+}
+
 // longDate renders a local calendar day as `Weekday Day-ordinal Month, Year`,
 // for example "Saturday 28th August, 2026".
 func longDate(t time.Time) string {
@@ -381,6 +399,9 @@ func (m *Model) renderStatusBar() string {
 	if m.dbSize > 0 {
 		right = base.Render(formatSize(m.dbSize)) + " " + dim.Render(bullet) + " " + right
 	}
+	// The `?: help` affordance is the first right-aligned element, separated
+	// from the database size/position indicator by the bullet.
+	right = base.Render("?: help") + " " + dim.Render(bullet) + " " + right
 
 	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if pad < 1 {
@@ -452,6 +473,8 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case config.TagPopup:
 		m.openTagPopup(popupTagsList)
+	case config.ExpandToggle:
+		m.expandToggle()
 	case config.Help:
 		m.popup = popupHelp
 	}

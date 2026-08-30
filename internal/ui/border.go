@@ -171,17 +171,24 @@ func topBorder(w int, g borderGlyphs, p Palette, date, title string) string {
 // bottomBorder renders the article frame's bottom edge as `leftCorner +
 // horizontal line + core + horizontal line + rightCorner`, mirroring the top
 // border. The core is a left-aligned `o: open article in browser` hint and a
-// right-aligned `<percent>% · <bottomLine>/<totalLines>` position indicator,
-// each inset one space from the horizontal line (like the top border's date
-// and title) and separated from the dash fill by a space. The bullet between
-// the percent and the line ratio is g.bullet. The hint, percent, and ratio are
-// styled in bright blue (12); the bullet and the rails stay in the grey role
+// right-aligned `?: help · <percent>% · <bottomLine>/<totalLines>` position
+// indicator (the help affordance first), each inset one space from the
+// horizontal line (like the top border's date and title) and separated from
+// the dash fill by a space. The bullets separating the affordance, percent,
+// and line ratio are g.bullet. The hint, affordance, percent, and ratio are
+// styled in bright blue (12); the bullets and the rails stay in the grey role
 // (8).
 func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
-	hint := "o: open article in browser"
+	style := lipgloss.NewStyle().Foreground(p.Dim)
+	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
+
+	// The left-aligned hint is the open hint; the right-aligned position
+	// indicator is led by the `?: help` affordance, each separated by the
+	// bullet (dim).
+	hint := textStyle.Render("o: open article in browser")
 	percentStr := fmt.Sprintf("%d%%", sc.percent())
 	ratioStr := fmt.Sprintf("%d/%d", sc.bottomLine(), sc.totalH)
-	indicator := percentStr + " " + g.bullet + " " + ratioStr
+	indicator := "?: help" + " " + g.bullet + " " + percentStr + " " + g.bullet + " " + ratioStr
 	inner := max(1, w-2)
 	// The fixed chrome is 8 columns: corner+h+space on each side plus a space
 	// either side of the dash fill, leaving inner-6 for hint+indicator+fill.
@@ -202,16 +209,15 @@ func bottomBorder(w int, g borderGlyphs, p Palette, sc scrollState) string {
 	if fill < 0 {
 		fill = 0
 	}
-	style := lipgloss.NewStyle().Foreground(p.Dim)
-	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
-	var ind string
-	if indicator == "" {
-		ind = ""
-	} else if bi := strings.Index(indicator, g.bullet); bi >= 0 {
-		ind = textStyle.Render(indicator[:bi]) + style.Render(g.bullet) + textStyle.Render(indicator[bi+len(g.bullet):])
-	} else {
-		ind = textStyle.Render(indicator)
+	var ind strings.Builder
+	if indicator != "" {
+		for i, part := range strings.Split(indicator, g.bullet) {
+			if i > 0 {
+				ind.WriteString(style.Render(g.bullet))
+			}
+			ind.WriteString(textStyle.Render(part))
+		}
 	}
 	dash := style.Render(g.h)
-	return style.Render(g.bl) + dash + " " + textStyle.Render(hint) + " " + style.Render(strings.Repeat(g.h, fill)) + " " + ind + " " + dash + style.Render(g.br)
+	return style.Render(g.bl) + dash + " " + hint + " " + style.Render(strings.Repeat(g.h, fill)) + " " + ind.String() + " " + dash + style.Render(g.br)
 }

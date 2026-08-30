@@ -27,6 +27,7 @@ const (
 	Top             Action = "top"
 	Bottom          Action = "bottom"
 	TagPopup        Action = "tag_popup"
+	ExpandToggle    Action = "expand_toggle"
 	OpenURL         Action = "open_url"
 	CopyURL         Action = "copy_url"
 	CopyArticleText Action = "copy_article_text"
@@ -74,6 +75,7 @@ var catalog = []actionSpec{
 	{Top, []string{"1", "g", "ctrl+up"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
+	{ExpandToggle, []string{"x"}, []View{ViewList}},
 	{OpenURL, []string{"o"}, []View{ViewArticle, ViewPopup}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
 	{CopyArticleText, []string{"C"}, []View{ViewArticle}},

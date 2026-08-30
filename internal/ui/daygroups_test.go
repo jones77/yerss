@@ -324,6 +324,83 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	}
 }
 
+func TestStatusBarHelpHintTrailing(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.dbSize = 0
+	m.list.total = 1
+	m.list.cursor = 1
+	m.list.groups = []dayGroup{{articles: []articleItem{{ID: 1, Title: "one"}}}}
+	got := ansi.Strip(m.renderStatusBar())
+	// left = "never refreshed" (15), right = "?: help · 100% · 1/1" (20);
+	// the 45-column gap is plain space padding.
+	b := glyphsFor(m.ascii).bullet
+	want := "never refreshed" + strings.Repeat(" ", 45) + "?: help " + b + " 100% " + b + " 1/1"
+	if got != want {
+		t.Errorf("status bar = %q, want %q", got, want)
+	}
+	if ansi.StringWidth(got) != m.width {
+		t.Errorf("status bar width = %d, want %d: %q", ansi.StringWidth(got), m.width, got)
+	}
+}
+
+func TestExpandToggleFold(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
+	insertTimedArticle(t, st, "b", time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC))
+	insertTimedArticle(t, st, "c", time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC))
+	m.loadList()
+
+	pressX := func() {
+		m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	}
+	allCollapsed := func() bool {
+		for i := range m.list.groups {
+			if !m.list.groups[i].collapsed {
+				return false
+			}
+		}
+		return true
+	}
+	allExpanded := func() bool {
+		for i := range m.list.groups {
+			if m.list.groups[i].collapsed {
+				return false
+			}
+		}
+		return true
+	}
+
+	// All expanded → x collapses all.
+	pressX()
+	if !allCollapsed() {
+		t.Error("x on an all-expanded list should collapse every group")
+	}
+
+	// All collapsed → x expands all.
+	pressX()
+	if !allExpanded() {
+		t.Error("x on an all-collapsed list should expand every group")
+	}
+
+	// Mixed → x expands all.
+	m.collapse(0)
+	pressX()
+	if !allExpanded() {
+		t.Error("x on a mixed list should expand every group")
+	}
+
+	// Works from an article row and clamps the cursor when the list shrinks.
+	m.list.cursor = 5 // last article row of the 6 visible rows
+	pressX()
+	if !allCollapsed() {
+		t.Error("x from an article row should collapse every group")
+	}
+	if n := len(m.visibleRows()); m.list.cursor >= n {
+		t.Errorf("cursor = %d out of range for %d visible rows after collapse", m.list.cursor, n)
+	}
+}
+
 func TestArticleRowShowsLocalTime(t *testing.T) {
 	withLocalZone(t, time.FixedZone("UTC-5", -5*60*60))
 	m, st := newTestModel(t)
