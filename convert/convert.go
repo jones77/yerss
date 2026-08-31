@@ -33,10 +33,62 @@ func Convert(html string) string {
 	return out
 }
 
+// InlineImage is one inline <img> element discovered in an article's content:
+// its source URL and its alt text (which may be empty). They are returned in
+// document order so the article view can render each image in place with its
+// own attribution.
+type InlineImage struct {
+	URL string
+	Alt string
+}
+
+// ConvertImages converts article HTML to markdown where each inline <img> is
+// replaced by a sentinel token "\x00img:<url>\x00" (so the caller can split
+// the body on it and interleave image blocks), and returns that marked
+// markdown together with the ordered list of inline images. Unlike Convert it
+// does not lose the image source; both paths share the same converter
+// construction, so Convert is unchanged.
+func ConvertImages(html string) (string, []InlineImage) {
+	if strings.TrimSpace(html) == "" {
+		return "", nil
+	}
+	var imgs []InlineImage
+	conv := newMarkedConverter(func(src, alt string) {
+		imgs = append(imgs, InlineImage{URL: src, Alt: alt})
+	})
+	out, err := conv.ConvertString(html)
+	if err != nil {
+		return plainText(html), imgs
+	}
+	return out, imgs
+}
+
 // newConverter builds the shared html-to-markdown converter. Escaping is
 // disabled because the output is fed to a markdown renderer (glamour) and
 // never re-parsed for display; smart escaping would only add backslash noise.
 func newConverter() *converter.Converter {
+	return buildConverter(renderImage)
+}
+
+// newMarkedConverter builds a converter whose <img> renderer writes a
+// "\x00img:<url>\x00" sentinel instead of the [alt]/[image] placeholder and
+// reports each image (source and alt) to onImg as it is emitted, in document
+// order. URLs cannot contain NUL, so the sentinel is unambiguous.
+func newMarkedConverter(onImg func(src, alt string)) *converter.Converter {
+	return buildConverter(func(_ converter.Context, w converter.Writer, n *html.Node) converter.RenderStatus {
+		src, _ := dom.GetAttribute(n, "src")
+		alt, _ := dom.GetAttribute(n, "alt")
+		onImg(src, strings.TrimSpace(alt))
+		w.WriteString("\x00img:" + src + "\x00")
+		return converter.RenderSuccess
+	})
+}
+
+// buildConverter constructs the html-to-markdown converter with img handled by
+// the given renderer. Escaping is disabled because the output is fed to a
+// markdown renderer (glamour) and never re-parsed for display; smart escaping
+// would only add backslash noise.
+func buildConverter(imgRender func(converter.Context, converter.Writer, *html.Node) converter.RenderStatus) *converter.Converter {
 	conv := converter.NewConverter(
 		converter.WithPlugins(
 			base.NewBasePlugin(),
@@ -49,7 +101,7 @@ func newConverter() *converter.Converter {
 		converter.WithEscapeMode(converter.EscapeModeDisabled),
 	)
 	conv.Register.PostRenderer(collapseBlankLines, converter.PriorityLate)
-	conv.Register.RendererFor("img", converter.TagTypeInline, renderImage, converter.PriorityEarly)
+	conv.Register.RendererFor("img", converter.TagTypeInline, imgRender, converter.PriorityEarly)
 	return conv
 }
 

@@ -17,7 +17,9 @@ later open re-renders them offline.
   ordered list of inline image URLs. The existing `Convert` API is unchanged.
 - The article view interleaves inline image blocks into the rendered body at the
   discovered positions, above/below the surrounding text, each with its own
-  attribution and its own scroll identity.
+  attribution and its own scroll identity. Attribution is per-image — alt text,
+  the image's own figure caption, or the source fallback — and linked images
+  render without stray markdown-link fragments.
 - Inline images are fetched asynchronously like the lead image, persisted to the
   unified `article_images` table (positions 1..N), and re-rendered offline.
 - Scroll snap is generalized from a single lead-image block to an ordered list of

@@ -2,6 +2,7 @@ package image
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -118,11 +119,11 @@ func TestBlockWidth(t *testing.T) {
 
 func TestBlockCmdInMemoryHit(t *testing.T) {
 	st := newImageTestStore(t)
-	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	img := image.NewRGBA(image.Rect(0, 0, 480, 320))
 	c := NewCache()
 	c.Set("https://example.com/img.png", img)
 	blocks := NewBlocks()
-	msg := BlockCmd(c, blocks, st, 1, "https://example.com/img.png", 50, 100, true)()
+	msg := BlockCmd(c, blocks, st, 1, "https://example.com/img.png", 50, 100, true, 0)()
 	bm, ok := msg.(BlockMsg)
 	if !ok {
 		t.Fatalf("expected BlockMsg, got %T", msg)
@@ -145,14 +146,14 @@ func TestBlockCmdStoredBlockHit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	img := image.NewRGBA(image.Rect(0, 0, 480, 320))
 	want, _ := (Halfblocks{}).Render(img, 40, 100)
-	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
+	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, URL: "https://example.com/img.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
 		t.Fatal(err)
 	}
 	c := NewCache()
 	blocks := NewBlocks()
-	msg := BlockCmd(c, blocks, st, id, "https://example.com/img.png", 40, 100, true)()
+	msg := BlockCmd(c, blocks, st, id, "https://example.com/img.png", 40, 100, true, 0)()
 	bm, ok := msg.(BlockMsg)
 	if !ok {
 		t.Fatalf("expected BlockMsg, got %T", msg)
@@ -172,8 +173,8 @@ func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := pngBytes(t, 8, 8)
-	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	data := pngBytes(t, 480, 320)
+	img := image.NewRGBA(image.Rect(0, 0, 480, 320))
 	old, _ := (Halfblocks{}).Render(img, 40, 100)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("width mismatch must re-render from the stored photo, not fetch")
@@ -189,7 +190,7 @@ func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 60, 100, true)()
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 60, 100, true, 0)()
 	bm, ok := msg.(BlockMsg)
 	if !ok {
 		t.Fatalf("expected BlockMsg, got %T", msg)
@@ -214,7 +215,7 @@ func TestBlockCmdNoFetchModeNeverHitsNetwork(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, false)()
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, false, 0)()
 	if _, ok := msg.(FailedMsg); !ok {
 		t.Fatalf("no-fetch miss should fail, got %T", msg)
 	}
@@ -235,7 +236,7 @@ func TestBlockCmdNetworkFetchPersistsBlockAndPhoto(t *testing.T) {
 
 	c := NewCache()
 	blocks := NewBlocks()
-	msg := BlockCmd(c, blocks, st, id, srv.URL, 50, 100, true)()
+	msg := BlockCmd(c, blocks, st, id, srv.URL, 50, 100, true, 0)()
 	if _, ok := msg.(FailedMsg); ok {
 		t.Fatal("network fetch should succeed")
 	}
@@ -279,7 +280,7 @@ func TestPhotoCmdFetchesAndPersistsBlock(t *testing.T) {
 	c := NewCache()
 	blocks := NewBlocks()
 	photos := NewPhotos()
-	msg := PhotoCmd(c, blocks, photos, st, id, srv.URL, 50, 100)()
+	msg := PhotoCmd(c, blocks, photos, st, id, srv.URL, 50, 100, 0)()
 	if _, ok := msg.(PhotoMsg); !ok {
 		t.Fatalf("expected PhotoMsg, got %T", msg)
 	}
@@ -322,7 +323,7 @@ func TestPhotoCmdStoredPhotoSkipsFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	msg := PhotoCmd(NewCache(), NewBlocks(), NewPhotos(), st, id, url, 50, 100)()
+	msg := PhotoCmd(NewCache(), NewBlocks(), NewPhotos(), st, id, url, 50, 100, 0)()
 	if _, ok := msg.(PhotoMsg); !ok {
 		t.Fatalf("expected PhotoMsg, got %T", msg)
 	}
@@ -338,7 +339,7 @@ func TestPhotoCmdAlreadyCachedSkipsFetch(t *testing.T) {
 
 	photos := NewPhotos()
 	photos.Set(srv.URL, []byte("data"))
-	msg := PhotoCmd(NewCache(), NewBlocks(), photos, st, id, srv.URL, 50, 100)()
+	msg := PhotoCmd(NewCache(), NewBlocks(), photos, st, id, srv.URL, 50, 100, 0)()
 
 	if _, ok := msg.(PhotoMsg); !ok {
 		t.Fatalf("expected PhotoMsg, got %T", msg)
@@ -355,7 +356,7 @@ func TestNativeCmdCacheHitShortCircuits(t *testing.T) {
 
 	// The photos cache is empty: any render attempt would fail, so a
 	// NativeMsg proves the command short-circuited on the cache hit.
-	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, NewPhotos(), natives, url, 50, 24, "", 3)()
+	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, NewPhotos(), natives, url, 50, 24, "", 3, 35)()
 	nm, ok := msg.(NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg on cache hit, got %T", msg)
@@ -376,10 +377,10 @@ func TestNativeCmdRendersAndCaches(t *testing.T) {
 	natives := NewNatives()
 	photos := NewPhotos()
 	url := "https://example.com/img.png"
-	photos.Set(url, pngBytes(t, 100, 80))
+	photos.Set(url, pngBytes(t, 400, 320))
 	key := NativeKey(url, 50, 24)
 
-	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, photos, natives, url, 50, 24, "", 3)()
+	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, photos, natives, url, 50, 24, "", 3, 35)()
 	nm, ok := msg.(NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -404,9 +405,9 @@ func TestNativeCmdFitLoopConverges(t *testing.T) {
 	mk := func(url string, attr string) tea.Msg {
 		return NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, func() *Photos {
 			p := NewPhotos()
-			p.Set(url, pngBytes(t, 100, 80))
+			p.Set(url, pngBytes(t, 400, 320))
 			return p
-		}(), NewNatives(), url, 50, 24, attr, 3)()
+		}(), NewNatives(), url, 50, 24, attr, 3, 35)()
 	}
 	noAttr := mk("https://example.com/a.png", "")
 	withAttr := mk("https://example.com/b.png", "cccccc dddddd eeeeee ffffff gggggg hhhhhh iiiiii jjjjjj kkkkkk llllll mmmmmm nnnnnn oooooo pppppp")
@@ -441,7 +442,7 @@ func TestBlockCmdNonImageContentTypeFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, true)()
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, true, 0)()
 	if _, ok := msg.(FailedMsg); !ok {
 		t.Fatalf("non-image content type should fail, got %T", msg)
 	}
@@ -481,7 +482,7 @@ func TestBlockCmdTimeoutFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, true)()
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, true, 0)()
 	if _, ok := msg.(FailedMsg); !ok {
 		t.Fatalf("timeout should fail, got %T", msg)
 	}
@@ -489,7 +490,7 @@ func TestBlockCmdTimeoutFails(t *testing.T) {
 
 func TestNativeRendererITerm(t *testing.T) {
 	withCellPx(t, 8, 16)
-	data := pngBytes(t, 100, 80)
+	data := pngBytes(t, 400, 320)
 	lines, err := (NativeRenderer{Protocol: ProtocolITerm}).Render(data, "https://example.com/img.png", 50, 20)
 	if err != nil {
 		t.Fatal(err)
@@ -541,7 +542,7 @@ func TestNativeRendererNarrowBlockWhenHeightCapped(t *testing.T) {
 
 func TestNativeRendererKitty(t *testing.T) {
 	withCellPx(t, 8, 16)
-	data := pngBytes(t, 100, 80)
+	data := pngBytes(t, 400, 320)
 	lines, err := (NativeRenderer{Protocol: ProtocolKitty}).Render(data, "https://example.com/img.png", 50, 20)
 	if err != nil {
 		t.Fatal(err)
@@ -668,7 +669,7 @@ func TestNativeRendererClear(t *testing.T) {
 }
 
 func TestHalfblocksRenderFitsWidthAndCap(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 100, 80))
+	img := image.NewRGBA(image.Rect(0, 0, 400, 320))
 	lines, err := (Halfblocks{}).Render(img, 50, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -786,5 +787,115 @@ func TestPixelDimsUsesCellSize(t *testing.T) {
 	}
 	if pxW != 4096 {
 		t.Errorf("capped width = %d, want 4096", pxW)
+	}
+}
+
+func TestBlockCmdPersistsInlineImageAtPosition(t *testing.T) {
+	st := newImageTestStore(t)
+	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := pngBytes(t, 480, 320)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 50, 100, true, 2)()
+	if _, ok := msg.(BlockMsg); !ok {
+		t.Fatalf("expected BlockMsg, got %T", msg)
+	}
+	imgs, err := st.GetArticleImages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, im := range imgs {
+		if im.Position == 2 && im.URL == srv.URL && len(im.Photo) > 0 && BlockWidth(splitLines(im.Block)) == 50 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("inline image not persisted at position 2: %+v", imgs)
+	}
+}
+
+func TestBlockCmdServesInlineStoredBlockByURL(t *testing.T) {
+	st := newImageTestStore(t)
+	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := (Halfblocks{}).Render(image.NewRGBA(image.Rect(0, 0, 480, 320)), 40, 100)
+	if err := st.SetArticleImage(id, store.ArticleImage{Position: 3, URL: "https://example.com/inline.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
+		t.Fatal(err)
+	}
+	msg := BlockCmd(NewCache(), NewBlocks(), st, id, "https://example.com/inline.png", 40, 100, true, 3)()
+	bm, ok := msg.(BlockMsg)
+	if !ok {
+		t.Fatalf("expected BlockMsg from stored inline block, got %T", msg)
+	}
+	if BlockWidth(bm.Lines) != 40 {
+		t.Errorf("served inline block width = %d, want 40", BlockWidth(bm.Lines))
+	}
+}
+
+func TestHalfblocksSmallImageRendersAtNaturalSize(t *testing.T) {
+	// A source image narrower than smallImageWidth renders at a capped screen
+	// width rather than being upscaled to fill the content column, so a tiny
+	// site logo does not balloon into a full-column block.
+	img := image.NewRGBA(image.Rect(0, 0, 60, 40))
+	lines, err := (Halfblocks{}).Render(img, 50, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := BlockWidth(lines); w != 20 {
+		t.Errorf("small image block width = %d, want 20 (the small-image cap)", w)
+	}
+	// A 200px logo renders at roughly 20 cells, not the full column.
+	logo := image.NewRGBA(image.Rect(0, 0, 200, 100))
+	lines, err = (Halfblocks{}).Render(logo, 74, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := BlockWidth(lines); w != 20 {
+		t.Errorf("200px logo block width = %d, want 20", w)
+	}
+	// A regular photo still fills the column.
+	big := image.NewRGBA(image.Rect(0, 0, 480, 320))
+	lines, err = (Halfblocks{}).Render(big, 50, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := BlockWidth(lines); w != 50 {
+		t.Errorf("photo block width = %d, want 50", w)
+	}
+}
+
+func TestNativeRendererSmallImageRendersAtNaturalSize(t *testing.T) {
+	withCellPx(t, 8, 16)
+	data := pngBytes(t, 60, 40)
+	lines, err := (NativeRenderer{Protocol: ProtocolKitty}).Render(data, "https://example.com/logo.png", 50, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The capped cell width is 20; the escape must carry that box, not the
+	// requested 50.
+	if !strings.Contains(lines[0], "c=20") {
+		t.Errorf("kitty escape should carry the capped width c=20: %q", lines[0][:min(120, len(lines[0]))])
+	}
+}
+
+func TestDeletePlacement(t *testing.T) {
+	url := "https://example.com/img.png"
+	got := DeletePlacement(url)
+	want := fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", stableID(url))
+	if got != want {
+		t.Errorf("DeletePlacement = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(got, "\x1b_Ga=d,d=i,i=") || !strings.HasSuffix(got, ",q=1\x1b\\") {
+		t.Errorf("DeletePlacement shape wrong: %q", got)
 	}
 }

@@ -61,7 +61,7 @@ func (r NativeRenderer) Render(data []byte, url string, width, maxHeight int) ([
 	if b.Dx() < 1 || b.Dy() < 1 {
 		return nil, fmt.Errorf("image has no pixels")
 	}
-	w, h := fitDims(b.Dx(), b.Dy(), width, maxHeight)
+	w, h := fitDims(b.Dx(), b.Dy(), renderWidth(b.Dx(), b.Dy(), width), maxHeight)
 	pxW, pxH := r.pixelDims(w, h)
 	scaled := scaleTo(src, pxW, pxH)
 	var buf bytes.Buffer
@@ -126,6 +126,19 @@ func (r NativeRenderer) Clear() string {
 		return ""
 	}
 	return "\x1b_Ga=d,d=a,q=1\x1b\\"
+}
+
+// DeletePlacement returns the kitty sequence that deletes the placement (and
+// its image) for url by its stable id. Unlike Clear's d=a, which only removes
+// placements visible on screen, deleting by id removes the image's placement
+// wherever it is, so an image scrolled out of the article still has its stale
+// placement removed. It returns "" for non-kitty protocols. q=1 suppresses the
+// response.
+func DeletePlacement(url string) string {
+	if stableID(url) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", stableID(url))
 }
 
 // kittyChunkSize bounds a single kitty graphics chunk in base64 characters.

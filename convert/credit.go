@@ -7,51 +7,32 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ImageCredit extracts a one-line photo credit for the article's lead image
-// from its HTML: the figcaption of the figure containing an <img> whose src
-// matches imageURL (or of the first figure with a figcaption when none
-// matches), falling back to the text of the first element whose class
-// indicates a credit line. The text is collapsed to a single
-// whitespace-separated line. It returns "" when no credit is found.
+// ImageCredit extracts a one-line photo credit for an image from its HTML: the
+// figcaption of the figure containing an <img> whose src matches imageURL. The
+// caption is collapsed to a single whitespace-separated line. It returns ""
+// when no figure matches or the matching figure has no caption. It never
+// borrows a caption from another image's figure: an image without its own
+// figure renders without an attribution rather than displaying another image's
+// (observed in the smoke test, where the first figure's caption attached to
+// every image in the article).
 func ImageCredit(htmlStr, imageURL string) string {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil {
 		return ""
 	}
-	if cap := figureCredit(doc, imageURL); cap != "" {
-		return cap
-	}
-	return classCredit(doc)
+	return figureCredit(doc, imageURL)
 }
 
 // figureCredit returns the figcaption text of the figure whose <img> src
-// matches imageURL, or of the first figure with a figcaption when no image
-// matches.
+// matches imageURL, or "" when no figure matches or it has no caption.
 func figureCredit(n *html.Node, imageURL string) string {
-	first := ""
 	for _, fig := range findAll(n, "figure") {
 		cap := textOf(findFirst(fig, "figcaption"))
 		if cap == "" {
 			continue
 		}
-		if first == "" {
-			first = cap
-		}
 		if imageURL != "" && hasImgWithSrc(fig, imageURL) {
 			return cap
-		}
-	}
-	return first
-}
-
-// classCredit returns the text of the first element whose class attribute
-// contains "credit" (for example "photo-credit" or "image-credit").
-func classCredit(n *html.Node) string {
-	for _, el := range findAll(n, "") {
-		if v, ok := dom.GetAttribute(el, "class"); ok && strings.Contains(v, "credit") {
-			if text := textOf(el); text != "" {
-				return text
-			}
 		}
 	}
 	return ""

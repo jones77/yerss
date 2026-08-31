@@ -181,42 +181,40 @@ func BlockWidth(lines []string) int {
 	return w
 }
 
-// BlockCmd returns a tea.Cmd that resolves an article's lead image block at
-// width through the cache hierarchy: in-memory decoded image (re-rendered), a
-// stored database block whose width matches, a stored database photo (re-rendered
-// at the current width), then a network fetch. On reaching the stored photo or a
-// network fetch the block and its photo bytes are persisted together; on any
-// failure a FailedMsg is emitted. When fetch is false the command never hits the
-// network: that is the native-terminal placeholder path, where PhotoCmd owns
-// fetching.
-func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, url string, width, maxHeight int, allowFetch bool) tea.Cmd {
+// BlockCmd returns a tea.Cmd that resolves an article's image block at width
+// through the cache hierarchy: in-memory decoded image (re-rendered), a stored
+// database block whose width matches, a stored database photo (re-rendered at
+// the current width), then a network fetch. On reaching the stored photo or a
+// network fetch the block and its photo bytes are persisted together at
+// position (0 for the lead image, 1..N for inline images); on any failure a
+// FailedMsg is emitted. When fetch is false the command never hits the network:
+// that is the native-terminal placeholder path, where PhotoCmd owns fetching.
+func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, url string, width, maxHeight int, allowFetch bool, position int) tea.Cmd {
 	return func() tea.Msg {
 		if lines, ok := blockFromCache(cache, blocks, url, width, maxHeight); ok {
 			return BlockMsg{Key: url, Lines: lines}
 		}
 		if imgs, err := st.GetArticleImages(articleID); err == nil {
-			var lead *store.ArticleImage
 			for i := range imgs {
-				if imgs[i].Position == 0 {
-					lead = &imgs[i]
-					break
+				if imgs[i].URL != url {
+					continue
 				}
-			}
-			if lead != nil {
-				if lead.Block != "" && lead.Width == width {
-					stored := splitLines(lead.Block)
+				img := &imgs[i]
+				if img.Block != "" && img.Width == width && blockWidthMatches(*img, width) {
+					stored := splitLines(img.Block)
 					blocks.Set(url, stored)
 					return BlockMsg{Key: url, Lines: stored}
 				}
-				if len(lead.Photo) > 0 {
-					if img, _, derr := image.Decode(bytes.NewReader(lead.Photo)); derr == nil {
-						cache.Set(url, img)
-						if lines, err := renderBlock(blocks, url, img, width, maxHeight); err == nil {
-							persistImage(st, articleID, url, lines, lead.Photo)
+				if len(img.Photo) > 0 {
+					if decoded, _, derr := image.Decode(bytes.NewReader(img.Photo)); derr == nil {
+						cache.Set(url, decoded)
+						if lines, err := renderBlock(blocks, url, decoded, width, maxHeight); err == nil {
+							persistImage(st, articleID, url, lines, img.Photo, img.Position)
 							return BlockMsg{Key: url, Lines: lines}
 						}
 					}
 				}
+				break
 			}
 		}
 		if !allowFetch {
@@ -235,18 +233,18 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
-		persistImage(st, articleID, url, lines, data)
+		persistImage(st, articleID, url, lines, data, position)
 		return BlockMsg{Key: url, Lines: lines}
 	}
 }
 
-// PhotoCmd returns a tea.Cmd that resolves an article's lead photo bytes for a
+// PhotoCmd returns a tea.Cmd that resolves an article's photo bytes for a
 // native render, preferring the session Photos cache and the stored photo
 // before fetching. When a fresh fetch is needed the photo is also used to render
 // and persist the halfblock block so future opens have a placeholder, and both
-// the block and photo are persisted together. On any failure a FailedMsg is
-// emitted.
-func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, articleID int64, url string, width, maxHeight int) tea.Cmd {
+// the block and photo are persisted together at position (0 for the lead image,
+// 1..N for inline images). On any failure a FailedMsg is emitted.
+func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, articleID int64, url string, width, maxHeight, position int) tea.Cmd {
 	return func() tea.Msg {
 		if _, ok := photos.Get(url); ok {
 			return PhotoMsg{Key: url}
@@ -269,16 +267,17 @@ func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, art
 				}
 			}
 		}
-		persistImage(st, articleID, url, blockLines, data)
+		persistImage(st, articleID, url, blockLines, data, position)
 		return PhotoMsg{Key: url}
 	}
 }
 
-// persistImage writes the rendered block and the raw photo bytes together as an
-// article's position-0 image. block may be nil when only the photo is available.
-func persistImage(st *store.Store, id int64, url string, block []string, photo []byte) {
+// persistImage writes the rendered block and the raw photo bytes together as
+// the article image at the given position (0 for the lead image, 1..N for
+// inline images). block may be nil when only the photo is available.
+func persistImage(st *store.Store, id int64, url string, block []string, photo []byte, position int) {
 	_ = st.SetArticleImage(id, store.ArticleImage{
-		Position: 0,
+		Position: position,
 		URL:      url,
 		Block:    strings.Join(block, "\n"),
 		Photo:    photo,
@@ -345,18 +344,62 @@ type Halfblocks struct{}
 // Render renders img to halfblock lines, fitting width while preserving aspect
 // ratio and never exceeding maxHeight rows. mosaic's Width/Height are in source
 // pixels and produce exactly half as many cells/rows, so the cell dimensions
-// are doubled before rendering.
+// are doubled before rendering. Small source images (logos, icons) are rendered
+// at their natural cell size rather than upscaled to fill width.
 func (Halfblocks) Render(img image.Image, width, maxHeight int) ([]string, error) {
 	b := img.Bounds()
 	srcW, srcH := b.Dx(), b.Dy()
 	if srcW < 1 || srcH < 1 {
 		return nil, fmt.Errorf("image has no pixels")
 	}
-	w, h := fitDims(srcW, srcH, width, maxHeight)
+	w, h := fitDims(srcW, srcH, renderWidth(srcW, srcH, width), maxHeight)
 	m := mosaic.New()
 	m = m.Width(w * 2).Height(h * 2)
 	art := m.Render(img)
 	return splitLines(art), nil
+}
+
+// smallImageWidth is the shorter source dimension below which an image is
+// treated as a small logo/icon and rendered at a capped screen width rather
+// than upscaled to fill the content column. Site logos, icons, and inline
+// decorations are narrow or short in at least one dimension (a 300x150 promo
+// banner, a 100x100 favicon); news photos are always large in both.
+const smallImageWidth = 240
+
+// smallImageMaxCells is the widest a small image renders on screen, so a tiny
+// logo (say 300x150 source pixels) occupies a modest, logo-sized block instead
+// of a full-column one.
+const smallImageMaxCells = 20
+
+// renderWidth returns the cell width an image of srcW×srcH source pixels is
+// rendered at: when its shorter side is below smallImageWidth it renders at
+// its natural cell width (halfblock: two source pixels per cell) capped to
+// smallImageMaxCells and the content width; otherwise it fills contentW. This
+// keeps a tiny logo from ballooning into a full-column block.
+func renderWidth(srcW, srcH, contentW int) int {
+	if contentW < 1 {
+		return 1
+	}
+	if min(srcW, srcH) < smallImageWidth {
+		natural := max(1, srcW/2)
+		return min(contentW, min(smallImageMaxCells, natural))
+	}
+	return contentW
+}
+
+// blockWidthMatches reports whether a stored block at img.Width renders the
+// image at the width it should for the current content width. When the photo
+// is stored, its source dimensions determine the expected width (a small image
+// renders narrower than the column, so a stale full-width block stored before
+// the small-image cap is rejected and re-rendered from the photo); without a
+// photo the stored width matching contentW is trusted.
+func blockWidthMatches(img store.ArticleImage, contentW int) bool {
+	if len(img.Photo) > 0 {
+		if cfg, _, err := image.DecodeConfig(bytes.NewReader(img.Photo)); err == nil {
+			return img.Width == renderWidth(cfg.Width, cfg.Height, contentW)
+		}
+	}
+	return img.Width == contentW
 }
 
 // fitDims computes the output cell dimensions (w cells wide, h rows tall) that

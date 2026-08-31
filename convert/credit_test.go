@@ -18,18 +18,23 @@ func TestImageCreditPrefersMatchedOverFirst(t *testing.T) {
 	}
 }
 
-func TestImageCreditFallsBackToFirstFigure(t *testing.T) {
+func TestImageCreditDoesNotBorrowAnotherFigure(t *testing.T) {
 	html := `<figure><img src="a.jpg"><figcaption>First</figcaption></figure>` +
 		`<figure><img src="b.jpg"><figcaption>Second</figcaption></figure>`
-	if got := ImageCredit(html, "lead.jpg"); got != "First" {
-		t.Errorf("ImageCredit = %q, want the first figure's caption", got)
+	// lead.jpg is in no figure: its caption must be empty rather than the
+	// first figure's, so unrelated images never display another image's
+	// caption.
+	if got := ImageCredit(html, "lead.jpg"); got != "" {
+		t.Errorf("ImageCredit = %q, want empty (no figure match, no borrowing)", got)
 	}
 }
 
-func TestImageCreditFromCreditClass(t *testing.T) {
+func TestImageCreditIgnoresCreditClassOutsideFigure(t *testing.T) {
 	html := `<p>body</p><div class="image-credit">AP Photo</div>`
-	if got := ImageCredit(html, ""); got != "AP Photo" {
-		t.Errorf("ImageCredit = %q, want the credit-class text", got)
+	// The credit-class element is not an image's own credit; a document-global
+	// probe would attach it to every image.
+	if got := ImageCredit(html, ""); got != "" {
+		t.Errorf("ImageCredit = %q, want empty (no matched figure)", got)
 	}
 }
 

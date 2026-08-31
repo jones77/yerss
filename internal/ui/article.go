@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -15,18 +16,47 @@ import (
 )
 
 type articleState struct {
-	id          int64
-	article     *store.Article
-	lines       []string
-	viewport    viewport.Model
-	readMarked  bool
-	sel         textSelection
-	headerLines int
-	imgStart    int
-	imgEnd      int
-	capStart    int
-	nativeImg   bool
-	links       []articleLink
+	id           int64
+	article      *store.Article
+	lines        []string
+	viewport     viewport.Model
+	readMarked   bool
+	sel          textSelection
+	headerLines  int
+	imgStart     int
+	imgEnd       int
+	capStart     int
+	nativeImg    bool
+	imageBlocks  []imageBlock
+	imageURLs    []string
+	inlineImages []convert.InlineImage
+	inlineCaps   map[string]string
+	links        []articleLink
+}
+
+// imageBlock is one image block composed into the article content: the lead
+// image (index 0, below the header) and each inline image, in document order.
+// imgStart is the first image row, capStart the first attribution line (the
+// down-snap target), and imgEnd the last composed line of the block. An
+// inline block carries nativeImg when its lines are a terminal-side native
+// placement.
+type imageBlock struct {
+	url       string
+	imgStart  int
+	capStart  int
+	imgEnd    int
+	nativeImg bool
+}
+
+// rendersImage reports whether the given URL is one of the article's images
+// (the lead or an inline image) that the article view renders.
+func (s *articleState) rendersImage(url string) bool {
+	for _, u := range s.imageURLs {
+		if u == url {
+			return true
+		}
+	}
+	return false
 }
 
 // articleLink is one hyperlink harvested from the article's markdown source.
@@ -54,7 +84,12 @@ func harvestLinks(md string) []articleLink {
 }
 
 // harvestArticleLinks collects every hyperlink rendered in the article body —
-// the markdown links, not the article's own header URL — deduplicated by URL.
+// the markdown links, not the article's own header URL — deduplicated by URL,
+// with relative destinations resolved to absolute against the article's origin
+// so the links popup and open-url work. It scans the same marked markdown the
+// body renders (ConvertImages), so a link that wraps an inline image (promo
+// banners render as a linked image) is harvested like any other, with the
+// image sentinel stripped from the link text.
 func harvestArticleLinks(a store.Article) []articleLink {
 	seen := map[string]bool{}
 	var out []articleLink
@@ -65,10 +100,31 @@ func harvestArticleLinks(a store.Article) []articleLink {
 		seen[url] = true
 		out = append(out, articleLink{text: text, url: url})
 	}
-	for _, l := range harvestLinks(convert.Convert(a.Content)) {
-		add(l.text, l.url)
+	md, _ := convert.ConvertImages(a.Content)
+	for _, l := range harvestLinks(md) {
+		add(cleanLinkText(sentinelRe.ReplaceAllString(l.text, "")), resolveLink(a, l.url))
 	}
 	return out
+}
+
+// resolveLink resolves a link destination harvested from an article's HTML
+// against the article's origin: a relative target like "/tomdispatch" becomes
+// absolute (https://theintercept.com/tomdispatch) so opening it navigates to
+// the right page. Absolute URLs pass through; targets with no resolvable base
+// are returned unchanged.
+func resolveLink(a store.Article, href string) string {
+	u, err := url.Parse(href)
+	if err != nil || u.IsAbs() {
+		return href
+	}
+	for _, base := range []string{a.Link, a.FeedURL} {
+		bu, err := url.Parse(base)
+		if err != nil || bu.Scheme == "" || bu.Host == "" {
+			continue
+		}
+		return bu.ResolveReference(u).String()
+	}
+	return href
 }
 
 // textSelection tracks a mouse text selection in the article viewport. Cells
@@ -139,45 +195,319 @@ func (m *Model) openArticle() tea.Cmd {
 func (m *Model) newArticleState(a store.Article) articleState {
 	padX, padY := m.cfg.Display.PaddingX, m.cfg.Display.PaddingY
 	contentW, vpH, _ := contentGeom(m.width, m.height, padX, padY)
-	imgStart, imgEnd, capStart := -1, -1, -1
 	headerLines := 0
 	header := m.renderHeader(a, contentW)
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-	imgBlock, imgRows, imgNative := m.articleImageBlock(a, contentW, vpH, headerLines)
-	body := m.renderMarkdown(convert.Convert(a.Content), contentW)
-	rendered := body
+
+	var parts []string
+	var blocks []imageBlock
+	var captions map[string]string
+	lineCount := 0
+	addPart := func(s string) {
+		parts = append(parts, s)
+		lineCount += len(strings.Split(s, "\n"))
+	}
+	addImageBlock := func(url string, block []string, rows int, native bool) {
+		if len(parts) > 0 && parts[len(parts)-1] != "" {
+			parts = append(parts, "")
+			lineCount++
+		} else if len(parts) == 0 {
+			parts = append(parts, "")
+			lineCount++
+		}
+		start := lineCount
+		addPart(strings.Join(block, "\n"))
+		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native})
+		parts = append(parts, "")
+		lineCount++
+	}
+
 	if header != "" {
-		rendered = header + "\n\n" + body
+		addPart(header)
+		parts = append(parts, "")
+		lineCount++
 	}
-	if len(imgBlock) > 0 {
-		// The block sits below the header with one blank line on each side;
-		// it covers the image lines plus the attribution lines, and capStart
-		// (the down-snap target) is the first attribution line, or the line
-		// past the block when no attribution is composed.
-		imgStart, imgEnd = headerLines+1, headerLines+len(imgBlock)
-		capStart = imgStart + imgRows
-		rendered = header + "\n\n" + strings.Join(imgBlock, "\n") + "\n\n" + body
+	if a.ImageURL != "" && m.imagesEnabled() {
+		if block, rows, native := m.composeImageBlock(a.ImageURL, articleAttribution(a), contentW, vpH, headerLines); len(block) > 0 {
+			addImageBlock(a.ImageURL, block, rows, native)
+		}
 	}
+
+	bodyMD, inline := convert.ConvertImages(a.Content)
+	inline = dedupeInline(a.ImageURL, inline)
+	bodyMD = stripDuplicateSentinels(bodyMD, a.ImageURL)
+	imageURLs := []string{}
+	if a.ImageURL != "" {
+		imageURLs = append(imageURLs, a.ImageURL)
+	}
+	for _, im := range inline {
+		imageURLs = append(imageURLs, im.URL)
+	}
+	if len(inline) == 0 {
+		addPart(m.renderMarkdown(bodyMD, contentW))
+	} else {
+		bodyParts, bodyBlocks, inlineCaps := m.inlineBodyParts(a, bodyMD, inline, contentW, vpH, headerLines, lineCount)
+		parts = append(parts, bodyParts...)
+		lineCount += lineCountOf(bodyParts)
+		blocks = append(blocks, bodyBlocks...)
+		captions = inlineCaps
+	}
+
+	rendered := strings.Join(parts, "\n")
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
+	imgStart, imgEnd, capStart, nativeImg := -1, -1, -1, false
+	if len(blocks) > 0 {
+		imgStart, imgEnd, capStart = blocks[0].imgStart, blocks[0].imgEnd, blocks[0].capStart
+		nativeImg = blocks[0].nativeImg
+	}
 	st := articleState{
-		id:          a.ID,
-		article:     &a,
-		lines:       strings.Split(rendered, "\n"),
-		viewport:    vp,
-		headerLines: headerLines,
-		imgStart:    imgStart,
-		imgEnd:      imgEnd,
-		capStart:    capStart,
-		nativeImg:   imgNative,
-		links:       harvestArticleLinks(a),
+		id:           a.ID,
+		article:      &a,
+		lines:        strings.Split(rendered, "\n"),
+		viewport:     vp,
+		headerLines:  headerLines,
+		imgStart:     imgStart,
+		imgEnd:       imgEnd,
+		capStart:     capStart,
+		nativeImg:    nativeImg,
+		imageBlocks:  blocks,
+		imageURLs:    imageURLs,
+		inlineImages: inline,
+		inlineCaps:   captions,
+		links:        harvestArticleLinks(a),
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.store)
 	}
 	return st
+}
+
+// lineCountOf returns the number of lines the given parts occupy when joined
+// with a newline separator.
+func lineCountOf(parts []string) int {
+	n := 0
+	for _, p := range parts {
+		n += len(strings.Split(p, "\n"))
+	}
+	return n
+}
+
+// dedupeInline drops inline images whose URL is the lead image URL or a URL
+// already rendered, keeping the first occurrence in document order, so a photo
+// attached as the lead and repeated in the body is not shown twice.
+func dedupeInline(leadURL string, inline []convert.InlineImage) []convert.InlineImage {
+	seen := map[string]bool{}
+	if leadURL != "" {
+		seen[leadURL] = true
+	}
+	kept := make([]convert.InlineImage, 0, len(inline))
+	for _, im := range inline {
+		if seen[im.URL] {
+			continue
+		}
+		seen[im.URL] = true
+		kept = append(kept, im)
+	}
+	return kept
+}
+
+// sentinelRe matches the inline-image sentinel token "\x00img:<url>\x00" that
+// ConvertImages emits for each <img>, capturing the image URL.
+var sentinelRe = regexp.MustCompile(`\x00img:([^\x00]*)\x00`)
+
+// nextSentinel returns the byte span [start, end) of the next inline-image
+// sentinel at or after from, together with the image's URL and the text of any
+// markdown link the sentinel opens (`<a><img>...text...</a>` renders as
+// `[SENTINEL link text](href)`). When the sentinel is link-wrapped, the span is
+// extended to consume the whole link construct so no stray `[`, link text, or
+// `](...)` fragments render around the image block, and the link text is
+// reported for use as the image's caption fallback. ok is false when no
+// sentinel remains.
+func nextSentinel(md string, from int) (start, end int, url, linkText string, ok bool) {
+	loc := sentinelRe.FindStringSubmatchIndex(md[from:])
+	if loc == nil {
+		return 0, 0, "", "", false
+	}
+	base := from
+	s := base + loc[0]
+	e := base + loc[1]
+	url = md[base+loc[2] : base+loc[3]]
+	// A sentinel immediately preceded by '[' opens the markdown link the <a>
+	// renderer produced; '![' (image syntax) is not a link and is left alone.
+	if s > 0 && md[s-1] == '[' && (s < 2 || md[s-2] != '!') {
+		s--
+		if closeIdx := strings.Index(md[e:], "]("); closeIdx >= 0 {
+			linkText = cleanLinkText(md[e : e+closeIdx])
+			if n := linkDestEnd(md[e+closeIdx+2:]); n >= 0 {
+				e += closeIdx + 2 + n
+			} else {
+				e += closeIdx + 2
+			}
+		}
+	} else if e < len(md) && strings.HasPrefix(md[e:], "](") {
+		// A bare '](' immediately after the sentinel outside a link we opened:
+		// consume it as a link tail for safety.
+		if n := linkDestEnd(md[e+2:]); n >= 0 {
+			e += 2 + n
+		}
+	}
+	return s, e, url, linkText, true
+}
+
+// cleanLinkText turns raw markdown link text (which can carry hard-break
+// backslashes and emphasis markers when the converter wraps block text inside
+// a link) into a single whitespace-separated caption line.
+func cleanLinkText(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	s = strings.NewReplacer("\\", "", "**", "", "*", "", "`", "").Replace(s)
+	return strings.TrimSpace(s)
+}
+
+// linkDestEnd returns the length of a markdown link destination beginning at
+// s, including its closing ')', or -1 when the destination is unterminated. It
+// honors angle-bracketed destinations and balanced parentheses.
+func linkDestEnd(s string) int {
+	if strings.HasPrefix(s, "<") {
+		for i := 1; i < len(s); i++ {
+			if s[i] == '>' {
+				if i+1 < len(s) && s[i+1] == ')' {
+					return i + 2
+				}
+				return -1
+			}
+		}
+		return -1
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				return i + 1
+			}
+			depth--
+		}
+	}
+	return -1
+}
+
+// stripDuplicateSentinels removes every inline-image sentinel whose URL has
+// already appeared (the lead image URL, or an earlier occurrence in document
+// order), keeping the first occurrence of each image, along with the markdown
+// link wrapping a removed sentinel. A skipped duplicate renders no block while
+// the surrounding paragraphs keep their separation.
+func stripDuplicateSentinels(md, leadURL string) string {
+	seen := map[string]bool{}
+	if leadURL != "" {
+		seen[leadURL] = true
+	}
+	var b strings.Builder
+	pos := 0
+	for {
+		start, end, url, _, ok := nextSentinel(md, pos)
+		if !ok {
+			b.WriteString(md[pos:])
+			break
+		}
+		b.WriteString(md[pos:start])
+		if !seen[url] {
+			b.WriteString(md[start:end])
+		}
+		seen[url] = true
+		pos = end
+	}
+	return b.String()
+}
+
+// inlineBodyParts renders the article body with inline image blocks interleaved
+// at the sentinel positions ConvertImages emitted. It returns the body parts
+// (each joined into the final content with newline separators) and the ordered
+// inline image blocks with content-relative line indices. An inline image whose
+// source is not yet composed renders a blank placeholder line in its place so
+// the text flow stays stable until its load lands and re-composes the block. A
+// sentinel wrapped in a markdown link (`<a><img></a>`) consumes the whole link
+// construct, so no stray `[`/`](...)` renders around the image.
+func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.InlineImage, contentW, vpH, headerLines, base int) ([]string, []imageBlock, map[string]string) {
+	var parts []string
+	var blocks []imageBlock
+	captions := map[string]string{}
+	lineCount := base
+	addPart := func(s string) {
+		parts = append(parts, s)
+		lineCount += len(strings.Split(s, "\n"))
+	}
+	addImageBlock := func(url string, block []string, rows int, native bool) {
+		if len(parts) > 0 && parts[len(parts)-1] != "" {
+			parts = append(parts, "")
+			lineCount++
+		}
+		start := lineCount
+		addPart(strings.Join(block, "\n"))
+		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native})
+		parts = append(parts, "")
+		lineCount++
+	}
+	pos := 0
+	idx := 0
+	for {
+		start, end, url, linkText, ok := nextSentinel(md, pos)
+		if !ok {
+			break
+		}
+		if seg := strings.TrimSpace(md[pos:start]); seg != "" {
+			addPart(m.renderMarkdown(md[pos:start], contentW))
+		}
+		alt := ""
+		if idx < len(inline) && inline[idx].URL == url {
+			alt = inline[idx].Alt
+			idx++
+		}
+		attr := inlineAttribution(a, url, alt, linkText)
+		captions[url] = attr
+		if block, rows, native := m.composeImageBlock(url, attr, contentW, vpH, headerLines); len(block) > 0 {
+			addImageBlock(url, block, rows, native)
+		} else {
+			// Placeholder: keep the paragraph break so the body text stays
+			// stable and the block inserts at the right offset when the load
+			// lands and the article re-composes.
+			if len(parts) == 0 || parts[len(parts)-1] != "" {
+				parts = append(parts, "")
+				lineCount++
+			}
+		}
+		pos = end
+	}
+	if rest := strings.TrimSpace(md[pos:]); rest != "" {
+		addPart(m.renderMarkdown(rest, contentW))
+	}
+	return parts, blocks, captions
+}
+
+// inlineAttribution returns the caption for an inline image: the image's alt
+// text when present, otherwise the credit extracted from the article's HTML
+// when present, otherwise the text of any markdown link that wraps the image
+// (promo images like the TomDispatch banner render as a linked image whose
+// link text labels it), otherwise "photo: <source>" derived by the list view's
+// source-identifier rules. It returns "" when none is available.
+func inlineAttribution(a store.Article, url, alt, linkText string) string {
+	if alt != "" {
+		return alt
+	}
+	if credit := convert.ImageCredit(a.Content, url); credit != "" {
+		return credit
+	}
+	if linkText != "" {
+		return linkText
+	}
+	if src := sourceID(a.Link, a.FeedURL); src != "" {
+		return "photo: " + src
+	}
+	return ""
 }
 
 // renderHeader renders the reader header: the article URL as the very first
@@ -231,24 +561,24 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.LinkPopup:
 		m.openLinksPopup()
 	case config.MoveDown:
-		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) })
+		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 		m.article.markRead(m.store)
 	case config.MoveUp:
-		m.scrollArticle(func() { m.article.viewport.ScrollUp(1) })
+		m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 	case config.PageDown:
-		m.scrollArticle(func() { m.article.viewport.PageDown() })
+		m.scrollArticle(func() { m.article.viewport.PageDown() }, false)
 		m.article.markRead(m.store)
 	case config.PageUp:
-		m.scrollArticle(func() { m.article.viewport.PageUp() })
+		m.scrollArticle(func() { m.article.viewport.PageUp() }, false)
 	case config.HalfPageDown:
-		m.scrollArticle(func() { m.article.viewport.HalfPageDown() })
+		m.scrollArticle(func() { m.article.viewport.HalfPageDown() }, false)
 		m.article.markRead(m.store)
 	case config.HalfPageUp:
-		m.scrollArticle(func() { m.article.viewport.HalfPageUp() })
+		m.scrollArticle(func() { m.article.viewport.HalfPageUp() }, false)
 	case config.Top:
 		m.article.viewport.GotoTop()
 	case config.Bottom:
-		m.scrollArticle(func() { m.article.viewport.GotoBottom() })
+		m.scrollArticle(func() { m.article.viewport.GotoBottom() }, false)
 	case config.OpenURL:
 		if m.article.article.Link != "" {
 			cmd = openURLCmd(m.article.article.Link)
@@ -279,9 +609,9 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	if tea.MouseEvent(msg).IsWheel() && msg.Action == tea.MouseActionPress {
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			m.scrollArticle(func() { m.article.viewport.ScrollUp(1) })
+			m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 		case tea.MouseButtonWheelDown:
-			m.scrollArticle(func() { m.article.viewport.ScrollDown(1) })
+			m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 			m.article.markRead(m.store)
 		}
 		return nil
@@ -532,7 +862,9 @@ func (m *Model) renderArticle() string {
 	}
 	g := m.glyphs()
 	content := m.article.viewport.View()
-	lines := highlightSelection(strings.Split(content, "\n"), m.article.sel)
+	lines := strings.Split(content, "\n")
+	m.suppressClippedNativeTransmits(lines)
+	lines = highlightSelection(lines, m.article.sel)
 	sc := scrollState{
 		totalH:    m.article.viewport.TotalLineCount(),
 		viewportH: m.article.viewport.Height,

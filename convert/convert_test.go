@@ -186,3 +186,74 @@ func TestConvertErrorFallsBackToPlainText(t *testing.T) {
 		t.Errorf("plainText should strip HTML tags, got %q", got)
 	}
 }
+
+func TestConvertImagesReturnsSentinelsInDocumentOrder(t *testing.T) {
+	html := `<p>before</p><p><img src="a.jpg" alt="first"></p><p>middle</p><p><img src="b.jpg"></p><p>after</p>`
+	out, imgs := ConvertImages(html)
+	// Sentinels appear in document order.
+	iA := strings.Index(out, "\x00img:a.jpg\x00")
+	iB := strings.Index(out, "\x00img:b.jpg\x00")
+	if iA < 0 || iB < 0 {
+		t.Fatalf("sentinel tokens missing from output: %q", out)
+	}
+	if iA > iB {
+		t.Errorf("sentinel order wrong: a.jpg at %d after b.jpg at %d", iA, iB)
+	}
+	if !strings.Contains(out, "before") || !strings.Contains(out, "middle") || !strings.Contains(out, "after") {
+		t.Errorf("surrounding text not preserved: %q", out)
+	}
+	if len(imgs) != 2 {
+		t.Fatalf("inline images = %d, want 2", len(imgs))
+	}
+	if imgs[0].URL != "a.jpg" || imgs[1].URL != "b.jpg" {
+		t.Errorf("urls = %+v, want [a.jpg b.jpg]", imgs)
+	}
+	if imgs[0].Alt != "first" {
+		t.Errorf("first alt = %q, want %q", imgs[0].Alt, "first")
+	}
+	if imgs[1].Alt != "" {
+		t.Errorf("second alt = %q, want empty", imgs[1].Alt)
+	}
+}
+
+func TestConvertImagesNoImages(t *testing.T) {
+	out, imgs := ConvertImages("<p>just text</p>")
+	if imgs != nil {
+		t.Errorf("imgs = %v, want nil", imgs)
+	}
+	if !strings.Contains(out, "just text") {
+		t.Errorf("text not preserved: %q", out)
+	}
+}
+
+func TestConvertImagesLinkedImageWithLinkText(t *testing.T) {
+	// A promo banner <a> wraps the image and the banner text; the marked
+	// converter renders the sentinel inside the link with the text between the
+	// sentinel and the destination, which the article view consumes whole.
+	html := `<p><a href="/tomdispatch"><span><img src="logo.jpg"></span><div><p>Read Our Complete Coverage</p><h2>TomDispatch</h2></div></a></p>`
+	out, imgs := ConvertImages(html)
+	if !strings.Contains(out, "\x00img:logo.jpg\x00") {
+		t.Errorf("sentinel missing from linked-image output: %q", out)
+	}
+	if !strings.Contains(out, "](/tomdispatch)") {
+		t.Errorf("link tail missing from linked-image output: %q", out)
+	}
+	if len(imgs) != 1 || imgs[0].URL != "logo.jpg" {
+		t.Errorf("imgs = %+v, want [logo.jpg]", imgs)
+	}
+}
+
+func TestConvertStillEmitsImagePlaceholders(t *testing.T) {
+	// Regression: the plain Convert path must keep emitting [alt]/[image]
+	// placeholders, not sentinels.
+	out := Convert(`<p><img src="a.jpg" alt="first"></p><p><img src="b.jpg"></p>`)
+	if strings.Contains(out, "\x00img:") {
+		t.Errorf("Convert must not emit sentinels: %q", out)
+	}
+	if !strings.Contains(out, "[first]") {
+		t.Errorf("alt placeholder missing: %q", out)
+	}
+	if !strings.Contains(out, "[image]") {
+		t.Errorf("no-alt image placeholder missing: %q", out)
+	}
+}

@@ -42,6 +42,58 @@ func TestHarvestLinksDeduplicatesInDocumentOrder(t *testing.T) {
 	}
 }
 
+func TestResolveLinkAgainstArticleOrigin(t *testing.T) {
+	a := store.Article{Link: "https://theintercept.com/2026/08/31/iran-war/", FeedURL: "https://theintercept.com/feed"}
+	cases := map[string]string{
+		"/tomdispatch":               "https://theintercept.com/tomdispatch",
+		"https://example.com/abs":    "https://example.com/abs",
+		"tomdispatch":                "https://theintercept.com/2026/08/31/iran-war/tomdispatch",
+		"https://theintercept.com/x": "https://theintercept.com/x",
+	}
+	for in, want := range cases {
+		if got := resolveLink(a, in); got != want {
+			t.Errorf("resolveLink(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestHarvestArticleLinksResolvesRelativeTargets(t *testing.T) {
+	a := store.Article{
+		Link:    "https://theintercept.com/2026/08/31/iran-war/",
+		Content: `<p><a href="/tomdispatch">TomDispatch</a></p>`,
+	}
+	links := harvestArticleLinks(a)
+	if len(links) != 1 || links[0].url != "https://theintercept.com/tomdispatch" {
+		t.Errorf("links = %+v, want the relative target resolved to https://theintercept.com/tomdispatch", links)
+	}
+}
+
+func TestHarvestArticleLinksLinkedImageBanner(t *testing.T) {
+	// A promo banner renders as a linked image whose link wraps the sentinel
+	// and the banner text; the harvest must still surface the link, resolved
+	// to an absolute target, with the sentinel stripped from the link text.
+	a := store.Article{
+		Link: "https://theintercept.com/2026/08/31/iran-war/",
+		Content: `<aside class="promote-banner"><a class="promote-banner__link" href="/tomdispatch">` +
+			`<span class="promote-banner__image"><img decoding="async" src="https://example.com/logo.jpg" alt=""></span>` +
+			`<div class="promote-banner__text"><p class="promote-banner__eyebrow">Read Our Complete Coverage</p>` +
+			`<h2 class="promote-banner__title">TomDispatch</h2></div></a></aside>`,
+	}
+	links := harvestArticleLinks(a)
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want the banner link", links)
+	}
+	if links[0].url != "https://theintercept.com/tomdispatch" {
+		t.Errorf("banner url = %q, want https://theintercept.com/tomdispatch", links[0].url)
+	}
+	if strings.Contains(links[0].text, "\x00") || strings.Contains(links[0].text, "img:") {
+		t.Errorf("banner link text still carries the image sentinel: %q", links[0].text)
+	}
+	if !strings.Contains(links[0].text, "Read Our Complete Coverage") || !strings.Contains(links[0].text, "TomDispatch") {
+		t.Errorf("banner link text = %q, want the banner text", links[0].text)
+	}
+}
+
 func TestArticleStateHarvestsBodyLinks(t *testing.T) {
 	m := articleWithLinks(t)
 	urls := []string{"https://example.com/one", "https://example.com/two"}
