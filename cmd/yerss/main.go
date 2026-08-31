@@ -18,25 +18,14 @@ import (
 func main() {
 	base := filepath.Base(os.Args[0])
 
-	var editFeeds, editConfig, jsonOut, ascii, initDB bool
-	pflag.BoolVarP(&editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
-	pflag.BoolVarP(&editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
-	pflag.BoolVarP(&jsonOut, "json", "j", false, "dump articles as JSON and exit")
-	pflag.BoolVarP(&ascii, "ascii", "a", false, "force ASCII fallback glyphs")
-	pflag.BoolVarP(&initDB, "init-db", "z", false, "reinitialize the database to zero before starting")
+	o := registerFlags(pflag.CommandLine)
 	pflag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n\nFlags:\n", base)
 		pflag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, `
-Files:
-  config  %s   display, refresh, and keybinding settings
-  feeds   %s   one feed per line; the https:// scheme is assumed
-  db      %s   SQLite article store
-
-The config's [data] section can relocate the feeds file and database.
-`, config.DefaultConfigPath(), config.DefaultFeedsPath(), config.Default().DBPath())
+		fmt.Fprintln(os.Stderr, usageText())
 	}
 	pflag.Parse()
+	editFeeds, editConfig, jsonOut, ascii, initDB, interactive := o.editFeeds, o.editConfig, o.jsonOut, o.ascii, o.initDB, o.interactive
 
 	if code, done := runEditFlags(editConfig, editFeeds); done {
 		os.Exit(code)
@@ -48,6 +37,11 @@ The config's [data] section can relocate the feeds file and database.
 		os.Exit(1)
 	}
 
+	if initDB && interactive {
+		if code, ok := confirmInitDB(cfg.DBPath()); !ok {
+			os.Exit(code)
+		}
+	}
 	if initDB {
 		if err := resetDatabase(cfg.DBPath()); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: cannot reinitialize database: %v\n", base, err)
@@ -84,6 +78,38 @@ The config's [data] section can relocate the feeds file and database.
 	// The TUI has left the alternate screen; per-URL fetch diagnostics print
 	// after exit so they never disturb the live display.
 	feedDiagnostics(os.Stderr, base, m.FeedOutcomes())
+}
+
+// options carries the command-line flag values, so flag registration can be
+// exercised by tests without running main.
+type options struct {
+	editFeeds, editConfig, jsonOut, ascii, initDB, interactive bool
+}
+
+// usageText documents the three data files (config, feeds, db) by their
+// resolved default paths and notes the [data] relocation option. It lists only
+// the paths, with no per-file descriptions, because the file names and paths
+// are self-explanatory.
+func usageText() string {
+	return fmt.Sprintf(`Files:
+  config  %s
+  feeds   %s
+  db      %s
+
+The config's [data] section can relocate the feeds file and database.
+`, config.DefaultConfigPath(), config.DefaultFeedsPath(), config.Default().DBPath())
+}
+
+// registerFlags binds every flag on fs and returns the parsed option values.
+func registerFlags(fs *pflag.FlagSet) *options {
+	o := &options{}
+	fs.BoolVarP(&o.editFeeds, "edit-feeds", "e", false, "edit feeds.txt in $EDITOR")
+	fs.BoolVarP(&o.editConfig, "edit-config", "c", false, "edit config.toml in $EDITOR")
+	fs.BoolVarP(&o.jsonOut, "json", "j", false, "dump articles as JSON and exit")
+	fs.BoolVarP(&o.ascii, "ascii", "a", false, "force ASCII fallback glyphs")
+	fs.BoolVarP(&o.initDB, "init-db", "z", false, "reinitialize the database to zero before starting")
+	fs.BoolVarP(&o.interactive, "interactive", "i", false, "prompt before --init-db")
+	return o
 }
 
 // resetDatabase deletes the SQLite database file and its WAL/SHM sidecars so
