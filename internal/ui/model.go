@@ -56,6 +56,11 @@ type Model struct {
 
 	imgRenderer image.Renderer
 	imgCache    *image.Cache
+	imgBlocks   *image.Blocks
+	imgPhotos   *image.Photos
+	imgNatives  *image.Natives
+	imgNative   image.NativeRenderer
+	imgLoading  map[string]bool
 
 	statusMsg     string
 	statusExpires time.Time
@@ -101,6 +106,11 @@ func New(cfg *config.Config, st *store.Store) *Model {
 		ascii:       cfg.Display.Ascii || detectAsciiNeeded(),
 		imgRenderer: image.Halfblocks{},
 		imgCache:    image.NewCache(),
+		imgBlocks:   image.NewBlocks(),
+		imgPhotos:   image.NewPhotos(),
+		imgNatives:  image.NewNatives(),
+		imgNative:   image.NativeRenderer{Protocol: image.DetectProtocol()},
+		imgLoading:  make(map[string]bool),
 		width:       80,
 		height:      24,
 	}
@@ -179,13 +189,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		var load tea.Cmd
 		if m.view == viewArticle {
 			offset := m.article.viewport.YOffset
 			a := *m.article.article
 			m.article = m.newArticleState(a)
 			m.article.viewport.SetYOffset(offset)
+			load = m.ensureImageSource(a)
 		}
-		return m, nil
+		return m, load
 	case tea.KeyMsg:
 		if m.popup != noPopup {
 			return m.updatePopup(msg)
@@ -205,8 +217,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateArticleMouse(msg)
 		}
 		return m, cmd
-	case image.LoadedMsg:
-		m.onImageLoaded(msg)
+	case image.BlockMsg:
+		m.onBlockLoaded(msg)
+		return m, nil
+	case image.PhotoMsg:
+		return m, m.onPhotoLoaded(msg)
+	case image.NativeMsg:
+		m.onNativeLoaded(msg)
 		return m, nil
 	case image.FailedMsg:
 		m.onImageFailed(msg)
@@ -251,7 +268,9 @@ func (m *Model) View() string {
 	case popupHelp:
 		s = overlay(s, m.renderHelp())
 	}
-	return s
+	// The clear escape is zero-width and position-independent; prepending it
+	// to the first line lets the frame repaint carry it to the terminal.
+	return m.nativeImageClear() + s
 }
 
 // FeedOutcomes returns the per-URL outcomes of the most recent completed

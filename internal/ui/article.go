@@ -15,15 +15,18 @@ import (
 )
 
 type articleState struct {
-	id         int64
-	article    *store.Article
-	lines      []string
-	viewport   viewport.Model
-	readMarked bool
-	sel        textSelection
-	imgStart   int
-	imgEnd     int
-	links      []articleLink
+	id          int64
+	article     *store.Article
+	lines       []string
+	viewport    viewport.Model
+	readMarked  bool
+	sel         textSelection
+	headerLines int
+	imgStart    int
+	imgEnd      int
+	capStart    int
+	nativeImg   bool
+	links       []articleLink
 }
 
 // articleLink is one hyperlink harvested from the article's markdown source.
@@ -136,13 +139,13 @@ func (m *Model) openArticle() tea.Cmd {
 func (m *Model) newArticleState(a store.Article) articleState {
 	padX, padY := m.cfg.Display.PaddingX, m.cfg.Display.PaddingY
 	contentW, vpH, _ := contentGeom(m.width, m.height, padX, padY)
-	imgStart, imgEnd := -1, -1
+	imgStart, imgEnd, capStart := -1, -1, -1
 	headerLines := 0
 	header := m.renderHeader(a, contentW)
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-	imgBlock := m.articleImageBlock(a, contentW, vpH, headerLines)
+	imgBlock, imgRows, imgNative := m.articleImageBlock(a, contentW, vpH, headerLines)
 	body := m.renderMarkdown(convert.Convert(a.Content), contentW)
 	rendered := body
 	if header != "" {
@@ -150,20 +153,26 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	}
 	if len(imgBlock) > 0 {
 		// The block sits below the header with one blank line on each side;
-		// it covers the image lines plus the attribution line.
+		// it covers the image lines plus the attribution lines, and capStart
+		// (the down-snap target) is the first attribution line, or the line
+		// past the block when no attribution is composed.
 		imgStart, imgEnd = headerLines+1, headerLines+len(imgBlock)
+		capStart = imgStart + imgRows
 		rendered = header + "\n\n" + strings.Join(imgBlock, "\n") + "\n\n" + body
 	}
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
 	st := articleState{
-		id:       a.ID,
-		article:  &a,
-		lines:    strings.Split(rendered, "\n"),
-		viewport: vp,
-		imgStart: imgStart,
-		imgEnd:   imgEnd,
-		links:    harvestArticleLinks(a),
+		id:          a.ID,
+		article:     &a,
+		lines:       strings.Split(rendered, "\n"),
+		viewport:    vp,
+		headerLines: headerLines,
+		imgStart:    imgStart,
+		imgEnd:      imgEnd,
+		capStart:    capStart,
+		nativeImg:   imgNative,
+		links:       harvestArticleLinks(a),
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.store)

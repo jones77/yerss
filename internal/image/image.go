@@ -1,4 +1,6 @@
-// Package image fetches, caches, and renders article lead images.
+// Package image fetches, caches, and renders article lead images. Decoded
+// images, rendered halfblock text blocks, and fetched raw photo bytes are each
+// cached in memory for the session; only the rendered text block is persisted.
 package image
 
 import (
@@ -22,10 +24,25 @@ import (
 	"yerss/internal/store"
 )
 
-// LoadedMsg reports a successfully decoded lead image.
-type LoadedMsg struct {
+// BlockMsg reports an article's lead image rendered as a halfblock text block.
+type BlockMsg struct {
+	Key   string
+	Lines []string
+}
+
+// PhotoMsg reports that an article's lead photo has been fetched and cached
+// for a native render. The raw bytes are read from the Photos cache.
+type PhotoMsg struct {
 	Key string
-	Img image.Image
+}
+
+// NativeMsg reports that an article's lead photo has been rendered to a native
+// inline-image block off the UI goroutine and cached for the session. Lines are
+// the rendered native block (image rows only, not yet centered or attributed);
+// they are also available from the Natives cache keyed by render size.
+type NativeMsg struct {
+	Key   string
+	Lines []string
 }
 
 // FailedMsg reports a lead image that could not be loaded.
@@ -36,10 +53,6 @@ type FailedMsg struct {
 // fetchTimeout bounds a single image download. It is a variable so tests can
 // shorten it.
 var fetchTimeout = 15 * time.Second
-
-// maxImageBytes caps the size of a fetched image. It is a variable so tests
-// can shrink it.
-var maxImageBytes = 5 << 20
 
 // Cache holds decoded images keyed by URL for the session.
 type Cache struct {
@@ -67,20 +80,134 @@ func (c *Cache) Set(url string, img image.Image) {
 	c.items[url] = img
 }
 
-// LoadCmd returns a tea.Cmd that resolves url's image through the cache
-// hierarchy (in-memory cache, stored database bytes, then a network fetch). On
-// a network success the raw bytes are persisted and the decoded image cached;
-// on any failure a FailedMsg is emitted. The command never blocks the caller.
-func LoadCmd(cache *Cache, st *store.Store, articleID int64, url string) tea.Cmd {
+// Blocks holds rendered halfblock text blocks keyed by URL for the session.
+type Blocks struct {
+	mu    sync.Mutex
+	items map[string][]string
+}
+
+// NewBlocks returns an empty in-memory rendered-block cache.
+func NewBlocks() *Blocks {
+	return &Blocks{items: make(map[string][]string)}
+}
+
+// Get returns the cached rendered block for url, if present.
+func (b *Blocks) Get(url string) ([]string, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	lines, ok := b.items[url]
+	return lines, ok
+}
+
+// Set stores a rendered block under url.
+func (b *Blocks) Set(url string, lines []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.items[url] = lines
+}
+
+// Photos holds raw fetched photo bytes keyed by URL for the session.
+type Photos struct {
+	mu    sync.Mutex
+	items map[string][]byte
+}
+
+// NewPhotos returns an empty in-memory raw-photo cache.
+func NewPhotos() *Photos {
+	return &Photos{items: make(map[string][]byte)}
+}
+
+// Get returns the cached raw photo bytes for url, if present.
+func (p *Photos) Get(url string) ([]byte, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	data, ok := p.items[url]
+	return data, ok
+}
+
+// Set stores raw photo bytes under url.
+func (p *Photos) Set(url string, data []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.items[url] = data
+}
+
+// Natives holds native inline-image block renderings keyed by render size for
+// the session, so re-viewing an article at the same width and viewport height
+// is instant and resizing to a new size re-renders off the UI goroutine.
+type Natives struct {
+	mu    sync.Mutex
+	items map[string][]string
+}
+
+// NewNatives returns an empty in-memory rendered-native-block cache.
+func NewNatives() *Natives {
+	return &Natives{items: make(map[string][]string)}
+}
+
+// Get returns the cached native render for key, if present.
+func (n *Natives) Get(key string) ([]string, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	lines, ok := n.items[key]
+	return lines, ok
+}
+
+// Set stores a native render under key.
+func (n *Natives) Set(key string, lines []string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.items[key] = lines
+}
+
+// NativeKey returns the cache key for a native render of url at the given
+// content width and viewport-height cap. Both dimensions matter: changing
+// either means a different block size and warrants a re-render.
+func NativeKey(url string, width, maxHeight int) string {
+	return fmt.Sprintf("%s\x00%d\x00%d", url, width, maxHeight)
+}
+
+// BlockWidth reports the display width in cells of a rendered block. A mosaic
+// render is exactly the requested width per line, so this is the block's
+// render width.
+func BlockWidth(lines []string) int {
+	w := 0
+	for _, l := range lines {
+		if lw := ansi.StringWidth(l); lw > w {
+			w = lw
+		}
+	}
+	return w
+}
+
+// BlockCmd returns a tea.Cmd that resolves an article's lead image block at
+// width through the cache hierarchy: in-memory decoded image (re-rendered),
+// the stored database block when its width matches, legacy stored photo bytes,
+// then a network fetch. On success the block is cached and, when new, persisted
+// (which purges any legacy photo bytes); on any failure a FailedMsg is emitted.
+// When fetch is false the command never hits the network: that is the
+// native-terminal placeholder path, where PhotoCmd owns fetching.
+func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, url string, width, maxHeight int, allowFetch bool) tea.Cmd {
 	return func() tea.Msg {
-		if img, ok := cache.Get(url); ok {
-			return LoadedMsg{Key: url, Img: img}
+		if lines, ok := blockFromCache(cache, blocks, url, width, maxHeight); ok {
+			return BlockMsg{Key: url, Lines: lines}
+		}
+		if block, err := st.GetImageBlock(articleID); err == nil && block != "" {
+			if stored := splitLines(block); BlockWidth(stored) == width {
+				blocks.Set(url, stored)
+				return BlockMsg{Key: url, Lines: stored}
+			}
 		}
 		if data, err := st.GetImageData(articleID); err == nil && len(data) > 0 {
-			if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+			if img, _, derr := image.Decode(bytes.NewReader(data)); derr == nil {
 				cache.Set(url, img)
-				return LoadedMsg{Key: url, Img: img}
+				if lines, err := renderBlock(blocks, st, articleID, url, img, width, maxHeight); err == nil {
+					return BlockMsg{Key: url, Lines: lines}
+				}
 			}
+		}
+		if !allowFetch {
+			return FailedMsg{Key: url}
 		}
 		data, err := fetch(url)
 		if err != nil {
@@ -90,14 +217,70 @@ func LoadCmd(cache *Cache, st *store.Store, articleID int64, url string) tea.Cmd
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
-		_ = st.SetImageData(articleID, data)
 		cache.Set(url, img)
-		return LoadedMsg{Key: url, Img: img}
+		lines, err := renderBlock(blocks, st, articleID, url, img, width, maxHeight)
+		if err != nil {
+			return FailedMsg{Key: url}
+		}
+		return BlockMsg{Key: url, Lines: lines}
 	}
 }
 
-// fetch downloads url with guards: an HTTP timeout, an image/* content-type
-// allowlist, and a max-bytes cap on the response body.
+// PhotoCmd returns a tea.Cmd that fetches an article's lead photo into the
+// Photos cache for a native render. When the fetched photo is not already
+// decoded, it is also used to render and persist the halfblock block so future
+// opens have a placeholder. On any failure a FailedMsg is emitted.
+func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, articleID int64, url string, width, maxHeight int) tea.Cmd {
+	return func() tea.Msg {
+		if _, ok := photos.Get(url); ok {
+			return PhotoMsg{Key: url}
+		}
+		data, err := fetch(url)
+		if err != nil {
+			return FailedMsg{Key: url}
+		}
+		photos.Set(url, data)
+		if _, ok := cache.Get(url); !ok {
+			if img, _, derr := image.Decode(bytes.NewReader(data)); derr == nil {
+				cache.Set(url, img)
+				if _, ok := blocks.Get(url); !ok {
+					_, _ = renderBlock(blocks, st, articleID, url, img, width, maxHeight)
+				}
+			}
+		}
+		return PhotoMsg{Key: url}
+	}
+}
+
+// renderBlock renders img to a block at width (capped to maxHeight), caches it
+// in blocks, and persists it to the database.
+func renderBlock(blocks *Blocks, st *store.Store, articleID int64, url string, img image.Image, width, maxHeight int) ([]string, error) {
+	lines, err := (Halfblocks{}).Render(img, width, maxHeight)
+	if err != nil {
+		return nil, err
+	}
+	blocks.Set(url, lines)
+	_ = st.SetImageBlock(articleID, strings.Join(lines, "\n"))
+	return lines, nil
+}
+
+// blockFromCache re-renders the block from a cached decoded image when one is
+// present, or serves the cached block lines when they match the width.
+func blockFromCache(cache *Cache, blocks *Blocks, url string, width, maxHeight int) ([]string, bool) {
+	if img, ok := cache.Get(url); ok {
+		if lines, err := (Halfblocks{}).Render(img, width, maxHeight); err == nil {
+			blocks.Set(url, lines)
+			return lines, true
+		}
+	}
+	if lines, ok := blocks.Get(url); ok && BlockWidth(lines) == width {
+		return lines, true
+	}
+	return nil, false
+}
+
+// fetch downloads url with guards: an HTTP timeout and an image/* content-type
+// allowlist.
 func fetch(url string) ([]byte, error) {
 	client := &http.Client{Timeout: fetchTimeout}
 	resp, err := client.Get(url)
@@ -111,12 +294,9 @@ func fetch(url string) ([]byte, error) {
 	if ctype := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ctype), "image/") {
 		return nil, fmt.Errorf("image fetch: content type %q is not an image", ctype)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxImageBytes+1)))
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
-	}
-	if len(body) > maxImageBytes {
-		return nil, fmt.Errorf("image fetch: response exceeds %d bytes", maxImageBytes)
 	}
 	return body, nil
 }

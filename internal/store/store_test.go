@@ -532,7 +532,7 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cols["image_url"] || !cols["image_data"] {
+	if !cols["image_url"] || !cols["image_data"] || !cols["image_block"] {
 		t.Errorf("first migration missing image columns: %v", cols)
 	}
 	st.Close()
@@ -547,7 +547,7 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cols["image_url"] || !cols["image_data"] {
+	if !cols["image_url"] || !cols["image_data"] || !cols["image_block"] {
 		t.Errorf("re-migration dropped image columns: %v", cols)
 	}
 }
@@ -627,29 +627,65 @@ func TestImageURLCapturedAndRestored(t *testing.T) {
 	}
 }
 
-func TestImageDataRoundtrip(t *testing.T) {
+func TestImageBlockRoundtrip(t *testing.T) {
 	st := newTestStore(t)
 	id, err := st.UpsertArticle(sampleArticle())
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := st.GetImageData(id)
+	before, err := st.GetImageBlock(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before != nil {
-		t.Errorf("fresh article image_data = %v, want nil", before)
+	if before != "" {
+		t.Errorf("fresh article image_block = %q, want empty", before)
 	}
-	want := []byte("fake-jpeg-bytes")
-	if err := st.SetImageData(id, want); err != nil {
+	want := "\x1b[48;2;200;100;50m▀\x1b[0m\n\x1b[0m"
+	if err := st.SetImageBlock(id, want); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.GetImageData(id)
+	got, err := st.GetImageBlock(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(want) {
-		t.Errorf("image_data roundtrip = %q, want %q", got, want)
+	if got != want {
+		t.Errorf("image_block roundtrip = %q, want %q", got, want)
+	}
+}
+
+func TestSetImageBlockPurgesLegacyImageData(t *testing.T) {
+	st := newTestStore(t)
+	id, err := st.UpsertArticle(sampleArticle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a pre-upgrade database that still holds raw photo bytes.
+	if _, err := st.db.Exec(`UPDATE articles SET image_data = ? WHERE id = ?`, []byte("legacy-jpeg"), id); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := st.GetImageData(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(legacy) != "legacy-jpeg" {
+		t.Fatalf("legacy image_data = %q, want %q", legacy, "legacy-jpeg")
+	}
+	if err := st.SetImageBlock(id, "block"); err != nil {
+		t.Fatal(err)
+	}
+	block, err := st.GetImageBlock(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if block != "block" {
+		t.Errorf("image_block = %q, want block", block)
+	}
+	legacy, err = st.GetImageData(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy != nil {
+		t.Errorf("legacy image_data not purged: %v", legacy)
 	}
 }
 

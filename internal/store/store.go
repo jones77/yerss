@@ -145,10 +145,12 @@ CREATE TABLE IF NOT EXISTS state (
 	return s.migrateImageColumns()
 }
 
-// migrateImageColumns adds the nullable image_url and image_data columns to the
-// articles table when they are absent. SQLite has no ADD COLUMN IF NOT EXISTS,
-// so the guard queries PRAGMA table_info and issues one ALTER per missing
-// column. It is idempotent: on an already-migrated database it is a no-op.
+// migrateImageColumns adds the nullable image_url, image_data, and image_block
+// columns to the articles table when they are absent. SQLite has no ADD COLUMN
+// IF NOT EXISTS, so the guard queries PRAGMA table_info and issues one ALTER
+// per missing column. It is idempotent: on an already-migrated database it is a
+// no-op. image_block holds the rendered text block; image_data holds legacy raw
+// photo bytes that are purged as blocks are written.
 func (s *Store) migrateImageColumns() error {
 	cols, err := s.tableColumns("articles")
 	if err != nil {
@@ -161,6 +163,11 @@ func (s *Store) migrateImageColumns() error {
 	}
 	if !cols["image_data"] {
 		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_data BLOB`); err != nil {
+			return err
+		}
+	}
+	if !cols["image_block"] {
+		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_block TEXT`); err != nil {
 			return err
 		}
 	}
@@ -432,15 +439,39 @@ func (s *Store) SetRead(id int64, read bool) error {
 	return err
 }
 
-// SetImageData persists the raw fetched bytes of an article's lead image. The
-// bytes are stored as-is (the compressed JPEG/PNG stream), not decoded pixels.
+// SetImageBlock persists the rendered text block of an article's lead image and
+// purges any legacy raw photo bytes so the photo is not retained.
+func (s *Store) SetImageBlock(id int64, block string) error {
+	_, err := s.db.Exec(`UPDATE articles SET image_block = ?, image_data = NULL WHERE id = ?`, block, id)
+	return err
+}
+
+// GetImageBlock returns the stored rendered text block of an article's lead
+// image, or "" when none has been stored.
+func (s *Store) GetImageBlock(id int64) (string, error) {
+	var block string
+	err := s.db.QueryRow(`SELECT COALESCE(image_block, '') FROM articles WHERE id = ?`, id).Scan(&block)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return block, nil
+}
+
+// SetImageData writes raw photo bytes for an article. It exists only for
+// legacy databases and tests; production image loading never writes raw bytes
+// and any bytes written here are purged by the next SetImageBlock.
 func (s *Store) SetImageData(id int64, data []byte) error {
 	_, err := s.db.Exec(`UPDATE articles SET image_data = ? WHERE id = ?`, data, id)
 	return err
 }
 
-// GetImageData returns the stored raw lead-image bytes for an article, or nil
-// when none have been stored.
+// GetImageData returns legacy raw lead-image bytes for an article, or nil when
+// none remain. Raw bytes are only present on databases upgraded from before
+// text-block persistence; SetImageBlock clears them. New fetches are never
+// stored as raw bytes.
 func (s *Store) GetImageData(id int64) ([]byte, error) {
 	var data []byte
 	err := s.db.QueryRow(`SELECT image_data FROM articles WHERE id = ?`, id).Scan(&data)
