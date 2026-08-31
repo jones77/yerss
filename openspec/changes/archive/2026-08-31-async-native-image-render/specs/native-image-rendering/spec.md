@@ -19,8 +19,10 @@ same content width SHALL display the photo immediately from cache without
 re-downloading or re-rendering. When the photo fetch fails, the block SHALL
 remain as the final render. Resizing the terminal SHALL re-scale the native
 render from the cached photo without re-fetching, asynchronously and without
-blocking the UI. The fetched photo and its rendered native output SHALL be held
-only in memory for the session and SHALL NOT be persisted.
+blocking the UI. The fetched photo SHALL be persisted to the database (in the
+unified image table) so a later open re-renders natively from the stored bytes
+without a network request; the rendered native output SHALL remain an in-memory
+render cache keyed by size.
 
 #### Scenario: Block shown before photo fetch
 
@@ -47,10 +49,10 @@ only in memory for the session and SHALL NOT be persisted.
 - **WHEN** the terminal is resized while a native photo render is displayed
 - **THEN** the native render is re-scaled to the new content width from the cached photo with no network request
 
-#### Scenario: Photo not persisted
+#### Scenario: Photo persisted for later re-render
 
 - **WHEN** a full-image-capable terminal fetches a lead photo
-- **THEN** the photo bytes are cached only in memory for the session and never written to the database
+- **THEN** the photo bytes are written to the database so a later open re-renders natively without re-fetching
 
 #### Scenario: Opening a high-resolution photo does not block the UI
 
