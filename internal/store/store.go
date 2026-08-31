@@ -405,6 +405,73 @@ func (s *Store) VerifiedFeedURLs() (map[string]bool, error) {
 	return urls, rows.Err()
 }
 
+// PruneFeeds removes every stored feed whose URL is not in keep — along with
+// that feed's articles and their associated image rows — returning the
+// canonical URLs of the feeds that were removed. keep should be the canonical
+// feed URLs currently configured in feeds.txt. It is a no-op when keep is
+// empty of the stored feeds.
+func (s *Store) PruneFeeds(keep []string) ([]string, error) {
+	keepSet := make(map[string]bool, len(keep))
+	for _, u := range keep {
+		keepSet[u] = true
+	}
+	rows, err := s.db.Query(`SELECT url FROM feeds`)
+	if err != nil {
+		return nil, err
+	}
+	var pruned []string
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !keepSet[url] {
+			pruned = append(pruned, url)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(pruned) == 0 {
+		return nil, nil
+	}
+
+	var b strings.Builder
+	b.WriteString(`IN (`)
+	args := make([]any, 0, len(pruned))
+	for i, url := range pruned {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(`?`)
+		args = append(args, url)
+	}
+	b.WriteString(`)`)
+	inClause := b.String()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	// article_images has no ON DELETE CASCADE, so remove those rows first.
+	if _, err := tx.Exec(`
+DELETE FROM article_images
+WHERE article_id IN (SELECT id FROM articles WHERE feed_url `+inClause+`)`, args...); err != nil {
+		return nil, err
+	}
+	// article_categories cascades on article delete.
+	if _, err := tx.Exec(`DELETE FROM articles WHERE feed_url `+inClause, args...); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`DELETE FROM feeds WHERE url `+inClause, args...); err != nil {
+		return nil, err
+	}
+	return pruned, tx.Commit()
+}
+
 // UpsertArticle stores an article, deduplicating on (feed_url, guid) and
 // updating content and metadata when the row already exists. It returns the
 // article's ID.

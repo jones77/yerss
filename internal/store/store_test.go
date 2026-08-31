@@ -877,3 +877,82 @@ func TestSetArticleTagsDedupesAndSkipsEmpty(t *testing.T) {
 		t.Errorf("categories = %v, want [news tech]", got.Categories)
 	}
 }
+
+func TestPruneFeedsRemovesUnconfiguredFeeds(t *testing.T) {
+	st := newTestStore(t)
+	keep := "https://keep.example/feed.xml"
+	drop := "https://drop.example/feed.xml"
+
+	keepArt := sampleArticle()
+	keepArt.FeedURL = keep
+	keepArt.GUID = "keep-1"
+	keepID, err := st.UpsertArticle(keepArt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropArt := sampleArticle()
+	dropArt.FeedURL = drop
+	dropArt.GUID = "drop-1"
+	if _, err := st.UpsertArticle(dropArt); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImage(keepID, ArticleImage{Position: 0, URL: "https://keep.example/img.png", Block: "b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	pruned, err := st.PruneFeeds([]string{keep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pruned) != 1 || pruned[0] != drop {
+		t.Errorf("pruned = %v, want [%s]", pruned, drop)
+	}
+
+	if _, err := st.GetArticle(keepID); err != nil {
+		t.Errorf("kept article removed: %v", err)
+	}
+	imgs, err := st.GetArticleImages(keepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imgs) != 1 {
+		t.Errorf("kept article images = %d, want 1", len(imgs))
+	}
+
+	all, _ := st.ListArticles("")
+	for _, a := range all {
+		if a.FeedURL == drop {
+			t.Errorf("drop feed article %q still present after prune", a.GUID)
+		}
+	}
+
+	verified, err := st.PruneFeeds([]string{keep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified != nil {
+		t.Errorf("second prune = %v, want nil (drop feed still present)", verified)
+	}
+}
+
+func TestPruneFeedsNoopWhenAllConfigured(t *testing.T) {
+	st := newTestStore(t)
+	a := sampleArticle()
+	if _, err := st.UpsertArticle(a); err != nil {
+		t.Fatal(err)
+	}
+	pruned, err := st.PruneFeeds([]string{a.FeedURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != nil {
+		t.Errorf("pruned = %v, want nil", pruned)
+	}
+	n, err := st.ArticleCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("article count = %d, want 1", n)
+	}
+}

@@ -60,6 +60,10 @@ func main() {
 	}
 	defer st.Close()
 
+	if err := pruneFeeds(cfg, st); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: warning: could not prune removed feeds: %v\n", base, err)
+	}
+
 	if jsonOut {
 		os.Exit(runJSONDump(cfg, st))
 	}
@@ -149,6 +153,25 @@ func applyAsciiFlag(m *ui.Model, force bool) {
 	if force {
 		m.SetAscii(true)
 	}
+}
+
+// pruneFeeds removes every stored feed (and its articles) that is no longer
+// listed in feeds.txt, so the database reflects the user's current feed
+// choices and a removed feed's articles stop appearing in the list view. The
+// feeds file is canonicalized the same way it is on fetch. A read failure of
+// the feeds file is not an error: without a known configured set it is
+// impossible to tell which feeds were removed, so pruning is skipped.
+func pruneFeeds(cfg *config.Config, st *store.Store) error {
+	urls, err := feed.LoadFeeds(cfg.FeedsFile())
+	if err != nil {
+		return nil
+	}
+	keep := make([]string, 0, len(urls))
+	for _, u := range urls {
+		keep = append(keep, feed.CanonicalURL(u))
+	}
+	_, err = st.PruneFeeds(keep)
+	return err
 }
 
 // runEditFlags handles the -c/--edit-config and -e/--edit-feeds flags. It
