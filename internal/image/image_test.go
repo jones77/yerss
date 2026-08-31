@@ -134,8 +134,8 @@ func TestBlockCmdInMemoryHit(t *testing.T) {
 		t.Errorf("block width = %d, want 50", BlockWidth(bm.Lines))
 	}
 	// The in-memory path must not persist anything.
-	if block, _ := st.GetImageBlock(1); block != "" {
-		t.Errorf("in-memory hit should not persist, got %q", block)
+	if imgs, _ := st.GetArticleImages(1); len(imgs) != 0 {
+		t.Errorf("in-memory hit should not persist, got %+v", imgs)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestBlockCmdStoredBlockHit(t *testing.T) {
 	}
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
 	want, _ := (Halfblocks{}).Render(img, 40, 100)
-	if err := st.SetImageBlock(id, strings.Join(want, "\n")); err != nil {
+	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
 		t.Fatal(err)
 	}
 	c := NewCache()
@@ -166,23 +166,28 @@ func TestBlockCmdStoredBlockHit(t *testing.T) {
 	}
 }
 
-func TestBlockCmdStoredBlockWidthMismatchRefetches(t *testing.T) {
+func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 	st := newImageTestStore(t)
 	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	data := pngBytes(t, 8, 8)
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
 	old, _ := (Halfblocks{}).Render(img, 40, 100)
-	if err := st.SetImageBlock(id, strings.Join(old, "\n")); err != nil {
-		t.Fatal(err)
-	}
-	data := pngBytes(t, 8, 8)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(data)
+		t.Error("width mismatch must re-render from the stored photo, not fetch")
 	}))
 	defer srv.Close()
+	if err := st.SetArticleImage(id, store.ArticleImage{
+		Position: 0,
+		URL:      srv.URL,
+		Block:    strings.Join(old, "\n"),
+		Photo:    data,
+		Width:    BlockWidth(old),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	msg := BlockCmd(NewCache(), NewBlocks(), st, id, srv.URL, 60, 100, true)()
 	bm, ok := msg.(BlockMsg)
@@ -192,37 +197,12 @@ func TestBlockCmdStoredBlockWidthMismatchRefetches(t *testing.T) {
 	if BlockWidth(bm.Lines) != 60 {
 		t.Errorf("re-rendered block width = %d, want 60", BlockWidth(bm.Lines))
 	}
-	stored, _ := st.GetImageBlock(id)
-	if BlockWidth(splitLines(stored)) != 60 {
-		t.Errorf("persisted block width = %d, want 60", BlockWidth(splitLines(stored)))
-	}
-}
-
-func TestBlockCmdLegacyBytesConvertedAndPurged(t *testing.T) {
-	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	imgs, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := pngBytes(t, 8, 8)
-	if err := st.SetImageBlock(id, ""); err != nil {
-		t.Fatal(err)
-	}
-	// Plant legacy raw photo bytes directly, as a pre-upgrade database has.
-	if err := st.SetImageData(id, data); err != nil {
-		t.Fatal(err)
-	}
-	msg := BlockCmd(NewCache(), NewBlocks(), st, id, "https://example.com/img.png", 50, 100, true)()
-	if _, ok := msg.(BlockMsg); !ok {
-		t.Fatalf("expected BlockMsg from legacy bytes, got %T", msg)
-	}
-	block, _ := st.GetImageBlock(id)
-	if block == "" {
-		t.Error("legacy conversion should persist a block")
-	}
-	legacy, _ := st.GetImageData(id)
-	if legacy != nil {
-		t.Error("legacy photo bytes should be purged")
+	if len(imgs) != 1 || BlockWidth(splitLines(imgs[0].Block)) != 60 {
+		t.Errorf("persisted block width = %d, want 60", BlockWidth(splitLines(imgs[0].Block)))
 	}
 }
 
@@ -240,7 +220,7 @@ func TestBlockCmdNoFetchModeNeverHitsNetwork(t *testing.T) {
 	}
 }
 
-func TestBlockCmdNetworkFetchPersistsBlockNotBytes(t *testing.T) {
+func TestBlockCmdNetworkFetchPersistsBlockAndPhoto(t *testing.T) {
 	st := newImageTestStore(t)
 	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
@@ -265,15 +245,21 @@ func TestBlockCmdNetworkFetchPersistsBlockNotBytes(t *testing.T) {
 	if _, ok := c.Get(srv.URL); !ok {
 		t.Error("network fetch should cache the decoded image")
 	}
-	block, err := st.GetImageBlock(id)
+	imgs, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if block == "" {
+	if len(imgs) != 1 {
+		t.Fatalf("GetArticleImages = %+v, want 1 image", imgs)
+	}
+	if imgs[0].Block == "" {
 		t.Error("network fetch should persist the block")
 	}
-	if legacy, _ := st.GetImageData(id); legacy != nil {
-		t.Error("network fetch must not persist raw photo bytes")
+	if imgs[0].Width == 0 {
+		t.Error("network fetch should persist the block width")
+	}
+	if string(imgs[0].Photo) != string(data) {
+		t.Error("network fetch must persist the full raw photo bytes")
 	}
 }
 
@@ -304,8 +290,41 @@ func TestPhotoCmdFetchesAndPersistsBlock(t *testing.T) {
 	if _, ok := c.Get(srv.URL); !ok {
 		t.Error("photo cmd should cache the decoded image")
 	}
-	if block, _ := st.GetImageBlock(id); block == "" {
+	imgs, err := st.GetArticleImages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imgs) != 1 || imgs[0].Block == "" {
 		t.Error("photo cmd should persist the placeholder block")
+	}
+	photo, err := st.GetArticleImagePhoto(id, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(photo) != string(data) {
+		t.Error("photo cmd should persist the photo bytes")
+	}
+}
+
+func TestPhotoCmdStoredPhotoSkipsFetch(t *testing.T) {
+	st := newImageTestStore(t)
+	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := "https://example.com/img.png"
+	data := pngBytes(t, 4, 4)
+	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, URL: url, Photo: data}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("stored photo must not be re-fetched")
+	}))
+	defer srv.Close()
+
+	msg := PhotoCmd(NewCache(), NewBlocks(), NewPhotos(), st, id, url, 50, 100)()
+	if _, ok := msg.(PhotoMsg); !ok {
+		t.Fatalf("expected PhotoMsg, got %T", msg)
 	}
 }
 

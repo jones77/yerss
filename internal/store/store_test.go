@@ -532,8 +532,16 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cols["image_url"] || !cols["image_data"] || !cols["image_block"] {
-		t.Errorf("first migration missing image columns: %v", cols)
+	if !cols["image_url"] {
+		t.Errorf("first migration missing image_url: %v", cols)
+	}
+	if cols["image_block"] || cols["image_data"] {
+		t.Errorf("legacy image columns not dropped: %v", cols)
+	}
+	if imgCols, err := st.tableColumns("article_images"); err != nil {
+		t.Fatal(err)
+	} else if len(imgCols) == 0 {
+		t.Error("first migration missing article_images table")
 	}
 	st.Close()
 
@@ -547,8 +555,8 @@ func TestImageColumnsMigratedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cols["image_url"] || !cols["image_data"] || !cols["image_block"] {
-		t.Errorf("re-migration dropped image columns: %v", cols)
+	if !cols["image_url"] || cols["image_block"] || cols["image_data"] {
+		t.Errorf("re-migration changed image columns: %v", cols)
 	}
 }
 
@@ -582,12 +590,12 @@ func TestImageColumnsExistingRowsRetainData(t *testing.T) {
 	if got.ImageURL != "" {
 		t.Errorf("legacy row image_url = %q, want empty", got.ImageURL)
 	}
-	data, err := st2.GetImageData(id)
+	imgs, err := st2.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data != nil {
-		t.Errorf("legacy row image_data = %v, want nil", data)
+	if len(imgs) != 0 {
+		t.Errorf("legacy row unexpectedly has images: %+v", imgs)
 	}
 }
 
@@ -627,65 +635,165 @@ func TestImageURLCapturedAndRestored(t *testing.T) {
 	}
 }
 
-func TestImageBlockRoundtrip(t *testing.T) {
+func TestArticleImageRoundtrip(t *testing.T) {
 	st := newTestStore(t)
 	id, err := st.UpsertArticle(sampleArticle())
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := st.GetImageBlock(id)
+	before, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before != "" {
-		t.Errorf("fresh article image_block = %q, want empty", before)
+	if len(before) != 0 {
+		t.Errorf("fresh article images = %+v, want none", before)
 	}
-	want := "\x1b[48;2;200;100;50m▀\x1b[0m\n\x1b[0m"
-	if err := st.SetImageBlock(id, want); err != nil {
+	block := "\x1b[48;2;200;100;50m▀\x1b[0m\n\x1b[0m"
+	photo := []byte("jpeg-bytes")
+	img := ArticleImage{Position: 0, URL: "https://example.com/lead.jpg", Block: block, Photo: photo, Width: 9}
+	if err := st.SetArticleImage(id, img); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.GetImageBlock(id)
+	got, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
-		t.Errorf("image_block roundtrip = %q, want %q", got, want)
+	if len(got) != 1 {
+		t.Fatalf("GetArticleImages = %+v, want 1 image", got)
+	}
+	if got[0].Block != block || got[0].Photo == nil || string(got[0].Photo) != string(photo) {
+		t.Errorf("image roundtrip = %+v", got[0])
+	}
+	if got[0].URL != img.URL || got[0].Width != img.Width {
+		t.Errorf("image metadata roundtrip = %+v", got[0])
+	}
+	photoFromURL, err := st.GetArticleImagePhoto(id, img.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(photoFromURL) != string(photo) {
+		t.Errorf("GetArticleImagePhoto = %q, want %q", photoFromURL, photo)
+	}
+	// Wrong URL returns nil without error.
+	if missing, err := st.GetArticleImagePhoto(id, "https://example.com/other.jpg"); err != nil || missing != nil {
+		t.Errorf("GetArticleImagePhoto other url = %v, %v; want nil, nil", missing, err)
 	}
 }
 
-func TestSetImageBlockPurgesLegacyImageData(t *testing.T) {
+func TestArticleImagesOrderedByPosition(t *testing.T) {
 	st := newTestStore(t)
 	id, err := st.UpsertArticle(sampleArticle())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Simulate a pre-upgrade database that still holds raw photo bytes.
-	if _, err := st.db.Exec(`UPDATE articles SET image_data = ? WHERE id = ?`, []byte("legacy-jpeg"), id); err != nil {
-		t.Fatal(err)
+	want := []ArticleImage{
+		{Position: 0, URL: "lead"},
+		{Position: 1, URL: "inline1"},
+		{Position: 2, URL: "inline2"},
 	}
-	legacy, err := st.GetImageData(id)
+	// Insert out of order; reads must come back ordered by position.
+	for _, img := range []ArticleImage{want[2], want[0], want[1]} {
+		if err := st.SetArticleImage(id, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(legacy) != "legacy-jpeg" {
-		t.Fatalf("legacy image_data = %q, want %q", legacy, "legacy-jpeg")
+	if len(got) != len(want) {
+		t.Fatalf("GetArticleImages length = %d, want %d", len(got), len(want))
 	}
-	if err := st.SetImageBlock(id, "block"); err != nil {
-		t.Fatal(err)
+	for i := range want {
+		if got[i].Position != want[i].Position || got[i].URL != want[i].URL {
+			t.Errorf("image[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
-	block, err := st.GetImageBlock(id)
+}
+
+func TestSetArticleImageReplacesSamePosition(t *testing.T) {
+	st := newTestStore(t)
+	id, err := st.UpsertArticle(sampleArticle())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if block != "block" {
-		t.Errorf("image_block = %q, want block", block)
+	if err := st.SetArticleImage(id, ArticleImage{Position: 0, URL: "a", Block: "old"}); err != nil {
+		t.Fatal(err)
 	}
-	legacy, err = st.GetImageData(id)
+	if err := st.SetArticleImage(id, ArticleImage{Position: 0, URL: "b", Block: "new", Photo: []byte("bytes")}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArticleImages(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if legacy != nil {
-		t.Errorf("legacy image_data not purged: %v", legacy)
+	if len(got) != 1 || got[0].URL != "b" || got[0].Block != "new" || string(got[0].Photo) != "bytes" {
+		t.Errorf("replaced image = %+v", got)
+	}
+}
+
+func TestLegacyImageMigratedToArticleImages(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := sampleArticle()
+	a.ImageURL = "https://example.com/lead.jpg"
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a pre-upgrade database holding legacy columns and data.
+	legacyBlock := "\x1b[48;2;1;2;3m▀\x1b[0m"
+	legacyPhoto := []byte("legacy-jpeg")
+	for _, ddl := range []string{
+		`ALTER TABLE articles ADD COLUMN image_block TEXT`,
+		`ALTER TABLE articles ADD COLUMN image_data BLOB`,
+	} {
+		if _, err := st.db.Exec(ddl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.db.Exec(`UPDATE articles SET image_block = ?, image_data = ? WHERE id = ?`, legacyBlock, legacyPhoto, id); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	// Re-opening runs the migration: legacy columns fold into position 0.
+	st2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	imgs, err := st2.GetArticleImages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imgs) != 1 {
+		t.Fatalf("migrated images = %+v, want 1 position-0 row", imgs)
+	}
+	if imgs[0].Position != 0 {
+		t.Errorf("migrated position = %d, want 0", imgs[0].Position)
+	}
+	if imgs[0].URL != a.ImageURL {
+		t.Errorf("migrated url = %q, want %q", imgs[0].URL, a.ImageURL)
+	}
+	if imgs[0].Block != legacyBlock {
+		t.Errorf("migrated block = %q, want %q", imgs[0].Block, legacyBlock)
+	}
+	if imgs[0].Width == 0 {
+		t.Errorf("migrated width = 0, want BlockWidth of block")
+	}
+	if string(imgs[0].Photo) != string(legacyPhoto) {
+		t.Errorf("migrated photo = %q, want %q", imgs[0].Photo, legacyPhoto)
+	}
+	cols, err := st2.tableColumns("articles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cols["image_block"] || cols["image_data"] {
+		t.Errorf("legacy columns not dropped after migration: %v", cols)
 	}
 }
 

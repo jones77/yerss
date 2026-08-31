@@ -1247,20 +1247,20 @@ image URL SHALL first attempt to load the block from the cache hierarchy
 (in-memory decoded image, then the stored database block when its width matches
 the content width); only on a miss SHALL it issue a network fetch. On a
 successful block load, the article re-renders with the block inserted. On a
-network success, the image is decoded, the rendered block is persisted to the
-database, and the decoded image is cached in memory; the raw photo bytes SHALL
-NOT be persisted. On a full-image-capable terminal the fetched photo bytes SHALL
-additionally be cached in memory and a native photo render SHALL replace the
-block. On failure (network error, timeout, non-image content type, or exceeded
-byte limit), the system SHALL produce a failure message and render the article
-without an image block. The decoded image SHALL be cached in memory by URL for
-the session so that resizing the viewport does not re-fetch or re-decode from
-the database. When the terminal is resized while an article with a loaded image
-is open, the system SHALL re-render the image block to the new content width
-using the cached decoded image (or the cached photo on a native terminal)
-without re-fetching. When an image loads after the user has scrolled past the
-insertion point, the system SHALL preserve the user's reading position by
-adjusting the viewport offset by the number of inserted image-block lines.
+network success, the image is decoded, the rendered block and the full photo
+bytes are persisted to the database, and the decoded image is cached in memory.
+On a full-image-capable terminal the fetched photo bytes SHALL additionally be
+cached in memory and a native photo render SHALL replace the block. On failure
+(network error, timeout, or non-image content type), the system SHALL produce a
+failure message and render the article without an image block. The decoded image
+SHALL be cached in memory by URL for the session so that resizing the viewport
+does not re-fetch or re-decode from the database. When the terminal is resized
+while an article with a loaded image is open, the system SHALL re-render the
+image block to the new content width using the cached decoded image (or the
+cached photo on a native terminal) without re-fetching. When an image loads
+after the user has scrolled past the insertion point, the system SHALL preserve
+the user's reading position by adjusting the viewport offset by the number of
+inserted image-block lines.
 
 #### Scenario: Article opens with image loading asynchronously
 
@@ -1296,6 +1296,11 @@ adjusting the viewport offset by the number of inserted image-block lines.
 
 - **WHEN** the application is restarted and the user opens an article whose block was previously rendered and stored in the database at the current content width
 - **THEN** the image block renders from the stored block without making a network request to the image host
+
+#### Scenario: Restarted article uses stored photo
+
+- **WHEN** the application is restarted and the user opens an article whose photo was previously stored at a different content width
+- **THEN** the image is re-rendered at the current width from the stored photo bytes without making a network request to the image host
 
 ### Requirement: Restore reader state on start
 

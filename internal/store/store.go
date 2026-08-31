@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite"
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/charmbracelet/x/ansi"
+	_ "github.com/glebarez/go-sqlite"
 )
 
 // Article is a single stored feed item.
@@ -39,6 +41,19 @@ type TagCount struct {
 	Read     int
 	Total    int
 	IsSource bool
+}
+
+// ArticleImage is one image attached to an article, keyed by its position in
+// the article. Block holds the rendered text block and Photo holds the full raw
+// photo bytes, both persisted together. Width is the display width of Block in
+// cells, or 0 when there is no block.
+type ArticleImage struct {
+	Position int
+	URL      string
+	Credit   string
+	Block    string
+	Photo    []byte
+	Width    int
 }
 
 // Store wraps the SQLite connection.
@@ -145,12 +160,12 @@ CREATE TABLE IF NOT EXISTS state (
 	return s.migrateImageColumns()
 }
 
-// migrateImageColumns adds the nullable image_url, image_data, and image_block
-// columns to the articles table when they are absent. SQLite has no ADD COLUMN
-// IF NOT EXISTS, so the guard queries PRAGMA table_info and issues one ALTER
-// per missing column. It is idempotent: on an already-migrated database it is a
-// no-op. image_block holds the rendered text block; image_data holds legacy raw
-// photo bytes that are purged as blocks are written.
+// migrateImageColumns adds the nullable image_url column to the articles table
+// when it is absent, then runs the article_images migration. SQLite has no ADD
+// COLUMN IF NOT EXISTS, so the guard queries PRAGMA table_info before altering.
+// image_url is the retained denormalized pointer to an article's lead image;
+// the legacy image_data/image_block columns are migrated into article_images and
+// dropped by migrateImageTable instead of being added here.
 func (s *Store) migrateImageColumns() error {
 	cols, err := s.tableColumns("articles")
 	if err != nil {
@@ -161,17 +176,90 @@ func (s *Store) migrateImageColumns() error {
 			return err
 		}
 	}
-	if !cols["image_data"] {
-		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_data BLOB`); err != nil {
+	return s.migrateImageTable()
+}
+
+// migrateImageTable creates the article_images child table and folds any legacy
+// per-article image_block/image_data columns into position-0 rows, then drops
+// those columns when SQLite supports column removal. It is idempotent: on an
+// already-migrated database the legacy columns are absent and it is a no-op.
+func (s *Store) migrateImageTable() error {
+	if _, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS article_images (
+  article_id INTEGER NOT NULL REFERENCES articles(id),
+  position   INTEGER NOT NULL,
+  url        TEXT,
+  credit     TEXT,
+  block      TEXT,
+  photo      BLOB,
+  width      INTEGER,
+  PRIMARY KEY (article_id, position)
+)`); err != nil {
+		return err
+	}
+	cols, err := s.tableColumns("articles")
+	if err != nil {
+		return err
+	}
+	if !cols["image_block"] && !cols["image_data"] {
+		return s.migrateCategorySource()
+	}
+	rows, err := s.db.Query(`
+SELECT id, image_url, image_block, image_data FROM articles
+WHERE (image_block IS NOT NULL AND image_block != '') OR (image_data IS NOT NULL AND image_data != '')`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var (
+			id    int64
+			url   sql.NullString
+			block sql.NullString
+			photo []byte
+		)
+		if err := rows.Scan(&id, &url, &block, &photo); err != nil {
+			rows.Close()
+			return err
+		}
+		width := 0
+		if block.Valid && block.String != "" {
+			width = blockWidth(strings.Split(block.String, "\n"))
+		}
+		if _, err := s.db.Exec(`
+INSERT INTO article_images (article_id, position, url, credit, block, photo, width)
+VALUES (?, 0, ?, '', ?, ?, ?)
+ON CONFLICT(article_id, position) DO UPDATE SET
+  url = excluded.url, credit = excluded.credit, block = excluded.block,
+  photo = excluded.photo, width = excluded.width`,
+			id, nullIfEmpty(url.String), nullIfEmpty(block.String), photo, nullIfZero(width)); err != nil {
+			rows.Close()
 			return err
 		}
 	}
-	if !cols["image_block"] {
-		if _, err := s.db.Exec(`ALTER TABLE articles ADD COLUMN image_block TEXT`); err != nil {
-			return err
-		}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	// Drop the legacy columns when the SQLite build supports DROP COLUMN;
+	// otherwise leave them in place, empty and unused.
+	if _, err := s.db.Exec(`ALTER TABLE articles DROP COLUMN image_block`); err != nil {
+		// guarded: column removal may be unsupported; leave it unused.
+	}
+	if _, err := s.db.Exec(`ALTER TABLE articles DROP COLUMN image_data`); err != nil {
+		// guarded: column removal may be unsupported; leave it unused.
 	}
 	return s.migrateCategorySource()
+}
+
+// blockWidth returns the maximum cell width across the given ANSI-styled lines.
+func blockWidth(lines []string) int {
+	w := 0
+	for _, l := range lines {
+		if lw := ansi.StringWidth(l); lw > w {
+			w = lw
+		}
+	}
+	return w
 }
 
 // migrateCategorySource adds the source flag to the categories table when it
@@ -439,49 +527,66 @@ func (s *Store) SetRead(id int64, read bool) error {
 	return err
 }
 
-// SetImageBlock persists the rendered text block of an article's lead image and
-// purges any legacy raw photo bytes so the photo is not retained.
-func (s *Store) SetImageBlock(id int64, block string) error {
-	_, err := s.db.Exec(`UPDATE articles SET image_block = ?, image_data = NULL WHERE id = ?`, block, id)
+// SetArticleImage persists a single image for an article, keyed by its
+// position. Both the rendered text block and the full raw photo bytes are
+// stored together in the article_images child table, replacing whatever was
+// previously stored at that position.
+func (s *Store) SetArticleImage(id int64, img ArticleImage) error {
+	_, err := s.db.Exec(`
+INSERT INTO article_images (article_id, position, url, credit, block, photo, width)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(article_id, position) DO UPDATE SET
+  url = excluded.url, credit = excluded.credit, block = excluded.block,
+  photo = excluded.photo, width = excluded.width`,
+		id, img.Position, nullIfEmpty(img.URL), nullIfEmpty(img.Credit),
+		nullIfEmpty(img.Block), img.Photo, nullIfZero(img.Width))
 	return err
 }
 
-// GetImageBlock returns the stored rendered text block of an article's lead
-// image, or "" when none has been stored.
-func (s *Store) GetImageBlock(id int64) (string, error) {
-	var block string
-	err := s.db.QueryRow(`SELECT COALESCE(image_block, '') FROM articles WHERE id = ?`, id).Scan(&block)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
+// GetArticleImages returns every stored image for an article, ordered by
+// position.
+func (s *Store) GetArticleImages(id int64) ([]ArticleImage, error) {
+	rows, err := s.db.Query(`
+SELECT position, url, credit, block, photo, width FROM article_images
+WHERE article_id = ? ORDER BY position`, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return block, nil
+	defer rows.Close()
+	imgs := []ArticleImage{}
+	for rows.Next() {
+		var (
+			img    ArticleImage
+			url    sql.NullString
+			credit sql.NullString
+			block  sql.NullString
+			width  sql.NullInt64
+		)
+		if err := rows.Scan(&img.Position, &url, &credit, &block, &img.Photo, &width); err != nil {
+			return nil, err
+		}
+		img.URL = url.String
+		img.Credit = credit.String
+		img.Block = block.String
+		img.Width = int(width.Int64)
+		imgs = append(imgs, img)
+	}
+	return imgs, rows.Err()
 }
 
-// SetImageData writes raw photo bytes for an article. It exists only for
-// legacy databases and tests; production image loading never writes raw bytes
-// and any bytes written here are purged by the next SetImageBlock.
-func (s *Store) SetImageData(id int64, data []byte) error {
-	_, err := s.db.Exec(`UPDATE articles SET image_data = ? WHERE id = ?`, data, id)
-	return err
-}
-
-// GetImageData returns legacy raw lead-image bytes for an article, or nil when
-// none remain. Raw bytes are only present on databases upgraded from before
-// text-block persistence; SetImageBlock clears them. New fetches are never
-// stored as raw bytes.
-func (s *Store) GetImageData(id int64) ([]byte, error) {
-	var data []byte
-	err := s.db.QueryRow(`SELECT image_data FROM articles WHERE id = ?`, id).Scan(&data)
+// GetArticleImagePhoto returns the stored raw photo bytes for an article's
+// image at the given URL, or nil when none are stored.
+func (s *Store) GetArticleImagePhoto(id int64, url string) ([]byte, error) {
+	var photo []byte
+	err := s.db.QueryRow(`
+SELECT photo FROM article_images WHERE article_id = ? AND url = ?`, id, url).Scan(&photo)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return data, nil
+	return photo, nil
 }
 
 // GetArticle returns an article by ID, including its categories.
@@ -707,4 +812,11 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+func nullIfZero(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
 }

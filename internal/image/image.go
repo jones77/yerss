@@ -1,6 +1,7 @@
 // Package image fetches, caches, and renders article lead images. Decoded
 // images, rendered halfblock text blocks, and fetched raw photo bytes are each
-// cached in memory for the session; only the rendered text block is persisted.
+// cached in memory for the session; both the rendered text block and the full
+// photo bytes are persisted together to the article_images table.
 package image
 
 import (
@@ -181,28 +182,40 @@ func BlockWidth(lines []string) int {
 }
 
 // BlockCmd returns a tea.Cmd that resolves an article's lead image block at
-// width through the cache hierarchy: in-memory decoded image (re-rendered),
-// the stored database block when its width matches, legacy stored photo bytes,
-// then a network fetch. On success the block is cached and, when new, persisted
-// (which purges any legacy photo bytes); on any failure a FailedMsg is emitted.
-// When fetch is false the command never hits the network: that is the
-// native-terminal placeholder path, where PhotoCmd owns fetching.
+// width through the cache hierarchy: in-memory decoded image (re-rendered), a
+// stored database block whose width matches, a stored database photo (re-rendered
+// at the current width), then a network fetch. On reaching the stored photo or a
+// network fetch the block and its photo bytes are persisted together; on any
+// failure a FailedMsg is emitted. When fetch is false the command never hits the
+// network: that is the native-terminal placeholder path, where PhotoCmd owns
+// fetching.
 func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, url string, width, maxHeight int, allowFetch bool) tea.Cmd {
 	return func() tea.Msg {
 		if lines, ok := blockFromCache(cache, blocks, url, width, maxHeight); ok {
 			return BlockMsg{Key: url, Lines: lines}
 		}
-		if block, err := st.GetImageBlock(articleID); err == nil && block != "" {
-			if stored := splitLines(block); BlockWidth(stored) == width {
-				blocks.Set(url, stored)
-				return BlockMsg{Key: url, Lines: stored}
+		if imgs, err := st.GetArticleImages(articleID); err == nil {
+			var lead *store.ArticleImage
+			for i := range imgs {
+				if imgs[i].Position == 0 {
+					lead = &imgs[i]
+					break
+				}
 			}
-		}
-		if data, err := st.GetImageData(articleID); err == nil && len(data) > 0 {
-			if img, _, derr := image.Decode(bytes.NewReader(data)); derr == nil {
-				cache.Set(url, img)
-				if lines, err := renderBlock(blocks, st, articleID, url, img, width, maxHeight); err == nil {
-					return BlockMsg{Key: url, Lines: lines}
+			if lead != nil {
+				if lead.Block != "" && lead.Width == width {
+					stored := splitLines(lead.Block)
+					blocks.Set(url, stored)
+					return BlockMsg{Key: url, Lines: stored}
+				}
+				if len(lead.Photo) > 0 {
+					if img, _, derr := image.Decode(bytes.NewReader(lead.Photo)); derr == nil {
+						cache.Set(url, img)
+						if lines, err := renderBlock(blocks, url, img, width, maxHeight); err == nil {
+							persistImage(st, articleID, url, lines, lead.Photo)
+							return BlockMsg{Key: url, Lines: lines}
+						}
+					}
 				}
 			}
 		}
@@ -218,21 +231,28 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 			return FailedMsg{Key: url}
 		}
 		cache.Set(url, img)
-		lines, err := renderBlock(blocks, st, articleID, url, img, width, maxHeight)
+		lines, err := renderBlock(blocks, url, img, width, maxHeight)
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
+		persistImage(st, articleID, url, lines, data)
 		return BlockMsg{Key: url, Lines: lines}
 	}
 }
 
-// PhotoCmd returns a tea.Cmd that fetches an article's lead photo into the
-// Photos cache for a native render. When the fetched photo is not already
-// decoded, it is also used to render and persist the halfblock block so future
-// opens have a placeholder. On any failure a FailedMsg is emitted.
+// PhotoCmd returns a tea.Cmd that resolves an article's lead photo bytes for a
+// native render, preferring the session Photos cache and the stored photo
+// before fetching. When a fresh fetch is needed the photo is also used to render
+// and persist the halfblock block so future opens have a placeholder, and both
+// the block and photo are persisted together. On any failure a FailedMsg is
+// emitted.
 func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, articleID int64, url string, width, maxHeight int) tea.Cmd {
 	return func() tea.Msg {
 		if _, ok := photos.Get(url); ok {
+			return PhotoMsg{Key: url}
+		}
+		if data, err := st.GetArticleImagePhoto(articleID, url); err == nil && len(data) > 0 {
+			photos.Set(url, data)
 			return PhotoMsg{Key: url}
 		}
 		data, err := fetch(url)
@@ -240,27 +260,40 @@ func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, art
 			return FailedMsg{Key: url}
 		}
 		photos.Set(url, data)
+		var blockLines []string
 		if _, ok := cache.Get(url); !ok {
 			if img, _, derr := image.Decode(bytes.NewReader(data)); derr == nil {
 				cache.Set(url, img)
 				if _, ok := blocks.Get(url); !ok {
-					_, _ = renderBlock(blocks, st, articleID, url, img, width, maxHeight)
+					blockLines, _ = renderBlock(blocks, url, img, width, maxHeight)
 				}
 			}
 		}
+		persistImage(st, articleID, url, blockLines, data)
 		return PhotoMsg{Key: url}
 	}
 }
 
-// renderBlock renders img to a block at width (capped to maxHeight), caches it
-// in blocks, and persists it to the database.
-func renderBlock(blocks *Blocks, st *store.Store, articleID int64, url string, img image.Image, width, maxHeight int) ([]string, error) {
+// persistImage writes the rendered block and the raw photo bytes together as an
+// article's position-0 image. block may be nil when only the photo is available.
+func persistImage(st *store.Store, id int64, url string, block []string, photo []byte) {
+	_ = st.SetArticleImage(id, store.ArticleImage{
+		Position: 0,
+		URL:      url,
+		Block:    strings.Join(block, "\n"),
+		Photo:    photo,
+		Width:    BlockWidth(block),
+	})
+}
+
+// renderBlock renders img to a block at width (capped to maxHeight) and caches
+// it in blocks.
+func renderBlock(blocks *Blocks, url string, img image.Image, width, maxHeight int) ([]string, error) {
 	lines, err := (Halfblocks{}).Render(img, width, maxHeight)
 	if err != nil {
 		return nil, err
 	}
 	blocks.Set(url, lines)
-	_ = st.SetImageBlock(articleID, strings.Join(lines, "\n"))
 	return lines, nil
 }
 
