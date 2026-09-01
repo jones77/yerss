@@ -515,6 +515,29 @@ func snapPositions(b imageBlock, vpH int) snapPos {
 	}
 }
 
+// offRevealTop reports whether an off-scroll target t (the offset that would
+// put image i's top at the fold) would re-show an inline image above i without
+// that image being flush to the viewport top, and if so returns that image's
+// index and its TOP boundary. Two regimes are caught: the off target landing
+// inside a previous inline image's photo range (leaving it partially visible,
+// a blank strip), and — for a double photo, where the images are adjacent and
+// nearer than the viewport height — the target landing just above a previous
+// inline image's top, leaving it fully visible but aligned a few rows down from
+// the viewport top. In both cases the caller lands on that image's TOP so the
+// reverse stage is aligned rather than skipped.
+func offRevealTop(t, i, vpH int, blocks []imageBlock) (int, bool) {
+	for j, nb := range blocks {
+		if j > 0 && j < i {
+			partially := t >= nb.imgStart && t < nb.capStart
+			flush := t <= nb.imgStart && nb.imgEnd <= t+vpH
+			if partially || flush {
+				return j, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // snapYOffset implements the image snap for single-line scroll moves across
 // the article's ordered image blocks (lead at index 0, then inline in document
 // order). Each block defines two snap boundaries — TOP (its first line at the
@@ -576,6 +599,15 @@ func snapYOffset(yOffset, vpH, before int, blocks []imageBlock, direction int, n
 				if i > 0 && before < b.imgStart {
 					return snap(pos[i].top)
 				}
+				// A caption-less image (a photo-grid's first photo) followed
+				// immediately by an adjacent inline image: its EXIT (one past
+				// its last photo row, the separator gap) would leave the next
+				// image resting one line below the viewport top, needing an
+				// extra scroll to snap flush. Skip straight to the next
+				// image's TOP instead.
+				if b.capStart == b.imgEnd+1 && i+1 < len(blocks) && blocks[i+1].imgStart == b.imgEnd+2 {
+					return snap(pos[i+1].top)
+				}
 				return snap(pos[i].exit)
 			}
 		}
@@ -615,7 +647,24 @@ func snapYOffset(yOffset, vpH, before int, blocks []imageBlock, direction int, n
 			}
 		}
 		if best >= 0 {
-			return snap(pos[best].bottom)
+			// A lower inline image whose top is inside the window is skipped
+			// only when every inline image above it has been shown and passed
+			// (scrolled onto its caption). When a higher inline image is still
+			// fully visible — the first of a double photo, both near viewport
+			// height and adjacent — the snap must not jump to the lower one's
+			// bottom, or the higher image's own flush positions are never
+			// reached. Fall through so the higher image's natural progression
+			// (entry snap onto its top, then its caption) continues.
+			skip := false
+			for j, nb := range blocks {
+				if j > 0 && j < best && nb.imgStart >= yOffset && nb.imgEnd <= yOffset+vpH {
+					skip = true
+					break
+				}
+			}
+			if !skip {
+				return snap(pos[best].bottom)
+			}
 		}
 		// The separator gap between two adjacent image blocks (no body text
 		// between them) is a single blank line: the next block's top is
@@ -665,12 +714,12 @@ func snapYOffset(yOffset, vpH, before int, blocks []imageBlock, direction int, n
 				t := pos[i].off
 				// With images spaced closer than the viewport height, the
 				// scroll-off target can land inside a previous inline image's
-				// photo range, leaving it partially visible; reveal that image
-				// instead so the transition stays clean.
-				for j, nb := range blocks {
-					if j > 0 && j < i && t >= nb.imgStart && t < nb.capStart {
-						return snap(pos[j].top)
-					}
+				// photo range, leaving it partially visible — or, for a double
+				// photo, just above it, leaving it fully visible but not flush
+				// to the viewport top. Reveal that image at its top so the
+				// reverse stage is aligned.
+				if j, ok := offRevealTop(t, i, vpH, blocks); ok {
+					return snap(pos[j].top)
 				}
 				if t < 0 {
 					t = 0
@@ -702,10 +751,8 @@ func snapYOffset(yOffset, vpH, before int, blocks []imageBlock, direction int, n
 				// next up move scrolls the image fully off (revealing a
 				// previous image whose range the target would land in).
 				off := pos[i].off
-				for j, nb := range blocks {
-					if j > 0 && j < i && off >= nb.imgStart && off < nb.capStart {
-						return snap(pos[j].top)
-					}
+				if j, ok := offRevealTop(off, i, vpH, blocks); ok {
+					return snap(pos[j].top)
 				}
 				return snap(off)
 			}
@@ -743,12 +790,12 @@ func snapYOffset(yOffset, vpH, before int, blocks []imageBlock, direction int, n
 			target := pos[best].off
 			// With images spaced closer than the viewport height, the
 			// scroll-off target can land inside the previous inline image's
-			// photo range, leaving it partially visible (blank); reveal that
-			// image instead so the transition stays clean.
-			for i, b := range blocks {
-				if i > 0 && i < best && target >= b.imgStart && target < b.capStart {
-					return snap(pos[i].top)
-				}
+			// photo range, leaving it partially visible (blank) — or, for a
+			// double photo, just above it, leaving it fully visible but not
+			// flush to the viewport top. Reveal that image instead so the
+			// transition stays clean.
+			if j, ok := offRevealTop(target, best, vpH, blocks); ok {
+				return snap(pos[j].top)
 			}
 			return snap(target)
 		}

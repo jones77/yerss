@@ -1281,6 +1281,89 @@ func TestSnapYOffsetUpFromBottomBoundaryRevealsPreviousWhenClose(t *testing.T) {
 	}
 }
 
+func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
+	// A double photo — two adjacent inline images, each near viewport height
+	// and one blank line apart (imgEnd+2 == imgStart) — must show both images
+	// at their flush positions rather than skipping the first. The geometry
+	// models the native render fit at a 27-row viewport: block rows run from
+	// imgStart (image top) through capStart-1 (photo) with a caption line, and
+	// one's caption is directly above two's top.
+	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
+	one := imageBlock{url: "one", imgStart: 11, capStart: 31, imgEnd: 31}
+	two := imageBlock{url: "two", imgStart: 33, capStart: 53, imgEnd: 53}
+	blocks := []imageBlock{lead, one, two}
+	vpH := 27
+	if one.imgEnd+2 != two.imgStart {
+		t.Fatalf("blocks not adjacent: one end %d + 2 = %d, two start %d", one.imgEnd, one.imgEnd+2, two.imgStart)
+	}
+
+	// Down: from the lead's caption, the first image is entered and revealed
+	// flush at its top (never skipped to the second image's bottom), then
+	// passes onto its caption, then the second image is revealed flush.
+	downtab := []struct {
+		name        string
+		raw, before int
+		want        int
+	}{
+		{"entry snap reveals one top", 11, 10, 11},
+		{"one top flush", 12, 11, 31},
+		{"one caption", 32, 31, 33},
+		{"two top flush", 34, 33, 53},
+	}
+	for _, c := range downtab {
+		if got := snapYOffset(c.raw, vpH, c.before, blocks, 1, false); got != c.want {
+			t.Errorf("down %s = %d, want %d", c.name, got, c.want)
+		}
+	}
+
+	// Up: from the lower image's bottom boundary the upper image is revealed
+	// flush at its top (not skipped), then sinks to its bottom, then off.
+	uptab := []struct {
+		name        string
+		before, want int
+	}{
+		{"from two bottom reveal one top", 27, 11},
+		{"one top sinks to one bottom", 11, 5},
+		{"one bottom off", 5, 0},
+	}
+	for _, c := range uptab {
+		raw := c.before - 1
+		if got := snapYOffset(raw, vpH, c.before, blocks, -1, false); got != c.want {
+			t.Errorf("up %s from %d = %d, want %d", c.name, c.before, got, c.want)
+		}
+	}
+}
+
+func TestSnapYOffsetCaptionlessGridNextImageFlush(t *testing.T) {
+	// A photo-grid's first image is caption-less (capStart == imgEnd+1) and
+	// sits one blank line above an adjacent second image sharing the figure
+	// caption. Scrolling down past the first image's EXIT (one past its last
+	// photo row, the separator gap) would leave the second image resting one
+	// line below the viewport top, needing an extra scroll to snap flush; the
+	// snap must go straight to the second image's TOP.
+	lead := imageBlock{url: "lead", imgStart: 5, capStart: 35, imgEnd: 35}
+	one := imageBlock{url: "one", imgStart: 39, capStart: 69, imgEnd: 68} // caption-less grid photo
+	two := imageBlock{url: "two", imgStart: 70, capStart: 100, imgEnd: 100}
+	blocks := []imageBlock{lead, one, two}
+	vpH := 37
+	if one.capStart != one.imgEnd+1 {
+		t.Fatalf("one not caption-less: capStart %d, imgEnd %d", one.capStart, one.imgEnd)
+	}
+	if two.imgStart != one.imgEnd+2 {
+		t.Fatalf("two not adjacent: one end %d + 2 = %d, two start %d", one.imgEnd, one.imgEnd+2, two.imgStart)
+	}
+
+	// Down from one's top: skip past the caption-less EXIT+gap to two's flush
+	// top, so the second image never rests one line below the viewport top.
+	if got := snapYOffset(40, vpH, 39, blocks, 1, false); got != two.imgStart {
+		t.Errorf("down from grid first photo top = %d, want %d (second photo flush)", got, two.imgStart)
+	}
+	// The second image then skips onto its (shared) caption.
+	if got := snapYOffset(two.imgStart+1, vpH, two.imgStart, blocks, 1, false); got != two.capStart {
+		t.Errorf("down from second photo top = %d, want %d (its caption)", got, two.capStart)
+	}
+}
+
 func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
 	// Two adjacent image blocks (no body text between) are separated by one
 	// blank line: the next block's top is exactly two lines past the previous
@@ -1751,7 +1834,10 @@ func TestScrollUpFromBottomBoundarySnapsPhotoOut(t *testing.T) {
 	// A photo resting at its bottom boundary (caption on the viewport's last
 	// line) clears out of view in a single scroll-k: its top lands at the
 	// fold, with no pause on the caption and no intermediate reveal that
-	// leaves the photo partially visible.
+	// leaves the photo partially visible. For a double photo (two adjacent
+	// inline images), scrolling the lower image out reveals the upper one
+	// flush at its top rather than skipping it, so each image reaches its
+	// aligned positions.
 	wide := strings.Repeat("I", 40)
 	tall := make([]string, 14)
 	for i := range tall {
@@ -1769,13 +1855,13 @@ func TestScrollUpFromBottomBoundarySnapsPhotoOut(t *testing.T) {
 	if len(m.article.imageBlocks) < 3 {
 		t.Fatalf("want lead + two inline blocks, got %d", len(m.article.imageBlocks))
 	}
-	two := m.article.imageBlocks[2]
+	one, two := m.article.imageBlocks[1], m.article.imageBlocks[2]
 	bottom := two.imgEnd - vpH + 1
 
 	m.article.viewport.SetYOffset(bottom)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != two.imgStart-vpH {
-		t.Errorf("up from photo bottom boundary = %d, want %d (photo out of view)", got, two.imgStart-vpH)
+	if got := m.article.viewport.YOffset; got != one.imgStart {
+		t.Errorf("up from lower photo bottom boundary = %d, want %d (upper photo revealed flush)", got, one.imgStart)
 	}
 }
 
