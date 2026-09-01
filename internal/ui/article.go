@@ -36,10 +36,14 @@ type articleState struct {
 
 // imageBlock is one image block composed into the article content: the lead
 // image (index 0, below the header) and each inline image, in document order.
-// imgStart is the first image row, capStart the first attribution line (the
-// down-snap target), and imgEnd the last composed line of the block. An
-// inline block carries nativeImg when its lines are a terminal-side native
-// placement.
+// imgStart is the first image row, capStart the first attribution line, and
+// imgEnd the last composed line of the block — the last line of the wrapped
+// caption, or of the photo when there is no caption. Snapping is defined by
+// two boundaries: TOP (imgStart, the image's first line at the viewport's
+// first row) and BOTTOM (imgEnd - vpH + 1, the last line of the wrapped
+// caption at the viewport's last row), with EXIT (capStart) and OFF
+// (imgStart - vpH) as the down- and up-exits. An inline block carries nativeImg
+// when its lines are a terminal-side native placement.
 type imageBlock struct {
 	url       string
 	imgStart  int
@@ -493,13 +497,20 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 // when present, otherwise the text of any markdown link that wraps the image
 // (promo images like the TomDispatch banner render as a linked image whose
 // link text labels it), otherwise "photo: <source>" derived by the list view's
-// source-identifier rules. It returns "" when none is available.
+// source-identifier rules. It returns "" when none is available. An image that
+// sits in a captioned figure whose caption belongs to a later image (a
+// photo-grid's first photo) returns "" before any other source, so it never
+// borrows the figure's caption nor falls back to the source label.
 func inlineAttribution(a store.Article, url, alt, linkText string) string {
+	cap, inFig := convert.ImageCaption(a.Content, url)
+	if inFig && cap == "" {
+		return ""
+	}
 	if alt != "" {
 		return alt
 	}
-	if credit := convert.ImageCredit(a.Content, url); credit != "" {
-		return credit
+	if inFig {
+		return cap
 	}
 	if linkText != "" {
 		return linkText

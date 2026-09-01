@@ -48,6 +48,51 @@ func TestImageCreditCollapsesWhitespace(t *testing.T) {
 	}
 }
 
+func TestImageCaptionPhotoGridAttribution(t *testing.T) {
+	// A photo-grid: one figure wrapping two photos with a single combined
+	// caption. The caption belongs to the last image; the first has none.
+	html := `<figure><img src="left.jpg"><img src="right.jpg"><figcaption>Left: one. Right: two.</figcaption></figure>`
+	if got := ImageCredit(html, "left.jpg"); got != "" {
+		t.Errorf("ImageCredit(left.jpg) = %q, want empty (caption belongs to the last image)", got)
+	}
+	if got := ImageCredit(html, "right.jpg"); got != "Left: one. Right: two." {
+		t.Errorf("ImageCredit(right.jpg) = %q, want the figure's caption", got)
+	}
+}
+
+func TestImageCaptionNestedPhotoGrid(t *testing.T) {
+	// The real Intercept photo-grid structure: two inner per-photo figures
+	// wrapped by an outer figure carrying the combined caption. The caption
+	// belongs to the second (last) photo; the first renders with none.
+	html := `<figure class="photo-grid">` +
+		`<figure><img src="2024.jpg"></figure>` +
+		`<figure><img src="2026.jpg"></figure>` +
+		`<figcaption>Left: 2024. Right: 2026.</figcaption>` +
+		`</figure>`
+	if got := ImageCredit(html, "2024.jpg"); got != "" {
+		t.Errorf("ImageCredit(2024.jpg) = %q, want empty", got)
+	}
+	if got := ImageCredit(html, "2026.jpg"); got != "Left: 2024. Right: 2026." {
+		t.Errorf("ImageCredit(2026.jpg) = %q, want the combined caption", got)
+	}
+}
+
+func TestImageCaptionReportsSharedFigureNonOwner(t *testing.T) {
+	// The first image of a grid is inside a captioned figure but is not the
+	// caption owner: ImageCaption reports matched with an empty caption so the
+	// caller renders no caption instead of falling back to the source label.
+	html := `<figure><img src="left.jpg"><img src="right.jpg"><figcaption>Cap</figcaption></figure>`
+	if cap, matched := ImageCaption(html, "left.jpg"); !matched || cap != "" {
+		t.Errorf("ImageCaption(left.jpg) = (%q, %v), want (\"\", true)", cap, matched)
+	}
+	if cap, matched := ImageCaption(html, "right.jpg"); !matched || cap != "Cap" {
+		t.Errorf("ImageCaption(right.jpg) = (%q, %v), want (\"Cap\", true)", cap, matched)
+	}
+	if cap, matched := ImageCaption(html, "other.jpg"); matched || cap != "" {
+		t.Errorf("ImageCaption(other.jpg) = (%q, %v), want (\"\", false)", cap, matched)
+	}
+}
+
 func TestImageCreditEmptyWhenNoCredit(t *testing.T) {
 	cases := []string{
 		`<p>plain body</p>`,

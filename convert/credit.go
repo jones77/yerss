@@ -7,35 +7,58 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ImageCredit extracts a one-line photo credit for an image from its HTML: the
-// figcaption of the figure containing an <img> whose src matches imageURL. The
-// caption is collapsed to a single whitespace-separated line. It returns ""
-// when no figure matches or the matching figure has no caption. It never
-// borrows a caption from another image's figure: an image without its own
-// figure renders without an attribution rather than displaying another image's
-// (observed in the smoke test, where the first figure's caption attached to
-// every image in the article).
-func ImageCredit(htmlStr, imageURL string) string {
+// ImageCaption returns the one-line caption attributed to imageURL from its
+// HTML and whether imageURL sits inside a figure that carries a figcaption. A
+// figure's caption belongs to its last <img> in document order, so a photo-grid
+// (several photos under one combined caption) attributes the caption only to
+// its final photo; an earlier image in the same figure gets an empty caption
+// with matched=true, which the caller must honor by rendering no caption rather
+// than falling back. The caption is collapsed to a single whitespace-separated
+// line.
+func ImageCaption(htmlStr, imageURL string) (string, bool) {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil {
-		return ""
+		return "", false
 	}
-	return figureCredit(doc, imageURL)
+	return figureCaption(doc, imageURL)
 }
 
-// figureCredit returns the figcaption text of the figure whose <img> src
-// matches imageURL, or "" when no figure matches or it has no caption.
-func figureCredit(n *html.Node, imageURL string) string {
+// ImageCredit extracts a one-line photo credit for an image from its HTML: the
+// figcaption of the figure containing an <img> whose src matches imageURL,
+// attributed only when the image is the figure's last <img> (a figure's caption
+// belongs to its last image). The caption is collapsed to a single
+// whitespace-separated line. It returns "" when no figure matches, the matching
+// figure has no caption, or the image is an earlier image in a shared captioned
+// figure. It never borrows a caption from another image's figure: an image
+// without its own caption renders without an attribution rather than displaying
+// another image's (observed in the smoke test, where the first figure's caption
+// attached to every image in the article).
+func ImageCredit(htmlStr, imageURL string) string {
+	cap, _ := ImageCaption(htmlStr, imageURL)
+	return cap
+}
+
+// figureCaption returns the figcaption text attributed to imageURL and whether
+// imageURL lies inside a captioned figure. The caption belongs to the figure's
+// last <img>; an image earlier in a shared captioned figure returns "", true so
+// the caller can render no caption rather than fall back.
+func figureCaption(n *html.Node, imageURL string) (string, bool) {
 	for _, fig := range findAll(n, "figure") {
 		cap := textOf(findFirst(fig, "figcaption"))
-		if cap == "" {
+		if cap == "" || imageURL == "" {
 			continue
 		}
-		if imageURL != "" && hasImgWithSrc(fig, imageURL) {
-			return cap
+		imgs := findAll(fig, "img")
+		for i, img := range imgs {
+			if v, ok := dom.GetAttribute(img, "src"); ok && v == imageURL {
+				if i == len(imgs)-1 {
+					return cap, true
+				}
+				return "", true
+			}
 		}
 	}
-	return ""
+	return "", false
 }
 
 // findAll collects every element in document order, matching tag when it is
@@ -66,17 +89,6 @@ func findFirst(n *html.Node, tag string) *html.Node {
 		}
 	}
 	return nil
-}
-
-// hasImgWithSrc reports whether the subtree rooted at n contains an <img>
-// whose src attribute equals src.
-func hasImgWithSrc(n *html.Node, src string) bool {
-	for _, img := range findAll(n, "img") {
-		if v, ok := dom.GetAttribute(img, "src"); ok && v == src {
-			return true
-		}
-	}
-	return false
 }
 
 // textOf collects the text content of the subtree rooted at n, collapsed to a

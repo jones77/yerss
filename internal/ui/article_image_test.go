@@ -987,6 +987,50 @@ func TestInlineImageDoesNotBorrowAnotherImagesCaption(t *testing.T) {
 	}
 }
 
+func TestInlineImagePhotoGridCaptionOwnership(t *testing.T) {
+	// A photo-grid: two per-photo inner figures wrapped by an outer figure
+	// whose combined caption belongs to the last photo. The first photo
+	// renders with no attribution at all (no borrowed caption, no source
+	// fallback); the last photo renders with the combined caption.
+	wide := strings.Repeat("I", 40)
+	a := imageArticle()
+	a.Content = `<p>intro</p>` +
+		`<figure class="photo-grid">` +
+		`<figure><img src="left.jpg"></figure>` +
+		`<figure><img src="right.jpg"></figure>` +
+		`<figcaption>Left: 2024 scene. Right: 2026 scene.</figcaption>` +
+		`</figure>` +
+		`<p>outro</p>`
+	m, _ := newImageModel(t, []string{wide, wide})
+	m.imgCache.Set("left.jpg", testImg())
+	m.imgCache.Set("right.jpg", testImg())
+	m.article = m.newArticleState(a)
+
+	var left, right *imageBlock
+	for i := range m.article.imageBlocks {
+		switch m.article.imageBlocks[i].url {
+		case "left.jpg":
+			left = &m.article.imageBlocks[i]
+		case "right.jpg":
+			right = &m.article.imageBlocks[i]
+		}
+	}
+	if left == nil || right == nil {
+		t.Fatalf("want left and right grid blocks, got left=%v right=%v", left, right)
+	}
+	lines := strippedLines(m.article.lines)
+	if left.capStart != left.imgEnd+1 {
+		t.Errorf("left grid photo capStart %d, want %d (no caption lines composed)", left.capStart, left.imgEnd+1)
+	}
+	caption := strings.Join(lines[right.capStart:right.imgEnd+1], " ")
+	if !strings.Contains(caption, "Left: 2024 scene. Right: 2026 scene.") {
+		t.Errorf("right grid photo caption = %q, want the combined figure caption", caption)
+	}
+	if strings.Contains(caption, "photo:") {
+		t.Errorf("right grid photo should use the figure caption, got %q", caption)
+	}
+}
+
 func TestInlineImagePlaceholderKeepsParagraphBreak(t *testing.T) {
 	a := imageArticle()
 	a.Content = `<p>intro text</p><p><img src="inline.jpg" alt="Alt"></p><p>outro text</p>`
@@ -1106,6 +1150,44 @@ func TestSnapYOffsetBlockList(t *testing.T) {
 	}
 }
 
+func TestSnapYOffsetWrappedCaptionBottomBoundary(t *testing.T) {
+	// An inline image with a caption that wraps to three lines: the bottom
+	// snap keys on the wrapped caption's last line (imgEnd), not its first
+	// (capStart). A down move that leaves the image's top in the window with
+	// only the caption's first line above the fold snaps to the bottom
+	// boundary so the full wrapped caption is visible, rather than leaving its
+	// tail hanging below the fold.
+	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
+	inline := imageBlock{url: "inline", imgStart: 20, capStart: 23, imgEnd: 25}
+	blocks := []imageBlock{lead, inline}
+
+	cases := []struct {
+		name      string
+		offset    int
+		before    int
+		vpH       int
+		direction int
+		want      int
+	}{
+		// Caption first line (23) visible, last line (25) below the fold: the
+		// bottom snap fires on the wrapped caption's last line. The pre-change
+		// condition keyed on capStart and left the offset unchanged here.
+		{"down with wrapped caption tail below fold snaps to its bottom", 9, 8, 15, 1, 11},
+		// The next down move rises to the top boundary.
+		{"down from bottom boundary rises to its top", 12, 11, 15, 1, 20},
+		// Up mirror: an up move cutting the wrapped caption's last line below
+		// the fold scrolls the block off rather than leaving the caption cut.
+		{"up cutting wrapped caption tail below fold scrolls it off", 9, 10, 15, -1, 5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := snapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
+				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSnapYOffsetSkipLeavesNextImagePartial(t *testing.T) {
 	// Consecutive inline images taller than the spacing between them, as in
 	// the real article: after skipping the first onto its caption, the second
@@ -1143,6 +1225,100 @@ func TestSnapYOffsetSkipLeavesNextImagePartial(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if got := snapYOffset(c.offset, vpH, c.before, blocks, c.d, false); got != c.want {
 				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, vpH, c.before, got, c.want)
+			}
+		})
+	}
+}
+
+func TestSnapYOffsetUpFromBottomBoundaryScrollsOff(t *testing.T) {
+	// An up move from an inline image's BOTTOM boundary (its last line on the
+	// viewport's last row) snaps it fully out of view in one press — its top
+	// lands at the fold — rather than pausing on the caption or revealing the
+	// previous image with this one still partially visible.
+	lead := imageBlock{url: "lead", imgStart: 5, capStart: 19, imgEnd: 19}
+	inline := imageBlock{url: "inline", imgStart: 21, capStart: 35, imgEnd: 35}
+	blocks := []imageBlock{lead, inline}
+
+	cases := []struct {
+		name      string
+		offset    int
+		before    int
+		vpH       int
+		direction int
+		want      int
+	}{
+		// Up from the inline's bottom boundary snaps it off (its top at the
+		// fold), one press, never resting on the caption or the gap.
+		{"up from the bottom boundary snaps it off", 14, 15, 21, -1, 0},
+		// From the inline's TOP boundary the sink stage still moves to its
+		// bottom; the off rule fires only on the bottom boundary.
+		{"up from the top boundary sinks to its bottom", 20, 21, 21, -1, 15},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := snapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
+				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
+			}
+		})
+	}
+}
+
+func TestSnapYOffsetUpFromBottomBoundaryRevealsPreviousWhenClose(t *testing.T) {
+	// With images spaced closer than the viewport height, an up move from a
+	// lower image's bottom boundary scrolls it off onto the previous image's
+	// top, so the previous image is never left partially visible (its photo
+	// range would otherwise catch the scroll-off target).
+	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
+	one := imageBlock{url: "one", imgStart: 20, capStart: 40, imgEnd: 41}
+	two := imageBlock{url: "two", imgStart: 60, capStart: 80, imgEnd: 81}
+	blocks := []imageBlock{lead, one, two}
+	vpH := 27
+
+	// two's bottom boundary is 55; its off target (33) lands inside one's
+	// photo range, so one is revealed at its top instead.
+	if got := snapYOffset(54, vpH, 55, blocks, -1, false); got != 20 {
+		t.Errorf("up from two's bottom boundary = %d, want %d (one revealed)", got, 20)
+	}
+}
+
+func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
+	// Two adjacent image blocks (no body text between) are separated by one
+	// blank line: the next block's top is exactly two lines past the previous
+	// block's last line. A down move landing on that separator line must snap
+	// to the next image's top, so the 1-vertical gap between photos is never
+	// a resting scroll position.
+	lead := imageBlock{url: "lead", imgStart: 5, capStart: 19, imgEnd: 19}
+	inline := imageBlock{url: "inline", imgStart: 21, capStart: 35, imgEnd: 35}
+	blocks := []imageBlock{lead, inline}
+
+	cases := []struct {
+		name      string
+		offset    int
+		before    int
+		vpH       int
+		direction int
+		want      int
+	}{
+		// Down onto the separator line snaps to the next image's top.
+		{"down onto the separator line snaps to the image top", 20, 19, 21, 1, 21},
+		{"down onto the separator line snaps regardless of prior offset", 20, 18, 21, 1, 21},
+		// The image's top itself is not snapped away.
+		{"down at the image top unchanged", 21, 20, 21, 1, 21},
+		// Non-adjacent blocks (body text between) are never snapped over: a
+		// fully visible short image several lines below the fold stays put.
+		{"down at a text line above a distant image unchanged", 20, 19, 21, 1, 20},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bs := blocks
+			if c.name == "down at a text line above a distant image unchanged" {
+				// The inline is not adjacent: text occupies the separator, and
+				// the short image is fully visible so the bottom snap does not
+				// preempt the unchanged outcome.
+				bs = []imageBlock{lead, imageBlock{url: "inline", imgStart: 30, capStart: 34, imgEnd: 34}}
+			}
+			if got := snapYOffset(c.offset, c.vpH, c.before, bs, c.direction, false); got != c.want {
+				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1520,6 +1696,86 @@ func TestScrollSnapsThroughInlineImage(t *testing.T) {
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 	if got := m.article.viewport.YOffset; got != inline.imgEnd {
 		t.Errorf("up from below the inline block = %d, want %d (its caption)", got, inline.imgEnd)
+	}
+}
+
+func TestScrollSnapsAcrossAdjacentPhotosSkipsGap(t *testing.T) {
+	// Two adjacent photos (lead + inline with no body text between) are
+	// separated by one blank line. Scrolling down from the lead must snap
+	// straight from the lead's caption to the inline's top, never resting on
+	// that separator line; scrolling back up must likewise snap, never
+	// pausing on the gap.
+	wide := strings.Repeat("I", 40)
+	tall := make([]string, 14)
+	for i := range tall {
+		tall[i] = wide
+	}
+	a := imageArticle()
+	a.Content = `<p><img src="inline.jpg" alt="Alt"></p>` +
+		strings.Repeat("<p>body text</p>", 60)
+	m, _ := newImageModel(t, tall)
+	m.imgCache.Set("inline.jpg", testImg())
+	m.article = m.newArticleState(a)
+	lead, inline := m.article.imageBlocks[0], m.article.imageBlocks[1]
+	gap := inline.imgStart - 1
+	if lead.imgEnd+2 != inline.imgStart {
+		t.Fatalf("photos not adjacent: lead end %d + 2 = %d, inline start %d", lead.imgEnd, lead.imgEnd+2, inline.imgStart)
+	}
+
+	// Down: the lead is pre-consumed (skip onto its caption), then a single
+	// move snaps to the inline's top without pausing on the gap.
+	m.article.viewport.SetYOffset(0)
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != lead.capStart {
+		t.Fatalf("down into the lead = %d, want %d (its caption)", got, lead.capStart)
+	}
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != inline.imgStart {
+		t.Errorf("down from the lead caption = %d, want %d (inline top, gap %d skipped)", got, inline.imgStart, gap)
+	}
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != inline.capStart {
+		t.Errorf("down again = %d, want %d (inline caption)", got, inline.capStart)
+	}
+
+	// Up: from the inline's top the snap steps back through the inline's own
+	// stages, never pausing on the separator gap.
+	m.article.viewport.SetYOffset(inline.imgStart)
+	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+	if got := m.article.viewport.YOffset; got == gap || got == gap+1 {
+		t.Errorf("up move rested on the separator gap (offset %d); want a snap", got)
+	}
+}
+
+func TestScrollUpFromBottomBoundarySnapsPhotoOut(t *testing.T) {
+	// A photo resting at its bottom boundary (caption on the viewport's last
+	// line) clears out of view in a single scroll-k: its top lands at the
+	// fold, with no pause on the caption and no intermediate reveal that
+	// leaves the photo partially visible.
+	wide := strings.Repeat("I", 40)
+	tall := make([]string, 14)
+	for i := range tall {
+		tall[i] = wide
+	}
+	a := imageArticle()
+	a.Content = `<p><img src="one.jpg" alt="One"></p>` +
+		`<p><img src="two.jpg" alt="Two"></p>` +
+		strings.Repeat("<p>body text</p>", 60)
+	m, _ := newImageModel(t, tall)
+	m.imgCache.Set("one.jpg", testImg())
+	m.imgCache.Set("two.jpg", testImg())
+	m.article = m.newArticleState(a)
+	vpH := m.article.viewport.Height
+	if len(m.article.imageBlocks) < 3 {
+		t.Fatalf("want lead + two inline blocks, got %d", len(m.article.imageBlocks))
+	}
+	two := m.article.imageBlocks[2]
+	bottom := two.imgEnd - vpH + 1
+
+	m.article.viewport.SetYOffset(bottom)
+	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+	if got := m.article.viewport.YOffset; got != two.imgStart-vpH {
+		t.Errorf("up from photo bottom boundary = %d, want %d (photo out of view)", got, two.imgStart-vpH)
 	}
 }
 
