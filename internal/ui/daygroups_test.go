@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"strings"
 	"testing"
 	"time"
@@ -271,6 +272,7 @@ func TestStatusBarShowsNT(t *testing.T) {
 
 func TestStatusBarShowsDBSize(t *testing.T) {
 	m, st := newTestModel(t)
+	m.width = 120 // the RAM/DB/percent/position right side is long
 	insertArticle(t, st, "one", nil)
 	m.loadList()
 
@@ -278,8 +280,8 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	if m.dbSize <= 0 {
 		t.Fatalf("expected dbSize set by loadList, got %d", m.dbSize)
 	}
-	if !strings.Contains(got, formatSize(m.dbSize)) {
-		t.Errorf("status bar = %q, want size %s", got, formatSize(m.dbSize))
+	if !strings.Contains(got, "DB "+formatMB(m.dbSize)) {
+		t.Errorf("status bar = %q, want DB %s", got, formatMB(m.dbSize))
 	}
 	if !strings.Contains(got, "never refreshed") {
 		t.Errorf("status bar = %q, want size alongside refresh info", got)
@@ -291,11 +293,29 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	if !strings.Contains(got, "15:04 Friday 28th August, 2026 last refresh") {
 		t.Errorf("status bar = %q, want last refresh time with long date", got)
 	}
-	if !strings.Contains(got, formatSize(m.dbSize)) {
-		t.Errorf("status bar = %q, want size with refresh date", got)
+	if !strings.Contains(got, "DB "+formatMB(m.dbSize)) {
+		t.Errorf("status bar = %q, want DB %s", got, formatMB(m.dbSize))
 	}
-	if !strings.Contains(got, formatSize(m.dbSize)+" "+render.GlyphsFor(m.ascii).Bullet+" 100% "+render.GlyphsFor(m.ascii).Bullet+" 1/1") {
-		t.Errorf("status bar = %q, want size %s percentage %s position", got, render.GlyphsFor(m.ascii).Bullet, render.GlyphsFor(m.ascii).Bullet)
+	if !strings.Contains(got, "DB "+formatMB(m.dbSize)+" "+render.GlyphsFor(m.ascii).Bullet+" 100% "+render.GlyphsFor(m.ascii).Bullet+" 1/1") {
+		t.Errorf("status bar = %q, want DB %s percentage %s position", got, render.GlyphsFor(m.ascii).Bullet, render.GlyphsFor(m.ascii).Bullet)
+	}
+}
+
+func TestStatusBarShowsRAM(t *testing.T) {
+	m, st := newTestModel(t)
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+
+	got := m.renderStatusBar()
+	if !strings.Contains(got, "RAM 0MB") {
+		t.Errorf("status bar with empty cache = %q, want RAM 0MB", got)
+	}
+
+	m.sess.ImgCache.Set("u", image.NewRGBA(image.Rect(0, 0, 800, 600)))
+	got = m.renderStatusBar()
+	want := formatMB(int64(800 * 600 * 4))
+	if !strings.Contains(got, "RAM "+want) {
+		t.Errorf("status bar = %q, want RAM %s", got, want)
 	}
 }
 
@@ -321,7 +341,7 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	if !strings.Contains(got, base.Render("100%")) {
 		t.Errorf("elements between bullets should stay in the chrome role: %q", got)
 	}
-	if !strings.Contains(got, base.Render(formatSize(m.dbSize))) {
+	if !strings.Contains(got, base.Render("DB "+formatMB(m.dbSize))) {
 		t.Errorf("database size should stay in the chrome role: %q", got)
 	}
 }
@@ -333,10 +353,13 @@ func TestStatusBarHelpHintTrailing(t *testing.T) {
 	m.list.cursor = 1
 	m.list.groups = []dayGroup{{articles: []articleItem{{ID: 1, Title: "one"}}}}
 	got := ansi.Strip(m.renderStatusBar())
-	// left = "never refreshed" (15), right = "?: help · 100% · 1/1" (20);
-	// the 45-column gap is plain space padding.
+	// left = "never refreshed" (15); the right side leads with the `?: help`
+	// hint, then the RAM/DB footprints, then the percentage and position.
 	b := render.GlyphsFor(m.ascii).Bullet
-	want := "never refreshed" + strings.Repeat(" ", 45) + "?: help " + b + " 100% " + b + " 1/1"
+	right := "?: help " + b + " RAM 0MB " + b + " DB 0MB " + b + " 100% " + b + " 1/1"
+	left := "never refreshed"
+	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	want := left + strings.Repeat(" ", pad) + right
 	if got != want {
 		t.Errorf("status bar = %q, want %q", got, want)
 	}

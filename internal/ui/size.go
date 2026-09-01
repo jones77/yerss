@@ -2,18 +2,11 @@ package ui
 
 import "fmt"
 
-// formatSize renders a byte count with a binary unit suffix: whole bytes for
-// values under 1 KB, otherwise one decimal place (e.g. `450 B`, `1.4 MB`).
-func formatSize(bytes int64) string {
-	if bytes < 1024 {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	size := float64(bytes)
-	for _, u := range []string{"KB", "MB", "GB", "TB"} {
-		size /= 1024
-		if size < 1024 || u == "TB" {
-			return fmt.Sprintf("%.1f %s", size, u)
-		}
-	}
-	return fmt.Sprintf("%.1f TB", size)
+// formatMB renders a byte count as a floored whole number of megabytes with no
+// space between the number and the MB suffix (e.g. "45MB"). Values under one
+// megabyte render as "0MB". It is the status bar's formatter for the session's
+// decoded-image footprint and the on-disk database size; it deliberately
+// differs from textutil.FormatSize, which the --init-db prompt still uses.
+func formatMB(bytes int64) string {
+	return fmt.Sprintf("%dMB", bytes>>20)
 }
