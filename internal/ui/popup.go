@@ -569,7 +569,7 @@ func (m *Model) tagBottomBorder(w int, g borderGlyphs) string {
 	}
 	pct := 0
 	if n > 0 {
-		pct = int(float64(pos)/float64(n)*100 + 0.5)
+		pct = (pos*100 + n/2) / n
 	}
 	percentStr := fmt.Sprintf("%d%%", pct)
 	ratioStr := fmt.Sprintf("%d/%d", pos, n)

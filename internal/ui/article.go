@@ -518,7 +518,7 @@ func inlineAttribution(a store.Article, url, alt, linkText string) string {
 	if linkText != "" {
 		return linkText
 	}
-	if src := sourceID(a.Link, a.FeedURL); src != "" {
+	if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
 		return "photo: " + src
 	}
 	return ""

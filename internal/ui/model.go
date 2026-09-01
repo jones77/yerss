@@ -141,7 +141,11 @@ func (m *Model) Ascii() bool { return m.ascii }
 func (m *Model) Init() tea.Cmd {
 	m.loadList()
 	imgLoad := m.restoreSelection()
-	last, _ := m.store.LastRefreshedAt()
+	last, err := m.store.LastRefreshedAt()
+	if err != nil {
+		m.setStatus("load error: " + err.Error())
+		last = time.Time{}
+	}
 	m.lastRefreshedAt = last
 	var refresh tea.Cmd
 	if m.hasUnfetchedFeeds() {

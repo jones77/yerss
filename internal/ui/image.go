@@ -266,7 +266,7 @@ func articleAttribution(a store.Article) string {
 	if cap, inFig := convert.ImageCaption(a.Content, a.ImageURL); inFig {
 		return cap
 	}
-	if src := sourceID(a.Link, a.FeedURL); src != "" {
+	if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
 		return "photo: " + src
 	}
 	return ""

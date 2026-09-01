@@ -73,8 +73,8 @@ func TestSourceID(t *testing.T) {
 		{"", "", ""},
 	}
 	for _, c := range cases {
-		if got := sourceID(c.link, c.feed); got != c.want {
-			t.Errorf("sourceID(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
+		if got := store.SourceLabel(c.link, c.feed); got != c.want {
+			t.Errorf("store.SourceLabel(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
 		}
 	}
 }

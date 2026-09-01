@@ -47,6 +47,18 @@ const (
 	rowArticle
 )
 
+// Fold keys toggled while the cursor rests on a day-header row. h/l fold and
+// unfold the group; enter/space/tab toggle it. These are context-sensitive
+// (only active on a header row), so they are centralized here rather than
+// registered in the keybinding catalog.
+const (
+	keyFoldIn          = "h"
+	keyFoldOut         = "l"
+	keyFoldToggle      = "enter"
+	keyFoldToggleSpace = " "
+	keyFoldToggleTab   = "tab"
+)
+
 // visibleRow identifies a rendered row in the flattened visible-row list.
 type visibleRow struct {
 	kind     rowKind
@@ -314,7 +326,7 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 		bar = bar.Background(bg)
 	}
 
-	src := sourceID(item.Link, item.FeedURL)
+	src := store.SourceLabel(item.Link, item.FeedURL)
 	if src != "" {
 		src = elideMiddle(src, 15, g.ellipsis)
 	}
@@ -362,14 +374,6 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 }
 
 // sourceID derives a short publication identifier from a URL host: the
-// registrable organization label of the domain (see store.SourceLabel), so
-// www.blah.com and a.lot.of.subdomains.blah.com both yield "blah". The
-// article link host is used when present; otherwise the feed URL host is
-// used. The renderer middle-elides it to the news-org column width.
-func sourceID(rawURL, feedURL string) string {
-	return store.SourceLabel(rawURL, feedURL)
-}
-
 func (m *Model) renderStatusBar() string {
 	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
 	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
@@ -393,7 +397,7 @@ func (m *Model) renderStatusBar() string {
 	n, total := m.selectedArticlePosition()
 	pct := 0
 	if total > 0 {
-		pct = int(float64(n)/float64(total)*100 + 0.5)
+		pct = (n*100 + total/2) / total
 	}
 	right := base.Render(fmt.Sprintf("%d%%", pct)) + " " + dim.Render(bullet) + " " + base.Render(fmt.Sprintf("%d/%d", n, total))
 	if m.dbSize > 0 {
@@ -418,17 +422,17 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		row := rows[m.list.cursor]
 		if row.kind == rowHeader {
 			switch msg.String() {
-			case "h":
+			case keyFoldIn:
 				m.collapse(row.groupIdx)
 				return m, nil
-			case "l":
+			case keyFoldOut:
 				m.expand(row.groupIdx)
 				return m, nil
-			case "enter", " ", "tab":
+			case keyFoldToggle, keyFoldToggleSpace, keyFoldToggleTab:
 				m.toggle(row.groupIdx)
 				return m, nil
 			}
-		} else if msg.String() == "tab" {
+		} else if msg.String() == keyFoldToggleTab {
 			m.toggle(row.groupIdx)
 			return m, nil
 		}
