@@ -9,6 +9,7 @@ import (
 
 	"yerss/internal/config"
 	"yerss/internal/store"
+	"yerss/internal/timeutil"
 )
 
 // articleJSON is the JSON representation of a stored article. Times are emitted
@@ -103,7 +104,7 @@ func bucketArticles(arts []store.Article) dateBuckets {
 		if t.IsZero() {
 			t = a.FetchedAt
 		}
-		key := t.Local().Format("20060102")
+		key := timeutil.DayKey(t)
 		i, ok := idx[key]
 		if !ok {
 			i = len(buckets)

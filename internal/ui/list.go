@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/timeutil"
 	"yerss/internal/ui/render"
 )
 
@@ -94,14 +95,14 @@ func bucketDayGroups(arts []store.Article, now time.Time) []dayGroup {
 		}
 		item := articleItem{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt, Link: a.Link, FeedURL: a.FeedURL}
 
-		key := dayKey(a.PublishedAt)
+		key := timeutil.DayKey(a.PublishedAt)
 		i, ok := idx[key]
 		if !ok {
 			label := "Undated"
 			var date time.Time
 			if key != "undated" {
-				date = dayStart(a.PublishedAt)
-				label = dayLabel(date, now)
+				date = timeutil.DayStart(a.PublishedAt)
+				label = timeutil.DayLabel(date, now)
 			}
 			i = len(groups)
 			groups = append(groups, dayGroup{date: date, label: label})
@@ -110,20 +111,6 @@ func bucketDayGroups(arts []store.Article, now time.Time) []dayGroup {
 		groups[i].articles = append(groups[i].articles, item)
 	}
 	return groups
-}
-
-// dayLabel renders a day group's header label: the long local date, prefixed
-// with "today, " or "yesterday, " when the day is the reference day or the one
-// before it.
-func dayLabel(date, now time.Time) string {
-	today := dayStart(now)
-	switch date {
-	case today:
-		return "today, " + longDate(date)
-	case today.AddDate(0, 0, -1):
-		return "yesterday, " + longDate(date)
-	}
-	return longDate(date)
 }
 
 // visibleRows flattens the day groups into the ordered rows that are rendered
@@ -215,25 +202,6 @@ func (m *Model) expandToggle() {
 		m.list.groups[i].collapsed = !anyCollapsed
 	}
 	m.clampCursor()
-}
-
-// longDate renders a local calendar day as `Weekday Day-ordinal Month, Year`,
-// for example "Saturday 28th August, 2026".
-func longDate(t time.Time) string {
-	d := t.Day()
-	suf := "th"
-	switch d % 10 {
-	case 1:
-		suf = "st"
-	case 2:
-		suf = "nd"
-	case 3:
-		suf = "rd"
-	}
-	if d/10 == 1 {
-		suf = "th"
-	}
-	return t.Format("Monday ") + fmt.Sprintf("%d%s ", d, suf) + t.Format("January, 2006")
 }
 
 func (m *Model) renderList() string {
@@ -331,7 +299,7 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	}
 	ts := "--:--"
 	if !item.PublishedAt.IsZero() {
-		ts = item.PublishedAt.Local().Format("15:04")
+		ts = item.PublishedAt.Local().Format(timeutil.LayoutTime)
 	}
 
 	// The row starts with the local publication time, the title filling the
@@ -387,7 +355,7 @@ func (m *Model) renderStatusBar() string {
 		left = base.Render("never refreshed")
 	} else {
 		t := m.lastRefreshedAt
-		left = base.Render(t.Format("15:04")+" "+longDate(t)) + " " + dim.Render("last refresh")
+		left = base.Render(t.Format(timeutil.LayoutTime)+" "+timeutil.LongDate(t)) + " " + dim.Render("last refresh")
 	}
 	if m.list.filter != "" && (m.statusMsg == "" || !time.Now().Before(m.statusExpires)) {
 		left += " " + dim.Render(bullet) + " " + base.Render("filter "+m.list.filter)

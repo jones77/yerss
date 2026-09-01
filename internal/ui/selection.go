@@ -4,6 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"yerss/internal/store"
+	"yerss/internal/timeutil"
 )
 
 // persistSelection records the current list selection (and the open article,
@@ -22,7 +23,7 @@ func (m *Model) persistSelection() {
 		rows := m.visibleRows()
 		if m.list.cursor >= 0 && m.list.cursor < len(rows) && rows[m.list.cursor].kind == rowHeader {
 			g := &m.list.groups[rows[m.list.cursor].groupIdx]
-			sel.HeaderKey = dayKey(g.date)
+			sel.HeaderKey = timeutil.DayKey(g.date)
 		}
 	}
 	_ = m.sess.SaveSelection(sel)
@@ -42,7 +43,7 @@ func (m *Model) restoreSelection() tea.Cmd {
 	}
 	if sel.HeaderKey != "" {
 		for gi := range m.list.groups {
-			if dayKey(m.list.groups[gi].date) == sel.HeaderKey {
+			if timeutil.DayKey(m.list.groups[gi].date) == sel.HeaderKey {
 				rows := m.visibleRows()
 				for i, r := range rows {
 					if r.kind == rowHeader && r.groupIdx == gi {

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/timeutil"
 	"yerss/internal/ui/render"
 )
 
@@ -50,7 +51,7 @@ func TestLongDateOrdinals(t *testing.T) {
 	}
 	for _, c := range cases {
 		tm := time.Date(2026, 8, c.day, 0, 0, 0, 0, time.UTC)
-		got := longDate(tm)
+		got := timeutil.LongDate(tm)
 		if !strings.Contains(got, c.want) {
 			t.Errorf("longDate(%d) = %q, missing ordinal %q", c.day, got, c.want)
 		}
@@ -81,9 +82,9 @@ func TestBucketDayGroupsOrdering(t *testing.T) {
 	}
 	day := func(d int) time.Time { return time.Date(2026, 8, d, 0, 0, 0, 0, time.UTC) }
 	wantLabels := []string{
-		"today, " + longDate(day(28)),
-		"yesterday, " + longDate(day(27)),
-		longDate(day(26)),
+		"today, " + timeutil.LongDate(day(28)),
+		"yesterday, " + timeutil.LongDate(day(27)),
+		timeutil.LongDate(day(26)),
 		"Undated",
 	}
 	for i, want := range wantLabels {
