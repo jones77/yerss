@@ -25,27 +25,37 @@ func (m *Model) nativeImages() bool {
 	return m.imgNative.Protocol != image.ProtocolNone
 }
 
-// nativeImageClear returns the native-image clear sequence to prepend to the
-// current frame for every native image the terminal holds that the frame does
-// not transmit. kitty graphics placements float above text and the erase
-// commands a frame repaint issues have no effect on them, so a placement
-// survives scrolling the photo's rows out of the viewport unless explicitly
-// deleted. Each block records the kitty image id it was rendered under, and
-// nativeSent tracks the id last transmitted per URL; a frame deletes — by that
-// exact id — every held image it does not re-transmit: scrolled-out or clipped
-// placements (a partially visible image would draw past the window and overlap
-// the article border, so it is deleted and its transmit suppressed by
-// suppressClippedNativeTransmits), blocks superseded by a re-render at a new
-// size (the prior id is deleted before the new transmit, so the terminal never
-// holds two sizes of one image), and blocks that reverted to a placeholder.
-// The sequence is empty for protocols whose images are cell-bound (OSC 1337) or
-// absent, and for fully contained images (that frame re-transmits the image
-// with its stable placement id, which replaces the placement). Leaving the
-// article view frees every held image by its id — delete-all only clears
-// visible placements and can leave the terminal's cached image data to
-// accumulate — and an article with no composed native image falls back to the
-// delete-all clear so the previous article's photos cannot linger.
-func (m *Model) nativeImageClear() string {
+// recomputeNativeClear computes the native-image clear sequence for the current
+// frame and stores it on the model for View() to prepend, moving the kitty
+// cleanup into the update path so render stays a pure function of state. kitty
+// graphics placements float above text and the erase commands a frame repaint
+// issues have no effect on them, so a placement survives scrolling the photo's
+// rows out of the viewport unless explicitly deleted. Each block records the
+// kitty image id it was rendered under, and nativeSent tracks the id last
+// transmitted per URL; a frame deletes — by that exact id — every held image it
+// does not re-transmit: scrolled-out or clipped placements (a partially visible
+// image would draw past the window and overlap the article border, so it is
+// deleted and its transmit suppressed by suppressClippedNativeTransmits),
+// blocks superseded by a re-render at a new size (the prior id is deleted
+// before the new transmit, so the terminal never holds two sizes of one image),
+// and blocks that reverted to a placeholder. Leaving the article view frees
+// every held image by its id — delete-all only clears visible placements and
+// can leave the terminal's cached image data to accumulate. An article with no
+// composed native image falls back to the delete-all clear so the previous
+// article's photos cannot linger, but only on the transition into that article
+// (nativeClearArticleID), not on every no-native-image frame. The sequence is
+// empty for protocols whose images are cell-bound (OSC 1337) or absent, and for
+// fully contained images (that frame re-transmits the image with its stable
+// placement id, which replaces the placement).
+func (m *Model) recomputeNativeClear() {
+	m.nativeClearPrefix = m.computeNativeClear()
+}
+
+// computeNativeClear returns the native-image clear sequence for the current
+// frame and advances the nativeSent/nativeClearArticleID tracking; it is
+// invoked ONLY through recomputeNativeClear so the mutation never reaches
+// View(), keeping render a pure function of state.
+func (m *Model) computeNativeClear() string {
 	if m.imgNative.Protocol != image.ProtocolKitty {
 		return ""
 	}
@@ -55,6 +65,9 @@ func (m *Model) nativeImageClear() string {
 			sb.WriteString(image.DeleteByID(id))
 		}
 		m.nativeSent = make(map[string]uint32)
+		// Leaving the article view: the next entry into a no-native article
+		// must re-emit the delete-all.
+		m.nativeClearArticleID = -1
 		return sb.String()
 	}
 	vp := m.article.viewport
@@ -83,8 +96,13 @@ func (m *Model) nativeImageClear() string {
 	}
 	if seen == 0 {
 		m.nativeSent = make(map[string]uint32)
+		if m.nativeClearArticleID == m.article.id {
+			return ""
+		}
+		m.nativeClearArticleID = m.article.id
 		return m.imgNative.Clear()
 	}
+	m.nativeClearArticleID = 0
 	return sb.String()
 }
 

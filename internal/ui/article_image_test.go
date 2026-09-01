@@ -22,6 +22,15 @@ import (
 // dimsCall records a render request the fake renderer received.
 type dimsCall struct{ w, maxH int }
 
+// frameView simulates one full render frame: recompute the native-image clear
+// prefix (as Update does after a state change) then compose the view. Tests
+// that drive state by hand and then inspect View use it so View itself stays a
+// pure function of model state.
+func frameView(m *Model) string {
+	m.recomputeNativeClear()
+	return m.View()
+}
+
 // fakeRenderer returns fixed lines and records the width/maxHeight it was
 // asked to render at, so tests can assert composition without real images.
 type fakeRenderer struct {
@@ -589,7 +598,7 @@ func TestNativeKittyImageClearsWhenNotDisplayed(t *testing.T) {
 
 	// While the block intersects the visible window the frame re-transmits
 	// the image and must not delete the placement.
-	if got := m.View(); !strings.Contains(got, "\x1b_Ga=T") {
+	if got := frameView(m); !strings.Contains(got, "\x1b_Ga=T") {
 		t.Error("visible native image should carry the transmit escape")
 	} else if strings.Contains(got, kittyDeleteEsc) {
 		t.Error("visible native image must not be deleted")
@@ -603,21 +612,21 @@ func TestNativeKittyImageClearsWhenNotDisplayed(t *testing.T) {
 	if leadID == 0 {
 		t.Fatal("native block should record its kitty render id")
 	}
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+	if got := frameView(m); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
 		t.Error("caption frame must delete the photo's placement by its render id")
 	}
 
 	// Scrolled past the whole block the placement must be deleted too, or
 	// the photo would float over the body.
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+	if got := frameView(m); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
 		t.Error("frame must delete the placement when the image is scrolled out")
 	}
 
 	// Backing out to the list must delete the placement too, or the photo
 	// persists over the list and stacks over the next article's photo.
 	m.backToList()
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+	if got := frameView(m); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
 		t.Error("list frame must delete the article's placement by its render id")
 	}
 
@@ -631,7 +640,7 @@ func TestNativeKittyImageClearsWhenNotDisplayed(t *testing.T) {
 	if m.article.nativeImg {
 		t.Fatal("expected the placeholder state without a native render")
 	}
-	if got := m.View(); !strings.Contains(got, kittyDeleteEsc) {
+	if got := frameView(m); !strings.Contains(got, kittyDeleteEsc) {
 		t.Error("article frame without a native render must delete stray placements")
 	}
 }
@@ -647,11 +656,11 @@ func TestNativeKittyImageRestoredAfterClear(t *testing.T) {
 	m.view = viewArticle
 
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(m.article.imageBlocks[0].NativeID)) {
+	if got := frameView(m); !strings.Contains(got, imgpkg.DeleteByID(m.article.imageBlocks[0].NativeID)) {
 		t.Fatal("scrolled-out image should have been deleted by its render id")
 	}
 	m.scrollArticle(func() { m.article.viewport.GotoTop() }, false)
-	if got := m.View(); !strings.Contains(got, "\x1b_Ga=T") || strings.Contains(got, "a=d") {
+	if got := frameView(m); !strings.Contains(got, "\x1b_Ga=T") || strings.Contains(got, "a=d") {
 		t.Error("scrolled-back image must be re-transmitted and not deleted")
 	}
 }
@@ -665,11 +674,11 @@ func TestNativeITermImageNeedsNoClear(t *testing.T) {
 	nativeRenderLines(t, m, imageArticle())
 	m.article = m.newArticleState(imageArticle())
 	m.view = viewArticle
-	if got := m.View(); strings.Contains(got, kittyDeleteEsc) {
+	if got := frameView(m); strings.Contains(got, kittyDeleteEsc) {
 		t.Error("iTerm frame should not carry the kitty delete sequence")
 	}
 	m.backToList()
-	if got := m.View(); strings.Contains(got, kittyDeleteEsc) {
+	if got := frameView(m); strings.Contains(got, kittyDeleteEsc) {
 		t.Error("iTerm list frame should not carry the kitty delete sequence")
 	}
 }
@@ -1945,7 +1954,7 @@ func TestNativeClippedImageDoesNotPaintOverBorder(t *testing.T) {
 	// Top visible, bottom below the fold: the frame deletes the placement and
 	// suppresses the transmit so the image cannot paint over the border.
 	m.article.viewport.SetYOffset(inline.ImgStart)
-	view := m.View()
+	view := frameView(m)
 	if !strings.Contains(view, imgpkg.DeleteByID(inline.NativeID)) {
 		t.Errorf("clipped image placement should be deleted by its render id: %q", view)
 	}
@@ -2027,7 +2036,7 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 
 	// Partial at the bottom edge: the visible rows must carry the preview.
 	m.article.viewport.SetYOffset(inline.ImgStart)
-	view := m.View()
+	view := frameView(m)
 	if !strings.Contains(view, "PREVIEW1") {
 		t.Errorf("clipped image should show its halfblock preview, got: %q", view)
 	}
@@ -2060,7 +2069,7 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	// the lead's placement by its recorded id and leave the visible inline
 	// alone.
 	m.article.viewport.SetYOffset(inline.ImgStart)
-	got := m.nativeImageClear()
+	got := m.computeNativeClear()
 	if !strings.Contains(got, imgpkg.DeleteByID(lead.NativeID)) {
 		t.Errorf("clear should delete the scrolled-out lead placement by its render id: %q", got)
 	}
@@ -2070,7 +2079,7 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 
 	// Everything on screen: no clear at all.
 	m.article.viewport.SetYOffset(lead.ImgStart)
-	if got := m.nativeImageClear(); strings.Contains(got, "a=d") {
+	if got := m.computeNativeClear(); strings.Contains(got, "a=d") {
 		t.Errorf("clear issued while all images visible: %q", got)
 	}
 }
@@ -2095,7 +2104,7 @@ func TestNativeKittyResizeDeletesPriorIDBeforeTransmit(t *testing.T) {
 	if oldID == 0 {
 		t.Fatal("native block must record its render id")
 	}
-	if got := m.View(); !strings.Contains(got, fmt.Sprintf("i=%d", oldID)) {
+	if got := frameView(m); !strings.Contains(got, fmt.Sprintf("i=%d", oldID)) {
 		t.Fatalf("initial frame should transmit i=%d: %q", oldID, got)
 	}
 
@@ -2117,7 +2126,7 @@ func TestNativeKittyResizeDeletesPriorIDBeforeTransmit(t *testing.T) {
 
 	// The resize frame must delete the prior size's image by its id before
 	// the new transmit, so the terminal never holds two sizes of one photo.
-	got := m.View()
+	got := frameView(m)
 	del := imgpkg.DeleteByID(oldID)
 	if i := strings.Index(got, del); i < 0 || i > strings.Index(got, "\x1b_Ga=T") {
 		t.Errorf("resize frame must delete the prior id before transmitting the new one: %q", got)
@@ -2165,14 +2174,14 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 
 	// A frame at the top records the lead id as transmitted; the inline sits
 	// below the fold and is deleted by id.
-	if got := m.View(); !strings.Contains(got, fmt.Sprintf("i=%d", ids[0])) {
+	if got := frameView(m); !strings.Contains(got, fmt.Sprintf("i=%d", ids[0])) {
 		t.Fatalf("top frame should transmit the lead id %d: %q", ids[0], got)
 	}
 
 	// Scrolling to the inline deletes the scrolled-out lead by id while the
 	// inline records its id, so both remain tracked as held by the terminal.
 	m.article.viewport.SetYOffset(m.article.imageBlocks[1].ImgStart)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(ids[0])) {
+	if got := frameView(m); !strings.Contains(got, imgpkg.DeleteByID(ids[0])) {
 		t.Fatalf("scrolled-out lead should be deleted by its recorded id: %q", got)
 	}
 
@@ -2180,7 +2189,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	// would only clear visible placements and leave the terminal's cached
 	// image data behind.
 	m.backToList()
-	got := m.View()
+	got := frameView(m)
 	for _, id := range ids {
 		if !strings.Contains(got, imgpkg.DeleteByID(id)) {
 			t.Errorf("exit frame must delete recorded id %d: %q", id, got)

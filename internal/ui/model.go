@@ -66,6 +66,14 @@ type Model struct {
 	// frame can delete the prior size's image before a re-render at a new
 	// size, and leaving the article can free every image the terminal holds.
 	nativeSent map[string]uint32
+	// nativeClearPrefix holds the precomputed kitty image clear sequence for
+	// the current frame, computed in the update path so View() stays pure.
+	nativeClearPrefix string
+	// nativeClearArticleID records the article the delete-all was last emitted
+	// for; it gates the delete-all so it fires only on the transition into an
+	// article with no native images, not on every no-native-image frame. -1
+	// means none emitted yet (initial, or after leaving the article view).
+	nativeClearArticleID int64
 
 	statusMsg     string
 	statusExpires time.Time
@@ -117,6 +125,10 @@ func New(cfg *config.Config, st *store.Store) *Model {
 		imgNative:   image.NativeRenderer{Protocol: image.DetectProtocol()},
 		imgLoading:  make(map[string]bool),
 		nativeSent:  make(map[string]uint32),
+		// -1 means no delete-all has been emitted for a no-native article yet,
+		// so the first entry into one fires it. Reset to -1 when leaving the
+		// article view so re-entering re-clears.
+		nativeClearArticleID: -1,
 		width:       80,
 		height:      24,
 	}
@@ -196,6 +208,7 @@ func (m *Model) refreshCmd() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	defer m.recomputeNativeClear()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -280,7 +293,7 @@ func (m *Model) View() string {
 	}
 	// The clear escape is zero-width and position-independent; prepending it
 	// to the first line lets the frame repaint carry it to the terminal.
-	return m.nativeImageClear() + s
+	return m.nativeClearPrefix + s
 }
 
 // FeedOutcomes returns the per-URL outcomes of the most recent completed
