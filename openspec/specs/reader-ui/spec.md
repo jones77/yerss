@@ -1095,9 +1095,13 @@ additional centered lines when the credit is longer and centered beneath it; a
 blank line SHALL follow the attribution before the article content resumes. The
 attribution text SHALL be the photo's credit extracted from the article's
 stored HTML when present — a `figcaption` associated with the figure containing
-the lead image, otherwise an element whose class indicates a credit line — and
-SHALL fall back to `photo: <source>`, where `<source>` is derived by the same
-source-identifier rules used for the list view's organization column. The
+the lead image, used only when the lead image is the figure's last `<img>` in
+document order (a figure's caption belongs to its last image), otherwise an
+element whose class indicates a credit line — and SHALL fall back to `photo:
+<source>`, where `<source>` is derived by the same source-identifier rules used
+for the list view's organization column; when the lead image sits inside a
+captioned figure whose caption belongs to a later image, no attribution SHALL
+render at all, with no `photo: <source>` fallback. The
 combined image-plus-attribution block height SHALL be capped so that the full
 block plus at least one line of body text fits within the viewport height; the
 height fit SHALL reserve the wrapped line count of the caption the block
@@ -1141,6 +1145,11 @@ rendered and the article SHALL render exactly as it does without an image URL.
 
 - **WHEN** the article's HTML contains a `figcaption` credit associated with the lead image's figure
 - **THEN** the attribution line shows that credit text, centered beneath the photo
+
+#### Scenario: Lead image in a shared captioned figure renders without a caption
+
+- **WHEN** the lead image is not the last `<img>` of a figure whose `figcaption` labels a later image in the same figure
+- **THEN** no attribution renders beneath the lead image, with no `photo: <source>` fallback
 
 #### Scenario: Attribution falls back to the source organization
 
@@ -1192,35 +1201,50 @@ The snapping applies to single-line moves (the line keys and the mouse wheel);
 page, half-page, and goto-bottom moves land wherever they land, even mid-photo,
 so paging never skips the text between images.
 
+Each image block SHALL define two snap boundaries. The top boundary is the
+offset at which the image's first line sits at the viewport's first row; the
+bottom boundary is the offset at which the block's last line — the last line of
+the wrapped caption — sits at the viewport's last row. Snapping is defined by
+these boundaries and the transitions between them. A block whose bottom
+boundary equals its top boundary (it fills the viewport exactly) has a single
+snap position.
+
 For the lead image, a downward single-line scroll that would move the viewport
 offset into the photo's line range SHALL snap the offset to the photo's
 attribution line when one is rendered — landing on the caption so it can be
 read — and to the line immediately after the block when no attribution is
 rendered, skipping the photo in a single keystroke; a downward scroll that
 leaves the lead photo fully visible SHALL likewise snap the offset to the first
-non-photo line.
+non-photo line. The lead image's boundaries are pre-consumed — it was shown on
+open — so it has no entry stages: a downward scroll never catches it at the
+bottom boundary first.
 
-For an inline image, a downward single-line scroll follows two stages: a scroll
-that leaves the image partially visible in the window — its top inside the
-window and its bottom below the fold, whether it entered from below or a skip
-of the preceding image left its top already inside the window — SHALL snap the
-block's last line to the viewport bottom so the image and its full caption are
-visible at the bottom of the screen, the next downward scroll SHALL snap its
-top to the viewport top, and a scroll landing in its photo range then skips it
-onto its caption. A downward scroll that would move the offset into the photo's
-range from above SHALL snap to the photo's first line (the second stage); one
-starting at or inside it skips it onto its caption. The fully-visible skip SHALL
-NOT apply to inline images, so an inline image is never skipped past without
-first being shown. Upward single-line scrolls mirror the stages: an image
-entering from above snaps its top to the viewport top, the next upward scroll
-snaps its bottom to the viewport bottom, a scroll landing in its photo range
-reveals it (snaps to the photo's first line), and an upward scroll that cuts the
-image's bottom below the fold SHALL snap it fully below the fold on the next
-move so it scrolls off the bottom edge cleanly. When an inline image's block
-fills the viewport exactly (its image plus wrapped caption), its bottom-aligned
-and top-aligned positions coincide, so there is no distinct bottom stage: the
-upward scroll from the top-aligned position SHALL scroll the image fully out of
-view rather than looping on the same offset. Scrolling within the
+For an inline image, a downward single-line scroll follows the boundary
+transitions: a scroll that leaves the image partially visible in the window —
+its top inside the window and its wrapped caption's last line below the fold,
+whether it entered from below or a skip of the preceding image left its top
+already inside the window — SHALL snap the block's bottom boundary, so the image
+and its full wrapped caption are visible with the caption's last line at the
+viewport bottom; the next downward scroll SHALL snap the image's first line to
+the viewport top (the top boundary); and a scroll landing in its photo range
+then skips it onto its caption, leaving the caption at the viewport top. A
+downward scroll that would move the offset into the photo's range from above
+SHALL snap to the photo's first line (the top boundary); one starting at or
+inside it skips it onto its caption. The fully-visible skip SHALL NOT apply to
+inline images, so an inline image is never skipped past without first being
+shown. Upward single-line scrolls mirror the transitions: an image entering from
+above snaps its top to the viewport top (the top boundary), the next upward
+scroll snaps its bottom boundary so the caption's last line is at the viewport
+bottom, a scroll landing in its photo range reveals it (snaps to the photo's
+first line), and an upward scroll that cuts the block's last line below the fold
+SHALL snap it fully below the fold on the next move so it scrolls off the bottom
+edge cleanly. When an inline image's block fills the viewport exactly (its image
+plus wrapped caption), its bottom and top boundaries coincide, so there is no
+distinct bottom stage: the upward scroll from the top-aligned position SHALL
+scroll the image fully out of view rather than looping on the same offset. When
+an exit or scroll-off position would land inside a preceding image block's photo
+range (image blocks spaced closer than the viewport height), the system SHALL
+snap to that image's first line instead, revealing it. Scrolling within the
 attribution lines SHALL behave as normal line scrolling in both directions. On a
 full-image-capable terminal, when the lead photo is fully visible and the user
 scrolls upward with the offset past the article top, the system SHALL snap the
@@ -1246,16 +1270,21 @@ suppressed so the image never paints over the article border.
 #### Scenario: Inline image snaps to the viewport bottom when its top enters from below
 
 - **WHEN** an inline image block occupies content lines 20 through 24 (photo lines 20 through 22 plus attribution lines 23 through 24), the viewport height is 15, and a downward scroll brings the image's top into view from below
-- **THEN** the viewport offset snaps to 10 (the block's last line at the viewport bottom) so the image and its full caption are visible at the bottom of the screen
+- **THEN** the viewport offset snaps to 10 (the block's bottom boundary, its last line at the viewport bottom) so the image and its full caption are visible at the bottom of the screen
+
+#### Scenario: Wrapped caption with its last line below the fold snaps to the bottom boundary
+
+- **WHEN** an inline image has a caption that wraps to three lines (photo lines 20 through 22, caption lines 23 through 25), the viewport height is 15, and a downward scroll leaves the image's top inside the window with the caption's last line (25) below the fold while its first line (23) is already visible
+- **THEN** the viewport offset snaps to 11 (the block's bottom boundary) so the caption's last line (25) sits at the viewport bottom and the full wrapped caption is visible
 
 #### Scenario: Inline image already partially visible snaps to the viewport bottom
 
-- **WHEN** a downward scroll leaves an inline image partially visible in the window — its top inside the window, its bottom below the fold — because a skip of the preceding image left its top already inside the window (consecutive tall images are spaced closer than the viewport height)
+- **WHEN** a downward scroll leaves an inline image partially visible in the window — its top inside the window, its last line below the fold — because a skip of the preceding image left its top already inside the window (consecutive tall images are spaced closer than the viewport height)
 - **THEN** the viewport offset snaps to put the block's last line at the viewport bottom so the image and caption are fully visible, rather than leaving it partially clipped
 
 #### Scenario: Inline image snaps to the viewport top on the next downward scroll
 
-- **WHEN** an inline image is fully visible with its bottom at the viewport bottom and the user scrolls down one line
+- **WHEN** an inline image is fully visible with its last line at the viewport bottom (at its bottom boundary) and the user scrolls down one line
 - **THEN** the viewport offset snaps to the image's first line so the image moves to the top of the viewport
 
 #### Scenario: Inline image skips to its caption when a scroll lands in its photo
@@ -1270,13 +1299,18 @@ suppressed so the image never paints over the article border.
 
 #### Scenario: Upward scroll moves a top-aligned inline image to the bottom
 
-- **WHEN** an inline image is fully visible with its top at the viewport top and the user scrolls up one line
-- **THEN** the viewport offset snaps so the image's bottom aligns with the viewport bottom
+- **WHEN** an inline image is fully visible with its top at the viewport top (at its top boundary) and the user scrolls up one line
+- **THEN** the viewport offset snaps so the image's bottom boundary holds: the image and its wrapped caption are visible at the bottom of the screen with the caption's last line at the viewport bottom
 
 #### Scenario: Upward scroll snaps a partially-scrolled-off inline image below the fold
 
-- **WHEN** an upward scroll cuts an inline image's bottom below the fold, leaving it partially visible at the bottom edge
+- **WHEN** an upward scroll cuts an inline image's last line below the fold, leaving it partially visible at the bottom edge
 - **THEN** the next upward scroll snaps the offset so the image's top sits at the fold, scrolling the image fully out of view; a frame where the image pokes only partially into the window renders its halfblock preview rather than a blank strip
+
+#### Scenario: Exit or scroll-off reveals a preceding image when the target lands in its photo
+
+- **WHEN** image blocks are spaced closer than the viewport height and a scroll-off position for one image (its top at the fold) would land inside a preceding image's photo range
+- **THEN** the viewport offset snaps to the preceding image's first line so it is revealed rather than left partially clipped
 
 #### Scenario: Page-down lands naturally even mid-photo
 
