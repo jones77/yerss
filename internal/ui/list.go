@@ -66,16 +66,16 @@ type visibleRow struct {
 }
 
 func (m *Model) loadList() {
-	arts, err := m.store.ListArticles(m.list.filter)
+	arts, err := m.sess.ListArticles(m.list.filter)
 	if err != nil {
 		m.setStatus("load error: " + err.Error())
 		return
 	}
 	m.list.groups = bucketDayGroups(arts, time.Now())
-	if total, err := m.store.ArticleCount(); err == nil {
+	if total, err := m.sess.ArticleCount(); err == nil {
 		m.list.total = total
 	}
-	if size, err := m.store.DBSize(); err == nil {
+	if size, err := m.sess.DBSize(); err == nil {
 		m.dbSize = size
 	}
 	m.clampCursor()
@@ -247,7 +247,7 @@ func (m *Model) renderList() string {
 		if m.list.filter != "" {
 			b.WriteString(dim.Render("Filter \"" + m.list.filter + "\" has no articles. Press Esc to clear."))
 		} else {
-			b.WriteString(dim.Render("Add feeds to " + m.cfg.FeedsFile() + " and press R to refresh."))
+			b.WriteString(dim.Render("Add feeds to " + m.sess.Config().FeedsFile() + " and press R to refresh."))
 		}
 	} else {
 		rows := m.visibleRows()

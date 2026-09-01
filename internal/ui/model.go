@@ -10,10 +10,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/image"
-	"yerss/internal/store"
 	"yerss/internal/ui/render"
 )
 
@@ -35,8 +35,7 @@ const (
 )
 
 type Model struct {
-	cfg   *config.Config
-	store *store.Store
+	sess *app.Session
 
 	view  viewState
 	popup popupMode
@@ -55,13 +54,7 @@ type Model struct {
 	mdRendererW     int
 	mdRendererStyle string
 
-	imgRenderer image.Renderer
-	imgCache    *image.Cache
-	imgBlocks   *image.Blocks
-	imgPhotos   *image.Photos
-	imgNatives  *image.Natives
-	imgNative   image.NativeRenderer
-	imgLoading  map[string]bool
+	imgLoading map[string]bool
 	// nativeSent tracks the kitty image id last transmitted per URL, so a
 	// frame can delete the prior size's image before a re-render at a new
 	// size, and leaving the article can free every image the terminal holds.
@@ -105,24 +98,18 @@ type urlActionMsg struct {
 	err    error
 }
 
-// New builds a Model bound to a config and store.
-func New(cfg *config.Config, st *store.Store) *Model {
+// New builds a Model bound to an application session.
+func New(sess *app.Session) *Model {
+	cfg := sess.Config()
 	km, err := config.ParseKeybindings(cfg.Keybindings)
 	if err != nil {
 		km = cfg.Keybindings
 	}
 	m := &Model{
-		cfg:         cfg,
-		store:       st,
+		sess:        sess,
 		view:        viewList,
 		palette:     render.ResolvePalette(cfg.Display.Theme),
 		ascii:       cfg.Display.Ascii || render.DetectAsciiNeeded(),
-		imgRenderer: image.Halfblocks{},
-		imgCache:    image.NewCache(),
-		imgBlocks:   image.NewBlocks(),
-		imgPhotos:   image.NewPhotos(),
-		imgNatives:  image.NewNatives(),
-		imgNative:   image.NativeRenderer{Protocol: image.DetectProtocol()},
 		imgLoading:  make(map[string]bool),
 		nativeSent:  make(map[string]uint32),
 		// -1 means no delete-all has been emitted for a no-native article yet,
@@ -154,7 +141,7 @@ func (m *Model) Ascii() bool { return m.ascii }
 func (m *Model) Init() tea.Cmd {
 	m.loadList()
 	imgLoad := m.restoreSelection()
-	last, err := m.store.LastRefreshedAt()
+	last, err := m.sess.LastRefreshedAt()
 	if err != nil {
 		m.setStatus("load error: " + err.Error())
 		last = time.Time{}
@@ -164,7 +151,7 @@ func (m *Model) Init() tea.Cmd {
 	if m.hasUnfetchedFeeds() {
 		refresh = m.refreshCmd()
 	} else {
-		gate := feed.Gate{MinInterval: m.cfg.MinInterval(), Cooldown: m.cfg.Cooldown()}
+		gate := feed.Gate{MinInterval: m.sess.Config().MinInterval(), Cooldown: m.sess.Config().Cooldown()}
 		if gate.NeedsStartupRefresh(last, time.Now()) {
 			refresh = m.refreshCmd()
 		}
@@ -179,11 +166,11 @@ func (m *Model) Init() tea.Cmd {
 // file or store error is treated as "no new feeds" so startup falls through to
 // the time gate; refreshCmd surfaces the error if a refresh still runs.
 func (m *Model) hasUnfetchedFeeds() bool {
-	urls, err := feed.LoadFeeds(m.cfg.FeedsFile())
+	urls, err := feed.LoadFeeds(m.sess.Config().FeedsFile())
 	if err != nil {
 		return false
 	}
-	verified, err := m.store.VerifiedFeedURLs()
+	verified, err := m.sess.VerifiedFeedURLs()
 	if err != nil {
 		return false
 	}
@@ -198,12 +185,12 @@ func (m *Model) hasUnfetchedFeeds() bool {
 func (m *Model) refreshCmd() tea.Cmd {
 	m.refreshing = true
 	return func() tea.Msg {
-		urls, err := feed.LoadFeeds(m.cfg.FeedsFile())
+		urls, err := feed.LoadFeeds(m.sess.Config().FeedsFile())
 		if err != nil {
 			return refreshFinishedMsg{err: err}
 		}
-		res := feed.FetchFeeds(m.store, urls)
-		return refreshFinishedMsg{result: &res, fetchedAt: time.Now()}
+		res := m.sess.FetchFeeds(urls)
+		return refreshFinishedMsg{result: res, fetchedAt: time.Now()}
 	}
 }
 
@@ -309,7 +296,7 @@ func (m *Model) setStatus(msg string) {
 }
 
 func (m *Model) refreshManual() tea.Cmd {
-	gate := feed.Gate{MinInterval: m.cfg.MinInterval(), Cooldown: m.cfg.Cooldown()}
+	gate := feed.Gate{MinInterval: m.sess.Config().MinInterval(), Cooldown: m.sess.Config().Cooldown()}
 	if ok, remaining := gate.ManualRefreshAllowed(m.lastRefreshedAt, time.Now()); !ok {
 		secs := int((remaining + time.Second - 1) / time.Second)
 		m.setStatus(fmt.Sprintf("next allowed in %ds", secs))

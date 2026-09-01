@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/store"
@@ -72,7 +73,8 @@ func main() {
 		os.Exit(code)
 	}
 
-	m := ui.New(cfg, st)
+	sess := app.New(cfg, st)
+	m := ui.New(sess)
 	applyAsciiFlag(m, ascii)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
