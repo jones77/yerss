@@ -50,6 +50,12 @@ type Model struct {
 	palette render.Palette
 	ascii   bool
 
+	// styles holds the lipgloss styles derived from the palette roles,
+	// precomputed once in New so the per-frame render paths reuse them instead
+	// of constructing a fresh style for every row and cell. The sel* variants
+	// carry the Selection background for highlighted rows.
+	styles modelStyles
+
 	mdRenderer      *glamour.TermRenderer
 	mdRendererW     int
 	mdRendererStyle string
@@ -88,6 +94,39 @@ type refreshFinishedMsg struct {
 	fetchedAt time.Time
 }
 
+// modelStyles holds the lipgloss style variants the render paths build from
+// the palette roles, precomputed so per-frame rendering reuses them.
+type modelStyles struct {
+	text       lipgloss.Style // Foreground(Text)
+	bright     lipgloss.Style // Bold(true), Foreground(Bright)
+	dim        lipgloss.Style // Foreground(Dim)
+	status     lipgloss.Style // Foreground(StatusBar)
+	statusBold lipgloss.Style // Bold(true), Foreground(StatusBar)
+	plain      lipgloss.Style
+
+	selText   lipgloss.Style // Foreground(Text), Background(Selection)
+	selBright lipgloss.Style // Bold(true), Foreground(Bright), Background(Selection)
+	selDim    lipgloss.Style // Foreground(Dim), Background(Selection)
+	selRow    lipgloss.Style // Background(Selection)
+}
+
+// buildModelStyles derives the cached style variants for a palette.
+func buildModelStyles(p render.Palette) modelStyles {
+	sel := p.Selection
+	return modelStyles{
+		text:       lipgloss.NewStyle().Foreground(p.Text),
+		bright:     lipgloss.NewStyle().Bold(true).Foreground(p.Bright),
+		dim:        lipgloss.NewStyle().Foreground(p.Dim),
+		status:     lipgloss.NewStyle().Foreground(p.StatusBar),
+		statusBold: lipgloss.NewStyle().Bold(true).Foreground(p.StatusBar),
+		plain:      lipgloss.NewStyle(),
+		selText:    lipgloss.NewStyle().Foreground(p.Text).Background(sel),
+		selBright:  lipgloss.NewStyle().Bold(true).Foreground(p.Bright).Background(sel),
+		selDim:     lipgloss.NewStyle().Foreground(p.Dim).Background(sel),
+		selRow:     lipgloss.NewStyle().Background(sel),
+	}
+}
+
 // urlActionMsg reports the outcome of an open/copy command: opening an article
 // URL, or copying text (a URL, the full article text, or a mouse selection) to
 // the clipboard. label is the success status line; action names the operation
@@ -105,19 +144,21 @@ func New(sess *app.Session) *Model {
 	if err != nil {
 		km = cfg.Keybindings
 	}
+	palette := render.ResolvePalette(cfg.Display.Theme)
 	m := &Model{
-		sess:        sess,
-		view:        viewList,
-		palette:     render.ResolvePalette(cfg.Display.Theme),
-		ascii:       cfg.Display.Ascii || render.DetectAsciiNeeded(),
-		imgLoading:  make(map[string]bool),
-		nativeSent:  make(map[string]uint32),
+		sess:       sess,
+		view:       viewList,
+		palette:    palette,
+		ascii:      cfg.Display.Ascii || render.DetectAsciiNeeded(),
+		styles:     buildModelStyles(palette),
+		imgLoading: make(map[string]bool),
+		nativeSent: make(map[string]uint32),
 		// -1 means no delete-all has been emitted for a no-native article yet,
 		// so the first entry into one fires it. Reset to -1 when leaving the
 		// article view so re-entering re-clears.
 		nativeClearArticleID: -1,
-		width:       80,
-		height:      24,
+		width:                80,
+		height:               24,
 	}
 	m.keys = make(map[config.View]map[string]config.Action)
 	for _, v := range []config.View{config.ViewList, config.ViewArticle, config.ViewPopup} {

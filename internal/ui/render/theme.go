@@ -14,12 +14,15 @@ import (
 //   - Bright: emphasis such as unread titles (ANSI 15 bright white / 0 bold).
 //   - Dim: the grey role covering the border, rails, and muted text
 //     (#707070 in both modes).
+//   - Selection: the selected-row background highlight
+//     (#707070 in both modes).
 //   - StatusBar: the blue role covering the status bar, border inline text,
 //     scrollbar thumb, and popup chrome (ANSI 12 bright blue / 4 blue).
 type Palette struct {
 	Text      lipgloss.Color
 	Bright    lipgloss.Color
 	Dim       lipgloss.Color
+	Selection lipgloss.Color
 	StatusBar lipgloss.Color
 }
 
@@ -29,6 +32,7 @@ func DarkPalette() Palette {
 		Text:      lipgloss.Color("7"),
 		Bright:    lipgloss.Color("15"),
 		Dim:       lipgloss.Color("#707070"),
+		Selection: lipgloss.Color("#707070"),
 		StatusBar: lipgloss.Color("12"),
 	}
 }
@@ -39,6 +43,7 @@ func LightPalette() Palette {
 		Text:      lipgloss.Color("0"),
 		Bright:    lipgloss.Color("0"),
 		Dim:       lipgloss.Color("#707070"),
+		Selection: lipgloss.Color("#707070"),
 		StatusBar: lipgloss.Color("4"),
 	}
 }

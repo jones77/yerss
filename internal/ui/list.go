@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
@@ -241,7 +240,7 @@ func (m *Model) renderList() string {
 	var b strings.Builder
 
 	if m.articleCount() == 0 {
-		dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+		dim := m.styles.dim
 		b.WriteString(dim.Render("No articles."))
 		b.WriteString("\n")
 		if m.list.filter != "" {
@@ -301,28 +300,29 @@ func (m *Model) railGlyph(n, i int) string {
 }
 
 func (m *Model) renderDayHeader(g *dayGroup, corner string, selected bool) string {
-	style := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	style := m.styles.dim
 	if selected {
-		style = style.Background(lipgloss.Color("#707070"))
+		style = m.styles.selDim
 	}
 	return style.Render(corner + " " + g.label)
 }
 
 func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	g := m.glyphs()
-	bg := lipgloss.Color("#707070")
-	var titleStyle lipgloss.Style
-	if item.Read {
-		titleStyle = lipgloss.NewStyle().Foreground(m.palette.Text)
-	} else {
-		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright)
+	titleStyle := m.styles.text
+	if !item.Read {
+		titleStyle = m.styles.bright
 	}
-	text := lipgloss.NewStyle().Foreground(m.palette.Text)
-	bar := lipgloss.NewStyle()
+	text := m.styles.text
+	bar := m.styles.plain
 	if selected {
-		titleStyle = titleStyle.Background(bg)
-		text = text.Background(bg)
-		bar = bar.Background(bg)
+		if !item.Read {
+			titleStyle = m.styles.selBright
+		} else {
+			titleStyle = m.styles.selText
+		}
+		text = m.styles.selText
+		bar = m.styles.selRow
 	}
 
 	src := store.SourceLabel(item.Link, item.FeedURL)
@@ -374,8 +374,8 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 
 // sourceID derives a short publication identifier from a URL host: the
 func (m *Model) renderStatusBar() string {
-	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
-	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	base := m.styles.status
+	dim := m.styles.dim
 	bullet := m.glyphs().Bullet
 
 	left := ""

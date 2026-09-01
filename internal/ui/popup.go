@@ -394,16 +394,15 @@ func (m *Model) tagCell(idx, width int) string {
 	}
 
 	selected := idx == m.popupData.cursor
-	bg := lipgloss.Color("#707070")
-	nameStyle := lipgloss.NewStyle()
-	boldStyle := lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright)
-	plainStyle := lipgloss.NewStyle().Foreground(m.palette.Text)
-	padStyle := lipgloss.NewStyle()
+	nameStyle := m.styles.plain
+	boldStyle := m.styles.bright
+	plainStyle := m.styles.text
+	padStyle := m.styles.plain
 	if selected {
-		nameStyle = nameStyle.Background(bg)
-		boldStyle = boldStyle.Background(bg)
-		plainStyle = plainStyle.Background(bg)
-		padStyle = padStyle.Background(bg)
+		nameStyle = m.styles.selRow
+		boldStyle = m.styles.selBright
+		plainStyle = m.styles.selText
+		padStyle = m.styles.selRow
 	}
 
 	// The name sits on the left; the counts right-align to the column edge,
@@ -421,7 +420,7 @@ func (m *Model) tagCell(idx, width int) string {
 // width. It never carries the selection highlight and navigation never lands
 // on it.
 func (m *Model) tagSubtitleCell(it tagItem, width int) string {
-	style := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	style := m.styles.status
 	label := style.Render(it.label)
 	if pad := width - ansi.StringWidth(it.label); pad > 0 {
 		left := pad / 2
@@ -495,7 +494,7 @@ func (m *Model) renderTagPopup() string {
 	h, _ := m.tagPopupSize()
 	title := "Tags & Sources"
 	g := m.glyphs()
-	style := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	style := m.styles.status
 	v := style.Render(g.V)
 	pad := " "
 
@@ -555,8 +554,8 @@ func (m *Model) renderTagPopup() string {
 // view's status bar, with dash fill to the left. The line and the indicator
 // render in the same chrome role as the rest of the popup border.
 func (m *Model) tagBottomBorder(w int, g render.BorderGlyphs) string {
-	style := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
-	textStyle := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	style := m.styles.status
+	textStyle := m.styles.status
 
 	n := len(m.popupData.tags)
 	pos := m.popupData.cursor + 1
@@ -593,8 +592,8 @@ func (m *Model) renderLinksPopup() string {
 	}
 
 	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(m.palette.StatusBar).Render("Links"))
-	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
+	lines = append(lines, m.styles.statusBold.Render("Links"))
+	dim := m.styles.dim
 	for i, l := range m.popupData.links {
 		cursor := "  "
 		if i == m.popupData.cursor {
