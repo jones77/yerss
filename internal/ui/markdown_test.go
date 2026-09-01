@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/config"
 	"yerss/internal/ui/compose"
 )
 
@@ -73,8 +72,7 @@ func TestMarkdownRendererRebuildsOnWidthChange(t *testing.T) {
 func TestMarkdownRendererRebuildsOnThemeChange(t *testing.T) {
 	m, _ := newTestModel(t)
 	r1 := m.markdownRenderer(60)
-	m.cfg = config.Default()
-	m.cfg.Display.Theme = "light"
+	m.sess.Config().Display.Theme = "light"
 	r2 := m.markdownRenderer(60)
 	if r2 == nil || r2 == r1 {
 		t.Errorf("theme change should build a new renderer")
@@ -86,10 +84,8 @@ func TestMarkdownRendererRebuildsOnThemeChange(t *testing.T) {
 
 func TestMarkdownBodyTextUsesStandardBaseColor(t *testing.T) {
 	forceTrueColor(t)
-	cfg := config.Default()
-	cfg.Display.Theme = "dark"
 	m, _ := newTestModel(t)
-	m.cfg = cfg
+	m.sess.Config().Display.Theme = "dark"
 
 	whiteEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Render("x"))
 	out := m.renderMarkdown("plain body text", 60)
@@ -97,8 +93,7 @@ func TestMarkdownBodyTextUsesStandardBaseColor(t *testing.T) {
 		t.Errorf("dark body text should use ANSI white (7): %q", out)
 	}
 
-	cfg.Display.Theme = "light"
-	m.cfg = cfg
+	m.sess.Config().Display.Theme = "light"
 	blackEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Render("x"))
 	out = m.renderMarkdown("plain body text", 60)
 	if !strings.Contains(out, blackEscape) {

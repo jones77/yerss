@@ -21,7 +21,7 @@ type popupState struct {
 }
 
 func (m *Model) openTagPopup(mode popupMode) {
-	tags, err := m.store.ListTags()
+	tags, err := m.sess.ListTags()
 	if err != nil {
 		m.setStatus("tags error: " + err.Error())
 		return

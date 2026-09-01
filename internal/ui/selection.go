@@ -25,7 +25,7 @@ func (m *Model) persistSelection() {
 			sel.HeaderKey = dayKey(g.date)
 		}
 	}
-	_ = m.store.SaveLastSelection(sel)
+	_ = m.sess.SaveSelection(sel)
 }
 
 // restoreSelection repositions the list cursor to the previously saved
@@ -36,7 +36,7 @@ func (m *Model) persistSelection() {
 // command openArticle fires, so a restarted session resolves the image from
 // the cache hierarchy instead of staying imageless until re-opened.
 func (m *Model) restoreSelection() tea.Cmd {
-	sel, err := m.store.LoadLastSelection()
+	sel, err := m.sess.LoadSelection()
 	if err != nil {
 		return nil
 	}
@@ -63,7 +63,7 @@ func (m *Model) restoreSelection() tea.Cmd {
 		}
 	}
 	if sel.View == "article" && sel.ArticleID != 0 {
-		if full, err := m.store.GetArticle(sel.ArticleID); err == nil && full != nil {
+		if full, err := m.sess.GetArticle(sel.ArticleID); err == nil && full != nil {
 			m.article = m.newArticleState(*full)
 			m.article.viewport.SetYOffset(sel.ArticleOffset)
 			m.view = viewArticle

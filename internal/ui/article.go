@@ -122,7 +122,7 @@ func (m *Model) openArticle() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	full, err := m.store.GetArticle(item.ID)
+	full, err := m.sess.GetArticle(item.ID)
 	if err == nil && full != nil {
 		m.article = m.newArticleState(*full)
 		m.view = viewArticle
@@ -134,7 +134,7 @@ func (m *Model) openArticle() tea.Cmd {
 }
 
 func (m *Model) newArticleState(a store.Article) articleState {
-	padX, padY := m.cfg.Display.PaddingX, m.cfg.Display.PaddingY
+	padX, padY := m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY
 	contentW, vpH, _ := render.ContentGeom(m.width, m.height, padX, padY)
 	headerLines := 0
 	header := m.renderHeader(a, contentW)
@@ -221,7 +221,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		links:        harvestArticleLinks(a),
 	}
 	if len(st.lines) <= vpH {
-		st.markRead(m.store)
+		st.markRead(m.sess.Store())
 	}
 	return st
 }
@@ -336,7 +336,7 @@ func (m *Model) renderArticle() string {
 		ViewportH: m.article.viewport.Height,
 		Offset:    m.article.viewport.YOffset,
 	}
-	return render.RenderArticleBorder(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY,
+	return render.RenderArticleBorder(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY,
 		g, m.palette, date, title, sc, lines)
 }
 

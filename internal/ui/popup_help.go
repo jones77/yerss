@@ -56,7 +56,7 @@ func (m *Model) renderHelp() string {
 	// the label and its bound keys. Each bound key renders in the bright role
 	// so it stands out; the commas between keys stay in the default text role.
 	actionRow := func(a config.Action, labelW int) string {
-		keys := displayKeys(m.cfg.Keybindings[a])
+		keys := displayKeys(m.sess.Config().Keybindings[a])
 		if len(keys) == 0 {
 			return ""
 		}

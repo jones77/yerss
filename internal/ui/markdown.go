@@ -14,7 +14,7 @@ import (
 // returns nil when a renderer cannot be built, in which case callers fall back
 // to the raw markdown.
 func (m *Model) markdownRenderer(contentW int) *glamour.TermRenderer {
-	style := compose.GlamourStandardStyle(m.cfg.Display.Theme)
+	style := compose.GlamourStandardStyle(m.sess.Config().Display.Theme)
 	if m.mdRenderer != nil && m.mdRendererW == contentW && m.mdRendererStyle == style {
 		return m.mdRenderer
 	}

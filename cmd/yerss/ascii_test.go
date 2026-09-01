@@ -3,12 +3,13 @@ package main
 import (
 	"testing"
 
+	"yerss/internal/app"
 	"yerss/internal/ui"
 )
 
 func TestAsciiFlagForcesAscii(t *testing.T) {
 	cfg, st := gateTestEnv(t, "# nothing\n")
-	m := ui.New(cfg, st)
+	m := ui.New(app.New(cfg, st))
 	// Simulate config ascii=false and terminal detection=false.
 	m.SetAscii(false)
 
@@ -20,7 +21,7 @@ func TestAsciiFlagForcesAscii(t *testing.T) {
 
 func TestAsciiFlagAbsentLeavesAsciiOff(t *testing.T) {
 	cfg, st := gateTestEnv(t, "# nothing\n")
-	m := ui.New(cfg, st)
+	m := ui.New(app.New(cfg, st))
 	m.SetAscii(false)
 
 	applyAsciiFlag(m, false)

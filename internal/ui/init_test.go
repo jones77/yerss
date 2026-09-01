@@ -26,7 +26,7 @@ func setFeedsFile(t *testing.T, m *Model, urls []string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m.cfg.Data.FeedsFile = path
+	m.sess.Config().Data.FeedsFile = path
 }
 
 func TestInitForcesRefreshOnNewFeed(t *testing.T) {

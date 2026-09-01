@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/store"
 )
@@ -23,7 +24,7 @@ func openSharedStore(t *testing.T) *store.Store {
 
 func modelOn(t *testing.T, st *store.Store) *Model {
 	t.Helper()
-	m := New(config.Default(), st)
+	m := New(app.New(config.Default(), st))
 	m.width = 80
 	m.height = 24
 	return m

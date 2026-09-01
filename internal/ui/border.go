@@ -10,7 +10,7 @@ import (
 // double-line glyph).
 func (m *Model) glyphs() render.BorderGlyphs {
 	g := render.GlyphsFor(m.ascii)
-	if m.cfg.Display.Scrollbar == "double" && !m.ascii {
+	if m.sess.Config().Display.Scrollbar == "double" && !m.ascii {
 		g.Fill = "║"
 	}
 	return g

@@ -37,8 +37,8 @@ func TestContentGeomStateAndRectAgree(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.width = 30
 	m.height = 6
-	m.cfg.Display.PaddingX = 2
-	m.cfg.Display.PaddingY = 2
+	m.sess.Config().Display.PaddingX = 2
+	m.sess.Config().Display.PaddingY = 2
 
 	st := m.newArticleState(store.Article{ID: 1})
 	_, _, w, h := m.contentRect()

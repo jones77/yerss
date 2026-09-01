@@ -25,17 +25,17 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openLinksPopup()
 	case config.MoveDown:
 		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-		m.article.markRead(m.store)
+		m.article.markRead(m.sess.Store())
 	case config.MoveUp:
 		m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 	case config.PageDown:
 		m.scrollArticle(func() { m.article.viewport.PageDown() }, false)
-		m.article.markRead(m.store)
+		m.article.markRead(m.sess.Store())
 	case config.PageUp:
 		m.scrollArticle(func() { m.article.viewport.PageUp() }, false)
 	case config.HalfPageDown:
 		m.scrollArticle(func() { m.article.viewport.HalfPageDown() }, false)
-		m.article.markRead(m.store)
+		m.article.markRead(m.sess.Store())
 	case config.HalfPageUp:
 		m.scrollArticle(func() { m.article.viewport.HalfPageUp() }, false)
 	case config.Top:
@@ -75,7 +75,7 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 			m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 		case tea.MouseButtonWheelDown:
 			m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-			m.article.markRead(m.store)
+			m.article.markRead(m.sess.Store())
 		}
 		return nil
 	}

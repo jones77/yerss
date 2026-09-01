@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/store"
 )
@@ -21,7 +22,7 @@ func newTestModel(t *testing.T) (*Model, *store.Store) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	m := New(config.Default(), st)
+	m := New(app.New(config.Default(), st))
 	m.width = 80
 	m.height = 24
 	return m, st

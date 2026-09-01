@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/store"
 )
@@ -186,7 +187,7 @@ func TestHelpListsEveryActionGrouped(t *testing.T) {
 	m.SetAscii(false)
 	help := ansi.Strip(m.renderHelp())
 	for _, a := range config.AllActions() {
-		keys := strings.Join(displayKeys(m.cfg.Keybindings[a]), ", ")
+		keys := strings.Join(displayKeys(m.sess.Config().Keybindings[a]), ", ")
 		found := false
 		for _, l := range strings.Split(help, "\n") {
 			if strings.Contains(l, m.helpLabel(a)) && strings.Contains(l, keys) {
@@ -250,7 +251,7 @@ func TestHelpShowsSpaceKeyAsWord(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	m := New(cfg, st)
+	m := New(app.New(cfg, st))
 	m.width = 80
 	m.height = 24
 	help := ansi.Strip(m.renderHelp())

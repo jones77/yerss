@@ -32,7 +32,7 @@ func TestScrollbarConfigSelectsThumbGlyph(t *testing.T) {
 	if got := m.glyphs().Fill; got != "│" {
 		t.Errorf("default unicode thumb = %q, want single line │", got)
 	}
-	m.cfg.Display.Scrollbar = "double"
+	m.sess.Config().Display.Scrollbar = "double"
 	if got := m.glyphs().Fill; got != "║" {
 		t.Errorf("double unicode thumb = %q, want ║", got)
 	}
@@ -40,7 +40,7 @@ func TestScrollbarConfigSelectsThumbGlyph(t *testing.T) {
 	if got := m.glyphs().Fill; got != "|" {
 		t.Errorf("ascii thumb = %q, want |", got)
 	}
-	m.cfg.Display.Scrollbar = "single"
+	m.sess.Config().Display.Scrollbar = "single"
 	if got := m.glyphs().Fill; got != "|" {
 		t.Errorf("ascii single thumb = %q, want |", got)
 	}

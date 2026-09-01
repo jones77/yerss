@@ -17,12 +17,12 @@ import (
 // is not off and ASCII fallback is not forcing images off (the -a flag and
 // terminal detection both set m.ascii).
 func (m *Model) imagesEnabled() bool {
-	return !m.ascii && m.cfg.Display.Images != "off"
+	return !m.ascii && m.sess.Config().Display.Images != "off"
 }
 
 // nativeImages reports whether the terminal can render real photos natively.
 func (m *Model) nativeImages() bool {
-	return m.imgNative.Protocol != image.ProtocolNone
+	return m.sess.ImgNative.Protocol != image.ProtocolNone
 }
 
 // recomputeNativeClear computes the native-image clear sequence for the current
@@ -56,7 +56,7 @@ func (m *Model) recomputeNativeClear() {
 // invoked ONLY through recomputeNativeClear so the mutation never reaches
 // View(), keeping render a pure function of state.
 func (m *Model) computeNativeClear() string {
-	if m.imgNative.Protocol != image.ProtocolKitty {
+	if m.sess.ImgNative.Protocol != image.ProtocolKitty {
 		return ""
 	}
 	if m.view != viewArticle {
@@ -100,7 +100,7 @@ func (m *Model) computeNativeClear() string {
 			return ""
 		}
 		m.nativeClearArticleID = m.article.id
-		return m.imgNative.Clear()
+		return m.sess.ImgNative.Clear()
 	}
 	m.nativeClearArticleID = 0
 	return sb.String()
@@ -115,7 +115,7 @@ func (m *Model) computeNativeClear() string {
 // partially visible image never paints outside the content area. Fully
 // contained images keep their transmit.
 func (m *Model) suppressClippedNativeTransmits(lines []string) {
-	if m.imgNative.Protocol != image.ProtocolKitty {
+	if m.sess.ImgNative.Protocol != image.ProtocolKitty {
 		return
 	}
 	vp := m.article.viewport
@@ -142,12 +142,12 @@ func (m *Model) suppressClippedNativeTransmits(lines []string) {
 // same way. When the decoded image is not cached the rows stay blank.
 func (m *Model) previewClippedImage(lines []string, b compose.ImageBlock) {
 	vp := m.article.viewport
-	img, ok := m.imgCache.Get(b.URL)
+	img, ok := m.sess.ImgCache.Get(b.URL)
 	if !ok {
 		return
 	}
 	rows := b.CapStart - b.ImgStart
-	pre, err := m.imgRenderer.Render(img, vp.Width, rows)
+	pre, err := m.sess.ImgRenderer.Render(img, vp.Width, rows)
 	if err != nil {
 		return
 	}
@@ -184,14 +184,14 @@ func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines i
 		return nil, 0, false, 0
 	}
 	if m.nativeImages() {
-		if lines, ok := m.imgNatives.Get(image.NativeKey(url, contentW, vpH)); ok {
+		if lines, ok := m.sess.ImgNatives.Get(image.NativeKey(url, contentW, vpH)); ok {
 			id := image.NativeRenderID(lines)
 			return m.composeBlock(lines, attr, contentW), len(lines), true, id
 		}
 	}
-	if img, ok := m.imgCache.Get(url); ok {
+	if img, ok := m.sess.ImgCache.Get(url); ok {
 		block, rows := m.fitBlock(func(maxH int) []string {
-			lines, err := m.imgRenderer.Render(img, contentW, maxH)
+			lines, err := m.sess.ImgRenderer.Render(img, contentW, maxH)
 			if err != nil {
 				return nil
 			}
@@ -199,7 +199,7 @@ func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines i
 		}, attr, contentW, vpH, headerLines)
 		return block, rows, false, 0
 	}
-	if lines, ok := m.imgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
+	if lines, ok := m.sess.ImgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
 		return m.composeBlock(lines, attr, contentW), len(lines), false, 0
 	}
 	return nil, 0, false, 0
@@ -290,15 +290,15 @@ func (m *Model) fireImageLoad(a store.Article) tea.Cmd {
 // marking the URL in flight so duplicate loads are not started (for example on
 // resize).
 func (m *Model) loadImageCmd(a store.Article, url string, position int) tea.Cmd {
-	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	m.imgLoading[url] = true
 	if m.nativeImages() {
 		return tea.Batch(
-			image.BlockCmd(m.imgCache, m.imgBlocks, m.store, a.ID, url, width, vpH, false, position),
-			image.PhotoCmd(m.imgCache, m.imgBlocks, m.imgPhotos, m.store, a.ID, url, width, vpH, position),
+			image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, false, position),
+			image.PhotoCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.ImgPhotos, m.sess.Store(), a.ID, url, width, vpH, position),
 		)
 	}
-	return image.BlockCmd(m.imgCache, m.imgBlocks, m.store, a.ID, url, width, vpH, true, position)
+	return image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, true, position)
 }
 
 // ensureImageSource fires the image load on resize for every image the open
@@ -309,7 +309,7 @@ func (m *Model) ensureImageSource(a store.Article) tea.Cmd {
 	if !m.imagesEnabled() {
 		return nil
 	}
-	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	var cmds []tea.Cmd
 	for pos, url := range m.article.imageURLs {
 		if url == "" || m.imgLoading[url] {
@@ -330,16 +330,16 @@ func (m *Model) ensureImageSource(a store.Article) tea.Cmd {
 // content geometry: a native render at that size, a fetched photo (native), a
 // decoded image, or a width-matched stored block.
 func (m *Model) hasImageSource(url string, contentW, vpH int) bool {
-	if _, ok := m.imgNatives.Get(image.NativeKey(url, contentW, vpH)); ok {
+	if _, ok := m.sess.ImgNatives.Get(image.NativeKey(url, contentW, vpH)); ok {
 		return true
 	}
-	if _, ok := m.imgPhotos.Get(url); ok {
+	if _, ok := m.sess.ImgPhotos.Get(url); ok {
 		return true
 	}
-	if _, ok := m.imgCache.Get(url); ok {
+	if _, ok := m.sess.ImgCache.Get(url); ok {
 		return true
 	}
-	if lines, ok := m.imgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
+	if lines, ok := m.sess.ImgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
 		return true
 	}
 	return false
@@ -380,7 +380,7 @@ func (m *Model) recomposeArticle() {
 // its images, preserving the reading position.
 func (m *Model) onBlockLoaded(msg image.BlockMsg) {
 	m.imgLoading[msg.Key] = false
-	m.imgBlocks.Set(msg.Key, msg.Lines)
+	m.sess.ImgBlocks.Set(msg.Key, msg.Lines)
 	if m.view != viewArticle {
 		return
 	}
@@ -422,8 +422,8 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 	if url != a.ImageURL {
 		attr = m.inlineAttrFor(url)
 	}
-	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
-	return image.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width))
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	return image.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width))
 }
 
 // onPhotoLoaded fires the off-thread native render for the photo at msg's URL
@@ -468,7 +468,7 @@ func (m *Model) onImageFailed(msg image.FailedMsg) {
 	if !m.article.rendersImage(msg.Key) {
 		return
 	}
-	if _, ok := m.imgBlocks.Get(msg.Key); ok {
+	if _, ok := m.sess.ImgBlocks.Get(msg.Key); ok {
 		m.recomposeArticle()
 	}
 }
