@@ -1,34 +1,4 @@
-## Purpose
-
-Renders article lead photos inline through the terminal's native image protocol
-on full-image-capable terminals, showing the stored halfblock placeholder first.
-
-## Requirements
-
-### Requirement: Native image capability detection
-
-The system SHALL detect, from the terminal environment, whether the terminal can
-render real inline images. Full-image-capable terminals SHALL include iTerm2
-(OSC 1337 inline images) and kitty-family terminals (kitty graphics protocol).
-Detection SHALL be environment-based, mirroring the existing ASCII and
-light-background detection, and SHALL NOT require user configuration. Terminals
-that cannot be identified as full-image-capable SHALL be treated as
-halfblock-only.
-
-#### Scenario: iTerm2 detected as full-image-capable
-
-- **WHEN** the terminal environment identifies iTerm2
-- **THEN** the system renders lead photos via the OSC 1337 inline image protocol
-
-#### Scenario: Kitty-family terminal detected as full-image-capable
-
-- **WHEN** the terminal environment identifies a kitty graphics-protocol terminal
-- **THEN** the system renders lead photos via the kitty graphics protocol
-
-#### Scenario: Unrecognized terminal treated as halfblock-only
-
-- **WHEN** the terminal environment does not identify a full-image-capable terminal
-- **THEN** lead images render as halfblock blocks only
+## MODIFIED Requirements
 
 ### Requirement: Native photo render with block placeholder
 
@@ -54,8 +24,8 @@ maximum decoded dimension and reuse the decoded image across the height-fit
 iterations, and when the cached photo bytes were evicted from the bounded photo
 cache it SHALL re-read the photo from the stored database bytes rather than
 failing. The fetched photo SHALL be persisted to the database (in the unified
-image table) so a later open re-renders natively from the stored bytes without
-a network request; the rendered native output SHALL remain an in-memory render
+image table) so a later open re-renders natively from the stored bytes without a
+network request; the rendered native output SHALL remain an in-memory render
 cache keyed by content width.
 
 #### Scenario: Block shown before photo fetch
@@ -133,9 +103,9 @@ so the terminal's image cache is freed rather than accumulating every image
 ever shown for the life of the terminal tab. Frames that display the native
 image block SHALL NOT emit the delete (their re-transmission with the stable
 placement id replaces the placement), and a scrolled-out image SHALL be
-re-transmitted when scrolled back into view.
-Terminals whose inline images are cell-bound (OSC 1337) SHALL NOT emit any
-delete sequence, since the repaint itself erases those images.
+re-transmitted when scrolled back into view. Terminals whose inline images are
+cell-bound (OSC 1337) SHALL NOT emit any delete sequence, since the repaint
+itself erases those images.
 
 #### Scenario: Backing out of an article deletes the photo
 
