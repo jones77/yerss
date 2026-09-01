@@ -1,9 +1,14 @@
 package store
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -54,6 +59,35 @@ type ArticleImage struct {
 	Block    string
 	Photo    []byte
 	Width    int
+}
+
+// ImageSize is one stored article image's footprint for statistics. PhotoBytes
+// is the raw photo size and BlockBytes the rendered text block size in bytes.
+// Width, Height, and Decodable come from DecodeConfig on the stored photo when
+// its bytes parse; Decodable reports whether they did, so unparseable photos
+// are excluded from decoded-size estimates rather than failing the report.
+type ImageSize struct {
+	URL        string
+	PhotoBytes int
+	BlockBytes int
+	Width      int
+	Height     int
+	Decodable  bool
+}
+
+// ImageStats is the aggregated image footprint of the database: article and
+// image row counts, summed/summary photo and block byte sizes, and one entry
+// per stored image in Photos (ordered by article, then position) so callers
+// can derive percentiles and per-photo decoded-size estimates. PhotoBytes is
+// only a real count when the DB holds images; summary fields are zero then.
+type ImageStats struct {
+	ArticleCount    int
+	ImageCount      int
+	TotalPhotoBytes int
+	TotalBlockBytes int
+	MinPhotoBytes   int
+	MaxPhotoBytes   int
+	Photos          []ImageSize
 }
 
 // Store wraps the SQLite connection.
@@ -721,6 +755,62 @@ func (s *Store) ArticleCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM articles`).Scan(&n)
 	return n, err
+}
+
+// ImageStats reads article and stored-image counts along with each image's
+// photo and block byte sizes from article_images. It only reads: no row is
+// inserted, updated, or deleted. Each photo is probed via image.DecodeConfig
+// to record its dimensions and whether it parses. The median and p90
+// percentiles are deliberately not aggregated here; callers derive them from
+// Photos in Go so they stay simple and testable.
+func (s *Store) ImageStats() (ImageStats, error) {
+	stats := ImageStats{Photos: []ImageSize{}}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM articles`).Scan(&stats.ArticleCount); err != nil {
+		return ImageStats{}, err
+	}
+	rows, err := s.db.Query(`SELECT url, position, block, photo FROM article_images ORDER BY article_id, position`)
+	if err != nil {
+		return ImageStats{}, err
+	}
+	defer rows.Close()
+	first := true
+	for rows.Next() {
+		var (
+			url   sql.NullString
+			pos   int
+			block sql.NullString
+			photo []byte
+		)
+		if err := rows.Scan(&url, &pos, &block, &photo); err != nil {
+			return ImageStats{}, err
+		}
+		is := ImageSize{URL: url.String, PhotoBytes: len(photo)}
+		if block.Valid {
+			is.BlockBytes = len(block.String)
+		}
+		if cfg, _, err := image.DecodeConfig(bytes.NewReader(photo)); err == nil {
+			is.Width = cfg.Width
+			is.Height = cfg.Height
+			is.Decodable = true
+		}
+		stats.TotalPhotoBytes += is.PhotoBytes
+		stats.TotalBlockBytes += is.BlockBytes
+		if first {
+			stats.MinPhotoBytes = is.PhotoBytes
+			stats.MaxPhotoBytes = is.PhotoBytes
+			first = false
+		} else {
+			if is.PhotoBytes < stats.MinPhotoBytes {
+				stats.MinPhotoBytes = is.PhotoBytes
+			}
+			if is.PhotoBytes > stats.MaxPhotoBytes {
+				stats.MaxPhotoBytes = is.PhotoBytes
+			}
+		}
+		stats.Photos = append(stats.Photos, is)
+		stats.ImageCount++
+	}
+	return stats, rows.Err()
 }
 
 // SourceLabel derives the registrable organization label of a URL's host,

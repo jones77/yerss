@@ -26,7 +26,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, usageText())
 	}
 	pflag.Parse()
-	editFeeds, editConfig, jsonOut, ascii, initDB, interactive := o.editFeeds, o.editConfig, o.jsonOut, o.ascii, o.initDB, o.interactive
+	editFeeds, editConfig, jsonOut, ascii, initDB, interactive, imageStats := o.editFeeds, o.editConfig, o.jsonOut, o.ascii, o.initDB, o.interactive, o.imageStats
 
 	if code, done := runEditFlags(editConfig, editFeeds); done {
 		os.Exit(code)
@@ -61,6 +61,10 @@ func main() {
 	}
 	defer st.Close()
 
+	if imageStats {
+		os.Exit(runImageStats(cfg, st))
+	}
+
 	if err := pruneFeeds(cfg, st); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: warning: could not prune removed feeds: %v\n", base, err)
 	}
@@ -89,7 +93,7 @@ func main() {
 // options carries the command-line flag values, so flag registration can be
 // exercised by tests without running main.
 type options struct {
-	editFeeds, editConfig, jsonOut, ascii, initDB, interactive bool
+	editFeeds, editConfig, jsonOut, ascii, initDB, interactive, imageStats bool
 }
 
 // usageText documents the three data files (config, feeds, db) by their
@@ -115,6 +119,7 @@ func registerFlags(fs *pflag.FlagSet) *options {
 	fs.BoolVarP(&o.ascii, "ascii", "a", false, "force ASCII fallback glyphs")
 	fs.BoolVarP(&o.initDB, "init-db", "z", false, "reinitialize the database to zero before starting")
 	fs.BoolVarP(&o.interactive, "interactive", "i", false, "prompt before --init-db")
+	fs.BoolVar(&o.imageStats, "image-stats", false, "print image statistics and exit")
 	return o
 }
 

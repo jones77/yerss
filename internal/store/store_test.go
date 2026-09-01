@@ -1,9 +1,14 @@
 package store
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 )
@@ -1013,5 +1018,132 @@ func TestPruneFeedsNoopWhenAllConfigured(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("article count = %d, want 1", n)
+	}
+}
+
+// pngBytes encodes a solid-color image as PNG bytes so ImageStats tests can
+// seed photos whose dimensions decode.
+func pngBytes(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: 200, G: 100, B: 50, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestImageStatsEmpty(t *testing.T) {
+	st := newTestStore(t)
+	stats, err := st.ImageStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.ArticleCount != 0 || stats.ImageCount != 0 {
+		t.Errorf("empty store counts = articles %d images %d, want 0/0", stats.ArticleCount, stats.ImageCount)
+	}
+	if len(stats.Photos) != 0 {
+		t.Errorf("empty store photos = %+v, want none", stats.Photos)
+	}
+	if stats.TotalPhotoBytes != 0 || stats.TotalBlockBytes != 0 || stats.MinPhotoBytes != 0 || stats.MaxPhotoBytes != 0 {
+		t.Errorf("empty store byte summaries = %+v, want all zero", stats)
+	}
+}
+
+func TestImageStatsAggregates(t *testing.T) {
+	st := newTestStore(t)
+	up := func(guid string) int64 {
+		t.Helper()
+		a := sampleArticle()
+		a.GUID = guid
+		id, err := st.UpsertArticle(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	aid := up("guid-a")
+	bid := up("guid-b")
+
+	photoA := pngBytes(t, 4, 2)
+	photoB := pngBytes(t, 10, 10)
+	bad := []byte("not-a-decodable-image")
+
+	if err := st.SetArticleImage(aid, ArticleImage{Position: 0, URL: "a0", Block: "blockA0", Photo: photoA}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImage(aid, ArticleImage{Position: 1, URL: "a1", Photo: bad}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImage(bid, ArticleImage{Position: 0, URL: "b0", Block: "blockB0", Photo: photoB}); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := st.ImageStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.ArticleCount != 2 {
+		t.Errorf("ArticleCount = %d, want 2", stats.ArticleCount)
+	}
+	if stats.ImageCount != 3 {
+		t.Errorf("ImageCount = %d, want 3", stats.ImageCount)
+	}
+
+	sizes := []int{len(photoA), len(bad), len(photoB)}
+	sorted := append([]int(nil), sizes...)
+	sort.Ints(sorted)
+	if stats.TotalPhotoBytes != sizes[0]+sizes[1]+sizes[2] {
+		t.Errorf("TotalPhotoBytes = %d, want %d", stats.TotalPhotoBytes, sizes[0]+sizes[1]+sizes[2])
+	}
+	if stats.MinPhotoBytes != sorted[0] || stats.MaxPhotoBytes != sorted[2] {
+		t.Errorf("min/max photo bytes = %d/%d, want %d/%d", stats.MinPhotoBytes, stats.MaxPhotoBytes, sorted[0], sorted[2])
+	}
+	if stats.TotalBlockBytes != len("blockA0")+0+len("blockB0") {
+		t.Errorf("TotalBlockBytes = %d, want %d", stats.TotalBlockBytes, len("blockA0")+len("blockB0"))
+	}
+
+	if len(stats.Photos) != 3 {
+		t.Fatalf("Photos = %+v, want 3 entries", stats.Photos)
+	}
+	// Ordered by (article_id, position): aid pos0, aid pos1, bid pos0.
+	first := stats.Photos[0]
+	if first.URL != "a0" || !first.Decodable || first.Width != 4 || first.Height != 2 || first.PhotoBytes != len(photoA) || first.BlockBytes != len("blockA0") {
+		t.Errorf("first image = %+v, want decodable 4x2 a0 with block", first)
+	}
+	second := stats.Photos[1]
+	if second.URL != "a1" || second.Decodable || second.Width != 0 || second.Height != 0 || second.PhotoBytes != len(bad) || second.BlockBytes != 0 {
+		t.Errorf("second image = %+v, want unparseable a1 with no block", second)
+	}
+	third := stats.Photos[2]
+	if third.URL != "b0" || !third.Decodable || third.Width != 10 || third.Height != 10 || third.PhotoBytes != len(photoB) || third.BlockBytes != len("blockB0") {
+		t.Errorf("third image = %+v, want decodable 10x10 b0 with block", third)
+	}
+
+	before, err := st.ArticleCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ImageStats(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := st.ArticleCount()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Errorf("ImageStats changed article count: %d -> %d", before, after)
+	}
+	got, err := st.GetArticleImages(aid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || string(got[0].Photo) != string(photoA) || string(got[1].Photo) != string(bad) {
+		t.Errorf("ImageStats mutated stored image rows: %+v", got)
 	}
 }
