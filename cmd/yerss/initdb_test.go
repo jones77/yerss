@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"yerss/internal/store"
+	"yerss/internal/textutil"
 )
 
 // stubStdin overrides the injectable stdin source and TTY detection for the
@@ -83,8 +84,8 @@ func TestFormatSize(t *testing.T) {
 		{1048576, "1.0 MB"},
 		{1073741824, "1.0 GB"},
 	} {
-		if got := formatSize(c.in); got != c.want {
-			t.Errorf("formatSize(%d) = %q, want %q", c.in, got, c.want)
+		if got := textutil.FormatSize(c.in); got != c.want {
+			t.Errorf("FormatSize(%d) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

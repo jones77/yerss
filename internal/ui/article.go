@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/convert"
+	"yerss/internal/convert"
 	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"

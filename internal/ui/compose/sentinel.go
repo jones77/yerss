@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"yerss/convert"
+	"yerss/internal/convert"
 )
 
 // SentinelRe matches the inline-image sentinel token "\x00img:<url>\x00" that

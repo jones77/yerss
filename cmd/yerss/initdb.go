@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"yerss/internal/store"
+	"yerss/internal/textutil"
 )
 
 // stdinReader returns the stream confirmInitDB reads a confirmation from. It
@@ -52,28 +53,11 @@ func confirmInitDB(path string) (code int, ok bool) {
 		return 1, false
 	}
 
-	fmt.Fprintf(os.Stderr, "delete database (%s, %d articles) at %s? [y/N] ", formatSize(size), count, path)
+	fmt.Fprintf(os.Stderr, "delete database (%s, %d articles) at %s? [y/N] ", textutil.FormatSize(size), count, path)
 	line, _ := bufio.NewReader(stdinReader()).ReadString('\n')
 	if strings.EqualFold(strings.TrimSpace(line), "y") {
 		return 0, true
 	}
 	fmt.Fprintf(os.Stderr, "yerss: not deleting %s\n", path)
 	return 0, false
-}
-
-// formatSize renders a byte count with a binary unit suffix: whole bytes for
-// values under 1 KB, otherwise one decimal place (e.g. `450 B`, `1.4 MB`). It
-// mirrors internal/ui's formatSize so the prompt matches the status bar.
-func formatSize(bytes int64) string {
-	if bytes < 1024 {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	size := float64(bytes)
-	for _, u := range []string{"KB", "MB", "GB", "TB"} {
-		size /= 1024
-		if size < 1024 || u == "TB" {
-			return fmt.Sprintf("%.1f %s", size, u)
-		}
-	}
-	return fmt.Sprintf("%.1f TB", size)
 }

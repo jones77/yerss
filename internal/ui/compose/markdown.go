@@ -9,6 +9,7 @@ import (
 	"charm.land/glamour/v2/styles"
 	xansi "github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/textutil"
 	"yerss/internal/ui/render"
 )
 
@@ -246,15 +247,7 @@ func cutStyledWidth(s string, w int) string {
 // text so it renders literally. Characters that are only special at the start
 // of a line or inside a link destination are left alone.
 func EscapeMarkdownText(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case '\\', '`', '*', '_', '[', ']', '<', '>':
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
+	return textutil.EscapeMarkdown(s)
 }
 
 // MarkdownToPlainText strips commonmark block and inline markers from markdown

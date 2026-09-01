@@ -1,7 +1,7 @@
 package compose
 
 import (
-	"yerss/convert"
+	"yerss/internal/convert"
 	"yerss/internal/store"
 )
 

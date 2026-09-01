@@ -15,6 +15,8 @@ import (
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"golang.org/x/net/html"
+
+	"yerss/internal/textutil"
 )
 
 var conv = newConverter()
@@ -127,23 +129,8 @@ func renderImage(_ converter.Context, w converter.Writer, n *html.Node) converte
 		w.WriteString("[image]")
 		return converter.RenderSuccess
 	}
-	w.WriteString("[" + escapeAlt(strings.TrimSpace(alt)) + "]")
+	w.WriteString("[" + textutil.EscapeMarkdown(strings.TrimSpace(alt)) + "]")
 	return converter.RenderSuccess
-}
-
-// escapeAlt backslash-escapes the markdown-significant characters in alt text so
-// that image alt text renders literally inside the [alt] placeholder instead of
-// being interpreted as styling or link syntax by the downstream renderer.
-func escapeAlt(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case '\\', '`', '*', '_', '[', ']', '<', '>':
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // plainText extracts the visible text from an HTML document. It is the graceful

@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
-	"github.com/charmbracelet/x/ansi"
+	"yerss/internal/textutil"
 	_ "github.com/glebarez/go-sqlite"
 )
 
@@ -253,13 +253,7 @@ ON CONFLICT(article_id, position) DO UPDATE SET
 
 // blockWidth returns the maximum cell width across the given ANSI-styled lines.
 func blockWidth(lines []string) int {
-	w := 0
-	for _, l := range lines {
-		if lw := ansi.StringWidth(l); lw > w {
-			w = lw
-		}
-	}
-	return w
+	return textutil.MaxLineWidth(lines)
 }
 
 // migrateCategorySource adds the source flag to the categories table when it

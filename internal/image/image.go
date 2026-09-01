@@ -19,10 +19,10 @@ import (
 	_ "image/png"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/mosaic"
 
 	"yerss/internal/store"
+	"yerss/internal/textutil"
 )
 
 // BlockMsg reports an article's lead image rendered as a halfblock text block.
@@ -155,13 +155,7 @@ func NativeKey(url string, width, maxHeight int) string {
 // render is exactly the requested width per line, so this is the block's
 // render width.
 func BlockWidth(lines []string) int {
-	w := 0
-	for _, l := range lines {
-		if lw := ansi.StringWidth(l); lw > w {
-			w = lw
-		}
-	}
-	return w
+	return textutil.MaxLineWidth(lines)
 }
 
 // BlockCmd returns a tea.Cmd that resolves an article's image block at width
@@ -416,13 +410,4 @@ func splitLines(art string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
-}
-
-// LineWidths reports the visible cell width of each rendered line (for tests).
-func LineWidths(lines []string) []int {
-	ws := make([]int, len(lines))
-	for i, l := range lines {
-		ws[i] = ansi.StringWidth(l)
-	}
-	return ws
 }
