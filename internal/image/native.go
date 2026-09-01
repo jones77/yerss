@@ -44,6 +44,19 @@ func detectCellPixelSize() (cw, ch int) {
 
 // Render turns raw photo bytes into block lines that display the photo
 // natively, fitted to width cells and capped to maxHeight rows (a height cap
+// narrows the box to w cells). It decodes data once and renders it; callers
+// that fit the same photo across several candidate heights decode it once and
+// call RenderImage directly.
+func (r NativeRenderer) Render(data []byte, url string, width, maxHeight int) ([]string, error) {
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return r.RenderImage(src, url, width, maxHeight)
+}
+
+// RenderImage turns a decoded image into block lines that display the photo
+// natively, fitted to width cells and capped to maxHeight rows (a height cap
 // narrows the box to w cells). The first line carries the escape sequence
 // (zero visible width) followed by padding to the image's cell width w; each
 // subsequent reserved row is a blank line of the same width, so the block
@@ -51,13 +64,9 @@ func detectCellPixelSize() (cw, ch int) {
 // content width like a halfblock block. url names the image and the render's
 // pixel dimensions key the kitty image id, so each distinct render size is a
 // distinct terminal image rather than a same-id re-transmit.
-func (r NativeRenderer) Render(data []byte, url string, width, maxHeight int) ([]string, error) {
+func (r NativeRenderer) RenderImage(src image.Image, url string, width, maxHeight int) ([]string, error) {
 	if r.Protocol == ProtocolNone {
 		return nil, fmt.Errorf("no native image protocol")
-	}
-	src, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
 	}
 	b := src.Bounds()
 	if b.Dx() < 1 || b.Dy() < 1 {

@@ -6,6 +6,8 @@
 package image
 
 import (
+	"bytes"
+	"image"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,11 +48,17 @@ func NativeCmd(native NativeRenderer, photos *Photos, natives *Natives, url stri
 // block height so the block plus its wrapped attribution and one line of body
 // text fits within maxHeight after the header, iterating up to three times to
 // converge on the fitted height (an attribution that wraps wider than the
-// reserved line shrinks the photo one more notch). The attribution wraps at
+// reserved line shrinks the photo one more notch). The photo is decoded once
+// and the decoded image is scaled and re-encoded for each candidate height, so
+// the source bytes are never re-decoded per candidate. The attribution wraps at
 // captionW, the standard caption width. It returns the fitted native lines
 // (image rows only; the UI centers them and appends the attribution). Any
 // render error propagates to the caller.
 func renderNativeFitted(native NativeRenderer, data []byte, url string, width, maxHeight, headerLines int, attr string, captionW int) ([]string, error) {
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
 	base := maxHeight - headerLines - 3
 	maxH := max(1, base-1)
 	if attr == "" {
@@ -61,7 +69,7 @@ func renderNativeFitted(native NativeRenderer, data []byte, url string, width, m
 	}
 	var rendered []string
 	for i := 0; ; i++ {
-		lines, err := native.Render(data, url, width, maxH)
+		lines, err := native.RenderImage(src, url, width, maxH)
 		if err != nil {
 			return nil, err
 		}

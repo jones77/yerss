@@ -55,111 +55,94 @@ type FailedMsg struct {
 // shorten it.
 var fetchTimeout = 15 * time.Second
 
-// Cache holds decoded images keyed by URL for the session.
-type Cache struct {
+// cache is a generic mutex-guarded in-memory map keyed by string, the shared
+// backing for the session's decoded-image, rendered-block, raw-photo, and
+// native-render caches. The reader is a single-user terminal app, so the maps
+// are intentionally unbounded; the database is the retention layer.
+type cache[V any] struct {
 	mu    sync.Mutex
-	items map[string]image.Image
+	items map[string]V
+}
+
+// newCache returns an empty in-memory cache for values of type V.
+func newCache[V any]() *cache[V] {
+	return &cache[V]{items: make(map[string]V)}
+}
+
+// Get returns the cached value for key, if present.
+func (c *cache[V]) Get(key string) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.items[key]
+	return v, ok
+}
+
+// Set stores v under key.
+func (c *cache[V]) Set(key string, v V) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items[key] = v
+}
+
+// Cache holds decoded images keyed by URL for the session, tracking the
+// session's running decoded-image byte total for the status bar.
+type Cache struct {
+	cache[image.Image]
+	totalBytes int64
 }
 
 // NewCache returns an empty in-memory decoded-image cache.
 func NewCache() *Cache {
-	return &Cache{items: make(map[string]image.Image)}
+	return &Cache{cache: *newCache[image.Image]()}
 }
 
-// Get returns the cached decoded image for url, if present.
-func (c *Cache) Get(url string) (image.Image, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	img, ok := c.items[url]
-	return img, ok
-}
-
-// Set stores a decoded image under url.
+// Set stores a decoded image under url, updating the running decoded-byte
+// total. The total is an estimate (decoded width*height*4); overwriting an
+// existing entry swaps its contribution for the new image's.
 func (c *Cache) Set(url string, img image.Image) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if old, ok := c.items[url]; ok {
+		c.totalBytes -= estBytes(old)
+	}
 	c.items[url] = img
+	c.totalBytes += estBytes(img)
+}
+
+// TotalBytes returns the session's total decoded-image bytes held in the
+// cache, an estimate (decoded width*height*4) refreshed on each Set.
+func (c *Cache) TotalBytes() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.totalBytes
+}
+
+// estBytes estimates the memory a decoded image occupies as width*height*4
+// bytes.
+func estBytes(img image.Image) int64 {
+	b := img.Bounds()
+	return int64(b.Dx()) * int64(b.Dy()) * 4
 }
 
 // Blocks holds rendered halfblock text blocks keyed by URL for the session.
-type Blocks struct {
-	mu    sync.Mutex
-	items map[string][]string
-}
+type Blocks = cache[[]string]
 
 // NewBlocks returns an empty in-memory rendered-block cache.
-func NewBlocks() *Blocks {
-	return &Blocks{items: make(map[string][]string)}
-}
-
-// Get returns the cached rendered block for url, if present.
-func (b *Blocks) Get(url string) ([]string, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	lines, ok := b.items[url]
-	return lines, ok
-}
-
-// Set stores a rendered block under url.
-func (b *Blocks) Set(url string, lines []string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.items[url] = lines
-}
+func NewBlocks() *Blocks { return newCache[[]string]() }
 
 // Photos holds raw fetched photo bytes keyed by URL for the session.
-type Photos struct {
-	mu    sync.Mutex
-	items map[string][]byte
-}
+type Photos = cache[[]byte]
 
 // NewPhotos returns an empty in-memory raw-photo cache.
-func NewPhotos() *Photos {
-	return &Photos{items: make(map[string][]byte)}
-}
-
-// Get returns the cached raw photo bytes for url, if present.
-func (p *Photos) Get(url string) ([]byte, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	data, ok := p.items[url]
-	return data, ok
-}
-
-// Set stores raw photo bytes under url.
-func (p *Photos) Set(url string, data []byte) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.items[url] = data
-}
+func NewPhotos() *Photos { return newCache[[]byte]() }
 
 // Natives holds native inline-image block renderings keyed by render size for
 // the session, so re-viewing an article at the same width and viewport height
 // is instant and resizing to a new size re-renders off the UI goroutine.
-type Natives struct {
-	mu    sync.Mutex
-	items map[string][]string
-}
+type Natives = cache[[]string]
 
 // NewNatives returns an empty in-memory rendered-native-block cache.
-func NewNatives() *Natives {
-	return &Natives{items: make(map[string][]string)}
-}
-
-// Get returns the cached native render for key, if present.
-func (n *Natives) Get(key string) ([]string, bool) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	lines, ok := n.items[key]
-	return lines, ok
-}
-
-// Set stores a native render under key.
-func (n *Natives) Set(key string, lines []string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.items[key] = lines
-}
+func NewNatives() *Natives { return newCache[[]string]() }
 
 // NativeKey returns the cache key for a native render of url at the given
 // content width and viewport-height cap. Both dimensions matter: changing

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,6 +88,26 @@ func TestCaches(t *testing.T) {
 	}
 	if _, ok := n.Get(NativeKey("u", 51, 24)); ok {
 		t.Error("native cache key should include the width")
+	}
+}
+
+func TestCacheTotalBytes(t *testing.T) {
+	c := NewCache()
+	if got := c.TotalBytes(); got != 0 {
+		t.Errorf("empty cache total = %d, want 0", got)
+	}
+	c.Set("a", image.NewRGBA(image.Rect(0, 0, 2, 3)))
+	if got := c.TotalBytes(); got != 2*3*4 {
+		t.Errorf("after one set total = %d, want %d", got, 2*3*4)
+	}
+	c.Set("b", image.NewRGBA(image.Rect(0, 0, 5, 5)))
+	if got := c.TotalBytes(); got != 2*3*4+5*5*4 {
+		t.Errorf("after two sets total = %d, want %d", got, 2*3*4+5*5*4)
+	}
+	// Overwriting an entry swaps its contribution for the new image's.
+	c.Set("a", image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if got := c.TotalBytes(); got != 1*1*4+5*5*4 {
+		t.Errorf("after overwrite total = %d, want %d", got, 1*1*4+5*5*4)
 	}
 }
 
@@ -432,6 +453,30 @@ func TestNativeCmdFitLoopConverges(t *testing.T) {
 	}
 	if len(fitted.Lines) < 1 || BlockWidth(fitted.Lines) > 50 {
 		t.Errorf("fitted block invalid: %d rows, width %d", len(fitted.Lines), BlockWidth(fitted.Lines))
+	}
+}
+
+func TestRenderNativeFittedDecodesOnce(t *testing.T) {
+	withCellPx(t, 8, 16)
+	decodes := 0
+	image.RegisterFormat("yerss-test/fake", "FAKEDECODE", func(r io.Reader) (image.Image, error) {
+		decodes++
+		return image.NewRGBA(image.Rect(0, 0, 400, 320)), nil
+	}, func(r io.Reader) (image.Config, error) {
+		return image.Config{Width: 400, Height: 320}, nil
+	})
+	// A wrapped attribution that shrinks the photo forces a second fit
+	// iteration, so a decode-per-candidate bug would decode twice.
+	attr := "cccccc dddddd eeeeee ffffff gggggg hhhhhh iiiii jjjjjj kkkkkk llllll mmmmmm nnnnnn oooooo pppppp"
+	lines, err := renderNativeFitted(NativeRenderer{Protocol: ProtocolITerm}, []byte("FAKEDECODE"), "https://example.com/fake.png", 50, 24, 3, attr, 35)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decodes != 1 {
+		t.Fatalf("decode count = %d, want 1 (the fit loop reuses the decoded image)", decodes)
+	}
+	if len(lines) < 1 {
+		t.Error("render produced no lines")
 	}
 }
 
