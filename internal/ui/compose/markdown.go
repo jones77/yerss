@@ -114,22 +114,29 @@ func CellWidth(r rune) int {
 
 // StyledCells returns the byte offset into s covering at most n visible cells,
 // skipping ANSI escape sequences so the cut point lands on a character boundary
-// and not inside a style escape. It is the single source of truth for "advance N
-// visible cells" used by the blockquote bar helpers.
+// and not inside a style escape, and counting the rune that crosses the nth
+// cell in full. It is the single source of truth for "advance N visible cells"
+// used by the blockquote bar helpers.
 func StyledCells(s string, n int) int {
-	i := 0
 	seen := 0
-	for i < len(s) && seen < n {
-		if s[i] == '\x1b' {
-			i = SkipEscape(s, i)
+	for _, seg := range ScanANSI(s) {
+		if seen >= n {
+			return seg.Start
+		}
+		if seg.Kind != SegText {
 			continue
 		}
-		_, size := utf8.DecodeRuneInString(s[i:])
-		r, _ := utf8.DecodeRuneInString(s[i:])
-		seen += CellWidth(r)
-		i += size
+		i := seg.Start
+		for i < seg.End && seen < n {
+			r, size := utf8.DecodeRuneInString(s[i:])
+			seen += CellWidth(r)
+			i += size
+		}
+		if seen >= n {
+			return i
+		}
 	}
-	return i
+	return len(s)
 }
 
 // FixBlockquoteRewrap repairs a glamour wrapping bug where, at many content
@@ -232,34 +239,6 @@ func barContent(line string) string {
 // shift the cut point.
 func cutStyledWidth(s string, w int) string {
 	return s[:StyledCells(s, w)]
-}
-
-// SkipEscape advances i past the escape/OSC/CSI sequence starting at i.
-func SkipEscape(s string, i int) int {
-	if s[i] != '\x1b' {
-		return i
-	}
-	i++
-	if i < len(s) && s[i] == ']' {
-		i++
-		for i < len(s) && s[i] != '\x07' && !(s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\') {
-			i++
-		}
-		if i < len(s) {
-			i++
-		}
-	} else if i < len(s) && s[i] == '[' {
-		i++
-		for i < len(s) && !('@' <= s[i] && s[i] <= '~') {
-			i++
-		}
-		if i < len(s) {
-			i++
-		}
-	} else if i < len(s) {
-		i++
-	}
-	return i
 }
 
 // EscapeMarkdownText escapes the characters that CommonMark treats as special

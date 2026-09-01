@@ -2,7 +2,6 @@ package ui
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -129,69 +128,40 @@ func parseLinkSpans(line string) []linkSpan {
 	var spans []linkSpan
 	url := ""
 	start := 0
-	flush := func(x int) {
+	x := 0
+	flush := func(col int) {
 		if url != "" {
-			spans = append(spans, linkSpan{start: start, end: x, url: url})
+			spans = append(spans, linkSpan{start: start, end: col, url: url})
 		}
 	}
-	x := 0
-	for i := 0; i < len(line); {
-		switch line[i] {
-		case 0x1b:
-			if i+1 < len(line) && line[i+1] == ']' {
-				end := oscEnd(line, i+2)
-				if end < 0 {
-					flush(x)
-					return spans
-				}
-				payload := line[i+2 : end]
+	for _, seg := range compose.ScanANSI(line) {
+		switch seg.Kind {
+		case compose.SegOSC:
+			payload, terminated := seg.OSC(line)
+			if !terminated {
 				flush(x)
-				if strings.HasPrefix(payload, "8;") {
-					rest := payload[2:]
-					u := rest
-					if idx := strings.LastIndex(rest, ";"); idx >= 0 {
-						u = rest[idx+1:]
-					}
-					if u == "" {
-						url = ""
-					} else {
-						url = u
-						start = x
-					}
-				}
-				if line[end] == 0x07 {
-					i = end + 1
-				} else {
-					i = end + 2
-				}
-				continue
+				return spans
 			}
-			// Any other escape/CSI sequence: skip it via the shared helper.
-			i = compose.SkipEscape(line, i)
-			continue
-		default:
-			r, size := utf8.DecodeRuneInString(line[i:])
-			x += compose.CellWidth(r)
-			i += size
+			flush(x)
+			if strings.HasPrefix(payload, "8;") {
+				rest := payload[2:]
+				u := rest
+				if idx := strings.LastIndex(rest, ";"); idx >= 0 {
+					u = rest[idx+1:]
+				}
+				if u == "" {
+					url = ""
+				} else {
+					url = u
+					start = x
+				}
+			}
+		case compose.SegText:
+			x += compose.WidthIn(line, seg.Start, seg.End)
 		}
 	}
 	flush(x)
 	return spans
-}
-
-// oscEnd returns the index of the terminator that closes an OSC string
-// beginning at from: either a BEL byte or the index of the ESC in the
-// ESC-backslash string terminator. It returns -1 when no terminator is found.
-func oscEnd(line string, from int) int {
-	for i := from; i < len(line); i++ {
-		if line[i] == 0x07 {
-			return i
-		}
-		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '\\' {
-			return i
-		}
-	}
-	return -1
 }
 
 // selectedText returns the plain text within the selection range, stripped of
