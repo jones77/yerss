@@ -2,7 +2,6 @@ package image
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -891,14 +890,51 @@ func TestNativeRendererSmallImageRendersAtNaturalSize(t *testing.T) {
 	}
 }
 
-func TestDeletePlacement(t *testing.T) {
-	url := "https://example.com/img.png"
-	got := DeletePlacement(url)
-	want := fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", stableID(url))
+func TestDeleteByID(t *testing.T) {
+	got := DeleteByID(7)
+	want := "\x1b_Ga=d,d=i,i=7,q=1\x1b\\"
 	if got != want {
-		t.Errorf("DeletePlacement = %q, want %q", got, want)
+		t.Errorf("DeleteByID = %q, want %q", got, want)
 	}
 	if !strings.HasPrefix(got, "\x1b_Ga=d,d=i,i=") || !strings.HasSuffix(got, ",q=1\x1b\\") {
-		t.Errorf("DeletePlacement shape wrong: %q", got)
+		t.Errorf("DeleteByID shape wrong: %q", got)
+	}
+	if got := DeleteByID(0); got != "" {
+		t.Errorf("DeleteByID(0) = %q, want empty (nothing transmitted)", got)
+	}
+}
+
+func TestRenderIDDistinctPerSizeAndReused(t *testing.T) {
+	url := "https://example.com/img.png"
+	a := renderID(url, 400, 300)
+	b := renderID(url, 800, 600)
+	if a == b {
+		t.Errorf("same URL at different pixel sizes must produce distinct ids: both %d", a)
+	}
+	if got := renderID(url, 400, 300); got != a {
+		t.Errorf("same URL and pixel size must reuse the id: got %d, want %d", got, a)
+	}
+	if got := renderID("https://example.com/other.png", 400, 300); got == a {
+		t.Errorf("different URLs at the same size must produce distinct ids: both %d", got)
+	}
+	for _, id := range []uint32{a, b, renderID(url, 0, 0), renderID("", 10, 10)} {
+		if id == 0 {
+			t.Error("renderID must never return zero (the protocol reserves image id 0)")
+		}
+	}
+}
+
+func TestNativeRenderIDReadsKittyIDFromLines(t *testing.T) {
+	if got := NativeRenderID([]string{"\x1b_Ga=T,f=100,q=1,i=42,p=42,c=2,r=2;AAAA\x1b\\  "}); got != 42 {
+		t.Errorf("NativeRenderID = %d, want 42", got)
+	}
+	if got := NativeRenderID([]string{"\x1b]1337;File=name=AA;size=1;inline=1;width=2;height=2:AAAA\x07"}); got != 0 {
+		t.Errorf("iTerm render should have no kitty id, got %d", got)
+	}
+	if got := NativeRenderID([]string{"plain"}); got != 0 {
+		t.Errorf("halfblock line should have no kitty id, got %d", got)
+	}
+	if got := NativeRenderID(nil); got != 0 {
+		t.Errorf("empty lines should have no kitty id, got %d", got)
 	}
 }

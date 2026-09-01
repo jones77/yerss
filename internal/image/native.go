@@ -3,11 +3,13 @@ package image
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"image"
 	"image/png"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/image/draw"
@@ -46,9 +48,9 @@ func detectCellPixelSize() (cw, ch int) {
 // (zero visible width) followed by padding to the image's cell width w; each
 // subsequent reserved row is a blank line of the same width, so the block
 // spans exactly the image's cell box and the caller centers it within the
-// content width like a halfblock block. url gives the image a stable
-// terminal-side name/id so repeated renders are reused by the terminal rather
-// than re-decoded.
+// content width like a halfblock block. url names the image and the render's
+// pixel dimensions key the kitty image id, so each distinct render size is a
+// distinct terminal image rather than a same-id re-transmit.
 func (r NativeRenderer) Render(data []byte, url string, width, maxHeight int) ([]string, error) {
 	if r.Protocol == ProtocolNone {
 		return nil, fmt.Errorf("no native image protocol")
@@ -69,7 +71,7 @@ func (r NativeRenderer) Render(data []byte, url string, width, maxHeight int) ([
 		return nil, err
 	}
 	payload := base64.StdEncoding.EncodeToString(buf.Bytes())
-	esc := r.escape(url, w, h, buf.Len(), payload)
+	esc := r.escape(url, renderID(url, pxW, pxH), w, h, buf.Len(), payload)
 	lines := make([]string, max(1, h))
 	lines[0] = esc + strings.Repeat(" ", w)
 	for i := 1; i < len(lines); i++ {
@@ -99,15 +101,16 @@ func (r NativeRenderer) pixelDims(w, h int) (pxW, pxH int) {
 }
 
 // escape builds the protocol-specific sequence embedding the PNG payload. The
-// url-derived name/id keeps the image stable across re-renders.
-func (r NativeRenderer) escape(url string, w, h, size int, payload string) string {
+// render id keys the kitty image so each distinct render size is independently
+// addressable and deletable by the terminal.
+func (r NativeRenderer) escape(url string, id uint32, w, h, size int, payload string) string {
 	switch r.Protocol {
 	case ProtocolITerm:
 		name := base64.StdEncoding.EncodeToString([]byte("yerss-" + stableName(url)))
 		return fmt.Sprintf("\x1b]1337;File=name=%s;size=%d;inline=1;width=%d;height=%d;preserveAspectRatio=1:%s\x07",
 			name, size, w, h, payload)
 	case ProtocolKitty:
-		return kittyTransmit(stableID(url), w, h, payload)
+		return kittyTransmit(id, w, h, payload)
 	}
 	return ""
 }
@@ -128,17 +131,17 @@ func (r NativeRenderer) Clear() string {
 	return "\x1b_Ga=d,d=a,q=1\x1b\\"
 }
 
-// DeletePlacement returns the kitty sequence that deletes the placement (and
-// its image) for url by its stable id. Unlike Clear's d=a, which only removes
-// placements visible on screen, deleting by id removes the image's placement
-// wherever it is, so an image scrolled out of the article still has its stale
-// placement removed. It returns "" for non-kitty protocols. q=1 suppresses the
-// response.
-func DeletePlacement(url string) string {
-	if stableID(url) == 0 {
+// DeleteByID returns the kitty sequence that deletes the image (and its
+// placements) transmitted under id. Unlike Clear's d=a, which only removes
+// placements visible on screen, deleting by id also frees the terminal's cached
+// image data, so an image scrolled out of view or superseded by a re-render
+// cannot linger in the terminal's image cache. It returns "" for id 0 (nothing
+// was transmitted). q=1 suppresses the response.
+func DeleteByID(id uint32) string {
+	if id == 0 {
 		return ""
 	}
-	return fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", stableID(url))
+	return fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", id)
 }
 
 // kittyChunkSize bounds a single kitty graphics chunk in base64 characters.
@@ -182,16 +185,56 @@ func stableName(url string) string {
 	return url
 }
 
-// stableID hashes a URL into a kitty image/placement id, never zero (the
-// protocol reserves image id 0).
-func stableID(url string) uint32 {
+// renderID hashes the URL and the render's pixel dimensions into a kitty
+// image/placement id, never zero (the protocol reserves image id 0). The
+// payload is re-encoded at the terminal's current cell geometry, so a resize
+// transmits different pixel data; keying the id by those dimensions makes each
+// distinct render a distinct image the terminal can replace and delete
+// independently, rather than re-transmitting different data under a same id
+// that a terminal may accumulate without bound.
+func renderID(url string, pxW, pxH int) uint32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(url))
+	var dims [8]byte
+	binary.LittleEndian.PutUint32(dims[0:4], uint32(pxW))
+	binary.LittleEndian.PutUint32(dims[4:8], uint32(pxH))
+	_, _ = h.Write(dims[:])
 	id := h.Sum32()
 	if id == 0 {
 		return 1
 	}
 	return id
+}
+
+// NativeRenderID returns the kitty image id a native render was transmitted
+// under, read back out of its own escape sequence — the single source of truth
+// for what the terminal received — so cleanup can delete the exact image. It
+// returns 0 when the lines carry no kitty transmit (an iTerm OSC 1337 render or
+// a halfblock block).
+func NativeRenderID(lines []string) uint32 {
+	if len(lines) == 0 {
+		return 0
+	}
+	idx := strings.Index(lines[0], "\x1b_G")
+	if idx < 0 {
+		return 0
+	}
+	ctl := lines[0][idx:]
+	if end := strings.IndexByte(ctl, ';'); end >= 0 {
+		ctl = ctl[:end]
+	} else if end := strings.IndexByte(ctl, 0x1b); end >= 0 {
+		ctl = ctl[:end]
+	}
+	for _, kv := range strings.Split(ctl, ",") {
+		if strings.HasPrefix(kv, "i=") {
+			n, err := strconv.ParseUint(kv[2:], 10, 32)
+			if err != nil {
+				return 0
+			}
+			return uint32(n)
+		}
+	}
+	return 0
 }
 
 // scaleTo resizes src to w×h pixels, returning src unchanged when it already

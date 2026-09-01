@@ -25,28 +25,36 @@ func (m *Model) nativeImages() bool {
 }
 
 // nativeImageClear returns the native-image clear sequence to prepend to the
-// current frame for every native image the open article renders that the frame
-// does not display. kitty graphics placements float above text and the erase
+// current frame for every native image the terminal holds that the frame does
+// not transmit. kitty graphics placements float above text and the erase
 // commands a frame repaint issues have no effect on them, so a placement
 // survives scrolling the photo's rows out of the viewport unless explicitly
-// deleted; the frame deletes each scrolled-out image's placement by its stable
-// id so stale photos cannot persist or stack. A placement is kept only when its
-// rows [imgStart, capStart) are fully contained in the visible viewport window:
-// a partially visible image (its top above the fold or its bottom below it)
-// would draw past the window and overlap the article border, so the frame
-// deletes it and the transmit on its first line is suppressed by
-// suppressClippedNativeTransmits. The sequence is empty for protocols whose
-// images are cell-bound (OSC 1337) or absent, and for fully contained images
-// (that frame re-transmits the image with its stable placement id, which
-// replaces the placement). Leaving the article view (or an article with no
-// composed native image) clears every placement on screen so the previous
-// article's photos cannot linger.
+// deleted. Each block records the kitty image id it was rendered under, and
+// nativeSent tracks the id last transmitted per URL; a frame deletes — by that
+// exact id — every held image it does not re-transmit: scrolled-out or clipped
+// placements (a partially visible image would draw past the window and overlap
+// the article border, so it is deleted and its transmit suppressed by
+// suppressClippedNativeTransmits), blocks superseded by a re-render at a new
+// size (the prior id is deleted before the new transmit, so the terminal never
+// holds two sizes of one image), and blocks that reverted to a placeholder.
+// The sequence is empty for protocols whose images are cell-bound (OSC 1337) or
+// absent, and for fully contained images (that frame re-transmits the image
+// with its stable placement id, which replaces the placement). Leaving the
+// article view frees every held image by its id — delete-all only clears
+// visible placements and can leave the terminal's cached image data to
+// accumulate — and an article with no composed native image falls back to the
+// delete-all clear so the previous article's photos cannot linger.
 func (m *Model) nativeImageClear() string {
 	if m.imgNative.Protocol != image.ProtocolKitty {
 		return ""
 	}
 	if m.view != viewArticle {
-		return m.imgNative.Clear()
+		var sb strings.Builder
+		for _, id := range m.nativeSent {
+			sb.WriteString(image.DeleteByID(id))
+		}
+		m.nativeSent = make(map[string]uint32)
+		return sb.String()
 	}
 	vp := m.article.viewport
 	var sb strings.Builder
@@ -57,11 +65,23 @@ func (m *Model) nativeImageClear() string {
 		}
 		seen++
 		if b.imgStart >= vp.YOffset && b.capStart <= vp.YOffset+vp.Height {
+			// The frame re-transmits this block under its recorded id. If a
+			// prior size's id is still held for the URL, delete it before the
+			// transmit, then record the current id for later cleanup.
+			if held, ok := m.nativeSent[b.url]; ok && held != 0 && held != b.nativeID {
+				sb.WriteString(image.DeleteByID(held))
+			}
+			if b.nativeID != 0 {
+				m.nativeSent[b.url] = b.nativeID
+			}
 			continue
 		}
-		sb.WriteString(image.DeletePlacement(b.url))
+		// The block is scrolled out or clipped: delete its placement by the id
+		// it was rendered under.
+		sb.WriteString(image.DeleteByID(b.nativeID))
 	}
 	if seen == 0 {
+		m.nativeSent = make(map[string]uint32)
 		return m.imgNative.Clear()
 	}
 	return sb.String()
@@ -144,15 +164,19 @@ func captionWidth(contentW int) int {
 // its width matches the content width. It returns nil when images are
 // disabled, no URL is set, or no image source is available yet; the int
 // reports how many of the returned lines are image rows (the attribution lines
-// follow them) and the bool reports whether the lines carry a native
-// inline-image escape (a terminal-side placement that outlives the frame).
-func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines int) ([]string, int, bool) {
+// follow them), the bool reports whether the lines carry a native
+// inline-image escape (a terminal-side placement that outlives the frame), and
+// the uint32 is the kitty image id the native render was transmitted under (0
+// for halfblock or OSC 1337 renders), for deleting the exact image on exit or
+// when a re-render supersedes it.
+func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines int) ([]string, int, bool, uint32) {
 	if !m.imagesEnabled() || url == "" {
-		return nil, 0, false
+		return nil, 0, false, 0
 	}
 	if m.nativeImages() {
 		if lines, ok := m.imgNatives.Get(image.NativeKey(url, contentW, vpH)); ok {
-			return m.composeBlock(lines, attr, contentW), len(lines), true
+			id := image.NativeRenderID(lines)
+			return m.composeBlock(lines, attr, contentW), len(lines), true, id
 		}
 	}
 	if img, ok := m.imgCache.Get(url); ok {
@@ -163,12 +187,12 @@ func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines i
 			}
 			return lines
 		}, attr, contentW, vpH, headerLines)
-		return block, rows, false
+		return block, rows, false, 0
 	}
 	if lines, ok := m.imgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
-		return m.composeBlock(lines, attr, contentW), len(lines), false
+		return m.composeBlock(lines, attr, contentW), len(lines), false, 0
 	}
-	return nil, 0, false
+	return nil, 0, false, 0
 }
 
 // fitBlock renders the block through renderFn, shrinking the height cap until

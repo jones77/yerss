@@ -43,13 +43,16 @@ type articleState struct {
 // first row) and BOTTOM (imgEnd - vpH + 1, the last line of the wrapped
 // caption at the viewport's last row), with EXIT (capStart) and OFF
 // (imgStart - vpH) as the down- and up-exits. An inline block carries nativeImg
-// when its lines are a terminal-side native placement.
+// when its lines are a terminal-side native placement, and nativeID the kitty
+// image id that render was transmitted under (0 for halfblock or OSC 1337
+// renders), so cleanup can delete the exact image.
 type imageBlock struct {
 	url       string
 	imgStart  int
 	capStart  int
 	imgEnd    int
 	nativeImg bool
+	nativeID  uint32
 }
 
 // rendersImage reports whether the given URL is one of the article's images
@@ -213,7 +216,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		parts = append(parts, s)
 		lineCount += len(strings.Split(s, "\n"))
 	}
-	addImageBlock := func(url string, block []string, rows int, native bool) {
+	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) {
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
 			parts = append(parts, "")
 			lineCount++
@@ -223,7 +226,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		}
 		start := lineCount
 		addPart(strings.Join(block, "\n"))
-		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native})
+		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native, nativeID: id})
 		parts = append(parts, "")
 		lineCount++
 	}
@@ -234,8 +237,8 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		lineCount++
 	}
 	if a.ImageURL != "" && m.imagesEnabled() {
-		if block, rows, native := m.composeImageBlock(a.ImageURL, articleAttribution(a), contentW, vpH, headerLines); len(block) > 0 {
-			addImageBlock(a.ImageURL, block, rows, native)
+		if block, rows, native, id := m.composeImageBlock(a.ImageURL, articleAttribution(a), contentW, vpH, headerLines); len(block) > 0 {
+			addImageBlock(a.ImageURL, block, rows, native, id)
 		}
 	}
 
@@ -445,14 +448,14 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 		parts = append(parts, s)
 		lineCount += len(strings.Split(s, "\n"))
 	}
-	addImageBlock := func(url string, block []string, rows int, native bool) {
+	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) {
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
 			parts = append(parts, "")
 			lineCount++
 		}
 		start := lineCount
 		addPart(strings.Join(block, "\n"))
-		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native})
+		blocks = append(blocks, imageBlock{url: url, imgStart: start, capStart: start + rows, imgEnd: start + len(block) - 1, nativeImg: native, nativeID: id})
 		parts = append(parts, "")
 		lineCount++
 	}
@@ -473,8 +476,8 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 		}
 		attr := inlineAttribution(a, url, alt, linkText)
 		captions[url] = attr
-		if block, rows, native := m.composeImageBlock(url, attr, contentW, vpH, headerLines); len(block) > 0 {
-			addImageBlock(url, block, rows, native)
+		if block, rows, native, id := m.composeImageBlock(url, attr, contentW, vpH, headerLines); len(block) > 0 {
+			addImageBlock(url, block, rows, native, id)
 		} else {
 			// Placeholder: keep the paragraph break so the body text stays
 			// stable and the block inserts at the right offset when the load

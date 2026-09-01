@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -596,22 +597,26 @@ func TestNativeKittyImageClearsWhenNotDisplayed(t *testing.T) {
 	// must also delete the placement: the transmit line is not rendered, so
 	// the photo would float over the caption otherwise.
 	m.article.viewport.SetYOffset(m.article.capStart)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeletePlacement(imageArticle().ImageURL)) {
-		t.Error("caption frame must delete the photo's placement by id")
+	leadID := m.article.imageBlocks[0].nativeID
+	if leadID == 0 {
+		t.Fatal("native block should record its kitty render id")
+	}
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+		t.Error("caption frame must delete the photo's placement by its render id")
 	}
 
 	// Scrolled past the whole block the placement must be deleted too, or
 	// the photo would float over the body.
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeletePlacement(imageArticle().ImageURL)) {
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
 		t.Error("frame must delete the placement when the image is scrolled out")
 	}
 
 	// Backing out to the list must delete the placement too, or the photo
 	// persists over the list and stacks over the next article's photo.
 	m.backToList()
-	if got := m.View(); !strings.Contains(got, kittyDeleteEsc) {
-		t.Error("list frame must delete the article's placement")
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+		t.Error("list frame must delete the article's placement by its render id")
 	}
 
 	// A frame without a native render (the placeholder phase of a fresh
@@ -640,8 +645,8 @@ func TestNativeKittyImageRestoredAfterClear(t *testing.T) {
 	m.view = viewArticle
 
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeletePlacement(imageArticle().ImageURL)) {
-		t.Fatal("scrolled-out image should have been deleted by id")
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(m.article.imageBlocks[0].nativeID)) {
+		t.Fatal("scrolled-out image should have been deleted by its render id")
 	}
 	m.scrollArticle(func() { m.article.viewport.GotoTop() }, false)
 	if got := m.View(); !strings.Contains(got, "\x1b_Ga=T") || strings.Contains(got, "a=d") {
@@ -1939,8 +1944,8 @@ func TestNativeClippedImageDoesNotPaintOverBorder(t *testing.T) {
 	// suppresses the transmit so the image cannot paint over the border.
 	m.article.viewport.SetYOffset(inline.imgStart)
 	view := m.View()
-	if !strings.Contains(view, imgpkg.DeletePlacement("inline.jpg")) {
-		t.Errorf("clipped image placement should be deleted: %q", view)
+	if !strings.Contains(view, imgpkg.DeleteByID(inline.nativeID)) {
+		t.Errorf("clipped image placement should be deleted by its render id: %q", view)
 	}
 	if strings.Contains(view, "a=T,f=100") {
 		t.Errorf("clipped image transmit should be suppressed: %q", view)
@@ -2025,8 +2030,8 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 		t.Errorf("clipped image should show its halfblock preview, got: %q", view)
 	}
 	// The transmit and placement handling is unchanged.
-	if !strings.Contains(view, imgpkg.DeletePlacement("inline.jpg")) {
-		t.Errorf("clipped image placement should still be deleted: %q", view)
+	if !strings.Contains(view, imgpkg.DeleteByID(inline.nativeID)) {
+		t.Errorf("clipped image placement should still be deleted by its render id: %q", view)
 	}
 	if strings.Contains(view, "a=T,f=100") {
 		t.Errorf("clipped image transmit should be suppressed: %q", view)
@@ -2044,18 +2049,20 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	m.article = m.newArticleState(a)
 	for i := range m.article.imageBlocks {
 		m.article.imageBlocks[i].nativeImg = true
+		m.article.imageBlocks[i].nativeID = uint32(100 + i)
 	}
 	lead := m.article.imageBlocks[0]
 	inline := m.article.imageBlocks[1]
 
 	// Lead scrolled off while the inline is on screen: the clear must delete
-	// the lead's placement by id and leave the visible inline alone.
+	// the lead's placement by its recorded id and leave the visible inline
+	// alone.
 	m.article.viewport.SetYOffset(inline.imgStart)
 	got := m.nativeImageClear()
-	if !strings.Contains(got, imgpkg.DeletePlacement(a.ImageURL)) {
-		t.Errorf("clear should delete the scrolled-out lead placement by id: %q", got)
+	if !strings.Contains(got, imgpkg.DeleteByID(lead.nativeID)) {
+		t.Errorf("clear should delete the scrolled-out lead placement by its render id: %q", got)
 	}
-	if strings.Contains(got, imgpkg.DeletePlacement("inline.jpg")) {
+	if strings.Contains(got, imgpkg.DeleteByID(inline.nativeID)) {
 		t.Errorf("clear must not delete the visible inline placement: %q", got)
 	}
 
@@ -2063,5 +2070,121 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	m.article.viewport.SetYOffset(lead.imgStart)
 	if got := m.nativeImageClear(); strings.Contains(got, "a=d") {
 		t.Errorf("clear issued while all images visible: %q", got)
+	}
+}
+
+func TestNativeKittyResizeDeletesPriorIDBeforeTransmit(t *testing.T) {
+	m, _ := newImageModel(t, nil)
+	m.imgNative.Protocol = imgpkg.ProtocolKitty
+	// A large photo whose fitted box tracks the viewport geometry, so a
+	// viewport change genuinely mints a new render id (a small image renders
+	// at a fixed capped width and would reuse the id).
+	m.imgPhotos.Set(imageArticle().ImageURL, pngBytes(t, 480, 320))
+
+	// Render at the initial geometry and compose; one frame transmits the
+	// initial size and records its id.
+	nativeRenderLines(t, m, imageArticle())
+	m.article = m.newArticleState(imageArticle())
+	m.view = viewArticle
+	if !m.article.nativeImg {
+		t.Fatal("expected a native render at the initial size")
+	}
+	oldID := m.article.imageBlocks[0].nativeID
+	if oldID == 0 {
+		t.Fatal("native block must record its render id")
+	}
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("i=%d", oldID)) {
+		t.Fatalf("initial frame should transmit i=%d: %q", oldID, got)
+	}
+
+	// Resize: re-render at a new viewport height (the render cache key and the
+	// height fit both depend on it, so the fitted box changes and mints a new
+	// id; the frame switches straight to it with no placeholder gap) and
+	// re-compose.
+	m.height += 10
+	nativeRenderLines(t, m, imageArticle())
+	m.article = m.newArticleState(imageArticle())
+	m.view = viewArticle
+	if !m.article.nativeImg {
+		t.Fatal("expected a native render at the resized geometry")
+	}
+	newID := m.article.imageBlocks[0].nativeID
+	if newID == 0 || newID == oldID {
+		t.Fatalf("resize should mint a new render id: old %d new %d", oldID, newID)
+	}
+
+	// The resize frame must delete the prior size's image by its id before
+	// the new transmit, so the terminal never holds two sizes of one photo.
+	got := m.View()
+	del := imgpkg.DeleteByID(oldID)
+	if i := strings.Index(got, del); i < 0 || i > strings.Index(got, "\x1b_Ga=T") {
+		t.Errorf("resize frame must delete the prior id before transmitting the new one: %q", got)
+	}
+	if !strings.Contains(got, fmt.Sprintf("i=%d", newID)) {
+		t.Errorf("resize frame should transmit the new id %d: %q", newID, got)
+	}
+}
+
+func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
+	a := imageArticle()
+	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 60)
+	m, _ := newImageModel(t, nil)
+	m.imgNative.Protocol = imgpkg.ProtocolKitty
+	m.imgPhotos.Set(a.ImageURL, pngBytes(t, 40, 40))
+	m.imgPhotos.Set("inline.jpg", pngBytes(t, 40, 40))
+
+	// Render the lead natively and compose once (the PhotoMsg → NativeCmd →
+	// NativeMsg flow), then render the inline natively and re-compose so both
+	// blocks record their ids.
+	nativeRenderLines(t, m, a)
+	m.article = m.newArticleState(a)
+	m.view = viewArticle
+	width, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, captionWidth(width))()
+	nm, ok := msg.(imgpkg.NativeMsg)
+	if !ok {
+		t.Fatalf("expected NativeMsg for the inline image, got %T", msg)
+	}
+	m.imgNatives.Set(imgpkg.NativeKey("inline.jpg", width, vpH), nm.Lines)
+	m.recomposeArticle()
+	var ids []uint32
+	for _, b := range m.article.imageBlocks {
+		if b.nativeImg {
+			if b.nativeID == 0 {
+				t.Fatalf("native block for %s should record its render id", b.url)
+			}
+			ids = append(ids, b.nativeID)
+		}
+	}
+	if len(ids) < 2 {
+		t.Fatalf("expected lead and inline native blocks with recorded ids, got %d", len(ids))
+	}
+
+	// A frame at the top records the lead id as transmitted; the inline sits
+	// below the fold and is deleted by id.
+	if got := m.View(); !strings.Contains(got, fmt.Sprintf("i=%d", ids[0])) {
+		t.Fatalf("top frame should transmit the lead id %d: %q", ids[0], got)
+	}
+
+	// Scrolling to the inline deletes the scrolled-out lead by id while the
+	// inline records its id, so both remain tracked as held by the terminal.
+	m.article.viewport.SetYOffset(m.article.imageBlocks[1].imgStart)
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(ids[0])) {
+		t.Fatalf("scrolled-out lead should be deleted by its recorded id: %q", got)
+	}
+
+	// Leaving the article frees every recorded id by that id — a delete-all
+	// would only clear visible placements and leave the terminal's cached
+	// image data behind.
+	m.backToList()
+	got := m.View()
+	for _, id := range ids {
+		if !strings.Contains(got, imgpkg.DeleteByID(id)) {
+			t.Errorf("exit frame must delete recorded id %d: %q", id, got)
+		}
+	}
+	if strings.Contains(got, "a=d,d=a") {
+		t.Errorf("exit frame should free images by id, not delete-all: %q", got)
 	}
 }

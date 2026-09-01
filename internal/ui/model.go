@@ -61,6 +61,10 @@ type Model struct {
 	imgNatives  *image.Natives
 	imgNative   image.NativeRenderer
 	imgLoading  map[string]bool
+	// nativeSent tracks the kitty image id last transmitted per URL, so a
+	// frame can delete the prior size's image before a re-render at a new
+	// size, and leaving the article can free every image the terminal holds.
+	nativeSent map[string]uint32
 
 	statusMsg     string
 	statusExpires time.Time
@@ -111,6 +115,7 @@ func New(cfg *config.Config, st *store.Store) *Model {
 		imgNatives:  image.NewNatives(),
 		imgNative:   image.NativeRenderer{Protocol: image.DetectProtocol()},
 		imgLoading:  make(map[string]bool),
+		nativeSent:  make(map[string]uint32),
 		width:       80,
 		height:      24,
 	}
