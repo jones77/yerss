@@ -35,44 +35,31 @@ func CaptionWidth(contentW int) int {
 	return max(1, contentW*7/10)
 }
 
-// ArticleAttribution returns the photo attribution for the article's lead
-// image: the credit extracted from the article's HTML when present, otherwise
-// "photo: <source>" derived by the list view's source-identifier rules. It
-// returns "" when neither is available. A lead image that sits in a captioned
-// figure whose caption belongs to a later image (a photo-grid's first photo)
-// returns "" rather than the source label.
-func ArticleAttribution(a store.Article) string {
-	if cap, inFig := convert.ImageCaption(a.Content, a.ImageURL); inFig {
-		return cap
-	}
-	if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
-		return "photo: " + src
-	}
-	return ""
-}
-
-// InlineAttribution returns the caption for an inline image: the image's alt
-// text when present, otherwise the credit extracted from the article's HTML
-// when present, otherwise the text of any markdown link that wraps the image
-// (promo images like the TomDispatch banner render as a linked image whose
-// link text labels it), otherwise "photo: <source>" derived by the list view's
-// source-identifier rules. It returns "" when none is available. An image that
-// sits in a captioned figure whose caption belongs to a later image (a
-// photo-grid's first photo) returns "" before any other source, so it never
-// borrows the figure's caption nor falls back to the source label.
-func InlineAttribution(a store.Article, url, alt, linkText string) string {
+// ResolveImageAttribution returns the caption for an image (lead or inline)
+// using a single fallback chain: figure caption, alt text (inline only), link
+// text (inline only), and "photo: <source>". A lead image skips the alt and
+// link-text steps; an image in a captioned figure whose caption belongs to a
+// later image (a photo-grid's first photo) returns "" before any other source,
+// so it never borrows that figure's caption.
+func ResolveImageAttribution(a store.Article, url, alt, linkText string, isLead bool) string {
 	cap, inFig := convert.ImageCaption(a.Content, url)
 	if inFig && cap == "" {
 		return ""
 	}
-	if alt != "" {
-		return alt
-	}
-	if inFig {
-		return cap
-	}
-	if linkText != "" {
-		return linkText
+	if isLead {
+		if inFig {
+			return cap
+		}
+	} else {
+		if alt != "" {
+			return alt
+		}
+		if inFig {
+			return cap
+		}
+		if linkText != "" {
+			return linkText
+		}
 	}
 	if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
 		return "photo: " + src

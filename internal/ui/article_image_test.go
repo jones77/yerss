@@ -577,7 +577,7 @@ func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-		msg := imgpkg.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ArticleAttribution(a), headerLines, compose.CaptionWidth(width))()
+		msg := imgpkg.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)

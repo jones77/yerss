@@ -402,7 +402,7 @@ func (m *Model) inlineAttrFor(url string) string {
 	}
 	for _, im := range m.article.inlineImages {
 		if im.URL == url {
-			return compose.InlineAttribution(*m.article.article, url, im.Alt, "")
+			return compose.ResolveImageAttribution(*m.article.article, url, im.Alt, "", false)
 		}
 	}
 	return ""
@@ -418,7 +418,7 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 		return nil
 	}
 	a := *m.article.article
-	attr := compose.ArticleAttribution(a)
+	attr := compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	if url != a.ImageURL {
 		attr = m.inlineAttrFor(url)
 	}

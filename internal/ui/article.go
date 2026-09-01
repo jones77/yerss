@@ -171,7 +171,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		lineCount++
 	}
 	if a.ImageURL != "" && m.imagesEnabled() {
-		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ArticleAttribution(a), contentW, vpH, headerLines); len(block) > 0 {
+		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, headerLines); len(block) > 0 {
 			addImageBlock(a.ImageURL, block, rows, native, id)
 		}
 	}
@@ -269,7 +269,7 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 			alt = inline[idx].Alt
 			idx++
 		}
-		attr := compose.InlineAttribution(a, url, alt, linkText)
+		attr := compose.ResolveImageAttribution(a, url, alt, linkText, false)
 		captions[url] = attr
 		if block, rows, native, id := m.composeImageBlock(url, attr, contentW, vpH, headerLines); len(block) > 0 {
 			addImageBlock(url, block, rows, native, id)
