@@ -205,6 +205,9 @@ func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 	if len(imgs) != 1 || BlockWidth(splitLines(imgs[0].Block)) != 60 {
 		t.Errorf("persisted block width = %d, want 60", BlockWidth(splitLines(imgs[0].Block)))
 	}
+	if string(imgs[0].Photo) != string(data) {
+		t.Error("re-render must preserve the stored photo bytes")
+	}
 }
 
 func TestBlockCmdNoFetchModeNeverHitsNetwork(t *testing.T) {

@@ -209,7 +209,7 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 					if decoded, _, derr := image.Decode(bytes.NewReader(img.Photo)); derr == nil {
 						cache.Set(url, decoded)
 						if lines, err := renderBlock(blocks, url, decoded, width, maxHeight); err == nil {
-							persistImage(st, articleID, url, lines, img.Photo, img.Position)
+							_ = st.SetArticleImageBlock(articleID, img.Position, url, strings.Join(lines, "\n"), BlockWidth(lines))
 							return BlockMsg{Key: url, Lines: lines}
 						}
 					}

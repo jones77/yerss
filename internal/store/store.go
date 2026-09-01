@@ -610,6 +610,20 @@ ON CONFLICT(article_id, position) DO UPDATE SET
 	return err
 }
 
+// SetArticleImageBlock updates an article image's url, block, and width at a
+// position without touching the stored photo bytes or credit. It is the write
+// used when a block is re-rendered from an already-stored photo, so a resize
+// does not re-write the full photo BLOB.
+func (s *Store) SetArticleImageBlock(id int64, position int, url string, block string, width int) error {
+	_, err := s.db.Exec(`
+INSERT INTO article_images (article_id, position, url, block, width)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(article_id, position) DO UPDATE SET
+  url = excluded.url, block = excluded.block, width = excluded.width`,
+		id, position, nullIfEmpty(url), nullIfEmpty(block), nullIfZero(width))
+	return err
+}
+
 // GetArticleImages returns every stored image for an article, ordered by
 // position.
 func (s *Store) GetArticleImages(id int64) ([]ArticleImage, error) {

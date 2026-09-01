@@ -732,6 +732,65 @@ func TestSetArticleImageReplacesSamePosition(t *testing.T) {
 	}
 }
 
+func TestSetArticleImageBlockPreservesPhoto(t *testing.T) {
+	st := newTestStore(t)
+	id, err := st.UpsertArticle(sampleArticle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	photo := []byte("original-photo-bytes")
+	if err := st.SetArticleImage(id, ArticleImage{Position: 0, URL: "a", Block: "old", Photo: photo, Width: 9}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImageBlock(id, 0, "a", "new", 12); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetArticleImages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("GetArticleImages = %+v, want 1 image", got)
+	}
+	if got[0].Block != "new" || got[0].Width != 12 {
+		t.Errorf("block-only write did not update block/width: %+v", got[0])
+	}
+	if got[0].URL != "a" {
+		t.Errorf("block-only write changed url: %+v", got[0])
+	}
+	if string(got[0].Photo) != string(photo) {
+		t.Errorf("block-only write clobbered the photo: got %q want %q", got[0].Photo, photo)
+	}
+}
+
+func TestSetArticleImageBlockDoesNotRewritePhoto(t *testing.T) {
+	st := newTestStore(t)
+	// Abort any statement that touches the photo column on update, so a
+	// block-only write that rewrites the stored BLOB fails loudly.
+	if _, err := st.db.Exec(`CREATE TRIGGER no_photo_rewrite AFTER UPDATE OF photo ON article_images
+BEGIN SELECT RAISE(ABORT, 'photo rewritten'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.UpsertArticle(sampleArticle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	photo := []byte("photo-bytes")
+	if err := st.SetArticleImage(id, ArticleImage{Position: 0, URL: "a", Block: "old", Photo: photo, Width: 9}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImageBlock(id, 0, "a", "new", 12); err != nil {
+		t.Fatalf("block-only write rewrote the photo column: %v", err)
+	}
+	got, err := st.GetArticleImages(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Block != "new" || string(got[0].Photo) != string(photo) {
+		t.Errorf("block-only write = %+v, want block updated with photo preserved", got)
+	}
+}
+
 func TestLegacyImageMigratedToArticleImages(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.sqlite")
 	st, err := Open(path)
