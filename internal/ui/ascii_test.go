@@ -7,40 +7,41 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 func TestGlyphsForASCIIAndUnicodePairs(t *testing.T) {
-	u, a := glyphsFor(false), glyphsFor(true)
-	if a.tl != "+" || a.bl != "+" || a.tr != "+" || a.br != "+" || a.tee != "+" {
-		t.Errorf("ascii corner/tee glyphs = %q%q%q%q%q, want all +", a.tl, a.bl, a.tr, a.br, a.tee)
+	u, a := render.GlyphsFor(false), render.GlyphsFor(true)
+	if a.TL != "+" || a.BL != "+" || a.TR != "+" || a.BR != "+" || a.Tee != "+" {
+		t.Errorf("ascii corner/tee glyphs = %q%q%q%q%q, want all +", a.TL, a.BL, a.TR, a.BR, a.Tee)
 	}
-	if u.tl != "┌" || u.bl != "└" || u.tr != "┐" || u.br != "┘" || u.tee != "├" {
-		t.Errorf("unicode corner/tee glyphs = %q%q%q%q%q", u.tl, u.bl, u.tr, u.br, u.tee)
+	if u.TL != "┌" || u.BL != "└" || u.TR != "┐" || u.BR != "┘" || u.Tee != "├" {
+		t.Errorf("unicode corner/tee glyphs = %q%q%q%q%q", u.TL, u.BL, u.TR, u.BR, u.Tee)
 	}
-	if a.h != "-" || a.bullet != "." || a.ellipsis != "..." || a.half != "1/2" {
-		t.Errorf("ascii misc glyphs = %q %q %q %q, want - . ... 1/2", a.h, a.bullet, a.ellipsis, a.half)
+	if a.H != "-" || a.Bullet != "." || a.Ellipsis != "..." || a.Half != "1/2" {
+		t.Errorf("ascii misc glyphs = %q %q %q %q, want - . ... 1/2", a.H, a.Bullet, a.Ellipsis, a.Half)
 	}
-	if u.h != "─" || u.bullet != "·" || u.ellipsis != "…" || u.half != "½" {
-		t.Errorf("unicode misc glyphs = %q %q %q %q", u.h, u.bullet, u.ellipsis, u.half)
+	if u.H != "─" || u.Bullet != "·" || u.Ellipsis != "…" || u.Half != "½" {
+		t.Errorf("unicode misc glyphs = %q %q %q %q", u.H, u.Bullet, u.Ellipsis, u.Half)
 	}
 }
 
 func TestScrollbarConfigSelectsThumbGlyph(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetAscii(false)
-	if got := m.glyphs().fill; got != "│" {
+	if got := m.glyphs().Fill; got != "│" {
 		t.Errorf("default unicode thumb = %q, want single line │", got)
 	}
 	m.cfg.Display.Scrollbar = "double"
-	if got := m.glyphs().fill; got != "║" {
+	if got := m.glyphs().Fill; got != "║" {
 		t.Errorf("double unicode thumb = %q, want ║", got)
 	}
 	m.SetAscii(true)
-	if got := m.glyphs().fill; got != "|" {
+	if got := m.glyphs().Fill; got != "|" {
 		t.Errorf("ascii thumb = %q, want |", got)
 	}
 	m.cfg.Display.Scrollbar = "single"
-	if got := m.glyphs().fill; got != "|" {
+	if got := m.glyphs().Fill; got != "|" {
 		t.Errorf("ascii single thumb = %q, want |", got)
 	}
 }

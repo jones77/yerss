@@ -15,6 +15,8 @@ import (
 
 	imgpkg "yerss/internal/image"
 	"yerss/internal/store"
+	"yerss/internal/ui/compose"
+	"yerss/internal/ui/render"
 )
 
 // dimsCall records a render request the fake renderer received.
@@ -347,12 +349,12 @@ func TestSnapYOffset(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var blocks []imageBlock
+			var blocks []compose.ImageBlock
 			if c.start >= 0 {
-				blocks = append(blocks, imageBlock{imgStart: c.start, capStart: c.cap, imgEnd: c.end, nativeImg: c.native})
+				blocks = append(blocks, compose.ImageBlock{ImgStart: c.start, CapStart: c.cap, ImgEnd: c.end, NativeImg: c.native})
 			}
-			if got := snapYOffset(c.offset, c.vpH, c.offset, blocks, c.d, c.native); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d,%+v,%d,%v) = %d, want %d", c.offset, c.vpH, c.offset, blocks, c.d, c.native, got, c.want)
+			if got := compose.SnapYOffset(c.offset, c.vpH, c.offset, blocks, c.d, c.native); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d,%+v,%d,%v) = %d, want %d", c.offset, c.vpH, c.offset, blocks, c.d, c.native, got, c.want)
 			}
 		})
 	}
@@ -463,7 +465,7 @@ func TestAttributionWrapsAtCaptionWidth(t *testing.T) {
 	m.article = m.newArticleState(a)
 
 	contentW := m.article.viewport.Width
-	captionW := captionWidth(contentW)
+	captionW := compose.CaptionWidth(contentW)
 	if captionW <= 4 {
 		t.Fatalf("caption width %d should exceed the 4-cell photo", captionW)
 	}
@@ -560,13 +562,13 @@ const kittyDeleteEsc = "\x1b_Ga=d,d=a,q=1\x1b\\"
 // stand in for the PhotoMsg → NativeCmd → NativeMsg flow.
 func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	t.Helper()
-	width, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
 	header := m.renderHeader(a, width)
 	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, a.ImageURL, width, vpH, articleAttribution(a), headerLines, captionWidth(width))()
+	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, a.ImageURL, width, vpH, compose.ArticleAttribution(a), headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -597,7 +599,7 @@ func TestNativeKittyImageClearsWhenNotDisplayed(t *testing.T) {
 	// must also delete the placement: the transmit line is not rendered, so
 	// the photo would float over the caption otherwise.
 	m.article.viewport.SetYOffset(m.article.capStart)
-	leadID := m.article.imageBlocks[0].nativeID
+	leadID := m.article.imageBlocks[0].NativeID
 	if leadID == 0 {
 		t.Fatal("native block should record its kitty render id")
 	}
@@ -645,7 +647,7 @@ func TestNativeKittyImageRestoredAfterClear(t *testing.T) {
 	m.view = viewArticle
 
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
-	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(m.article.imageBlocks[0].nativeID)) {
+	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(m.article.imageBlocks[0].NativeID)) {
 		t.Fatal("scrolled-out image should have been deleted by its render id")
 	}
 	m.scrollArticle(func() { m.article.viewport.GotoTop() }, false)
@@ -705,7 +707,7 @@ func TestNativeBlockPlaceholderBeforePhoto(t *testing.T) {
 	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.imgNative.Protocol = imgpkg.ProtocolITerm
 	m.imgCache = imgpkg.NewCache() // only the stored block is available
-	contentW, _, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	contentW, _, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
 	m.imgBlocks.Set(imageArticle().ImageURL, []string{strings.Repeat("I", contentW), strings.Repeat("I", contentW)})
 	m.article = m.newArticleState(imageArticle())
 
@@ -824,7 +826,7 @@ func TestNativePhotoMsgFlowRecomposes(t *testing.T) {
 func TestStoredBlockServedAtMatchingWidth(t *testing.T) {
 	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.imgCache = imgpkg.NewCache()
-	width, _, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	width, _, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
 	lines := []string{strings.Repeat("I", width), strings.Repeat("I", width)}
 	m.imgBlocks.Set(imageArticle().ImageURL, lines)
 	m.article = m.newArticleState(imageArticle())
@@ -855,11 +857,11 @@ func TestInlineImageComposedInPlace(t *testing.T) {
 		t.Fatalf("imageBlocks = %d, want 2 (lead + inline)", len(m.article.imageBlocks))
 	}
 	lead, inline := m.article.imageBlocks[0], m.article.imageBlocks[1]
-	if inline.url != "inline.jpg" {
-		t.Errorf("inline url = %q, want inline.jpg", inline.url)
+	if inline.URL != "inline.jpg" {
+		t.Errorf("inline url = %q, want inline.jpg", inline.URL)
 	}
-	if inline.imgStart <= lead.imgEnd {
-		t.Errorf("inline imgStart %d should sit past lead block end %d", inline.imgStart, lead.imgEnd)
+	if inline.ImgStart <= lead.ImgEnd {
+		t.Errorf("inline imgStart %d should sit past lead block end %d", inline.ImgStart, lead.ImgEnd)
 	}
 	lines := strippedLines(m.article.lines)
 	joined := strings.Join(strippedLines(m.article.lines), "\n")
@@ -867,17 +869,17 @@ func TestInlineImageComposedInPlace(t *testing.T) {
 		t.Errorf("body text missing around inline image: %q", joined)
 	}
 	// Image rows appear between intro and outro; the attribution is the alt.
-	if !strings.HasSuffix(strings.TrimRight(lines[inline.imgStart], " "), wide) {
-		t.Errorf("inline image row = %q, want the wide block line", lines[inline.imgStart])
+	if !strings.HasSuffix(strings.TrimRight(lines[inline.ImgStart], " "), wide) {
+		t.Errorf("inline image row = %q, want the wide block line", lines[inline.ImgStart])
 	}
-	if inline.capStart <= inline.imgStart || inline.capStart > inline.imgEnd {
-		t.Fatalf("inline capStart %d out of block range %d..%d", inline.capStart, inline.imgStart, inline.imgEnd)
+	if inline.CapStart <= inline.ImgStart || inline.CapStart > inline.ImgEnd {
+		t.Fatalf("inline capStart %d out of block range %d..%d", inline.CapStart, inline.ImgStart, inline.ImgEnd)
 	}
-	if !strings.Contains(lines[inline.capStart], "Alt caption") {
-		t.Errorf("inline attribution = %q, want the alt text", lines[inline.capStart])
+	if !strings.Contains(lines[inline.CapStart], "Alt caption") {
+		t.Errorf("inline attribution = %q, want the alt text", lines[inline.CapStart])
 	}
-	if strings.Contains(lines[inline.capStart], "photo:") {
-		t.Errorf("inline attribution should use alt, got %q", lines[inline.capStart])
+	if strings.Contains(lines[inline.CapStart], "photo:") {
+		t.Errorf("inline attribution should use alt, got %q", lines[inline.CapStart])
 	}
 	_ = fr
 }
@@ -895,8 +897,8 @@ func TestInlineImageSourceFallbackAttribution(t *testing.T) {
 	}
 	inline := m.article.imageBlocks[1]
 	lines := strippedLines(m.article.lines)
-	if !strings.Contains(lines[inline.capStart], "photo: example") {
-		t.Errorf("inline attribution = %q, want the source fallback", lines[inline.capStart])
+	if !strings.Contains(lines[inline.CapStart], "photo: example") {
+		t.Errorf("inline attribution = %q, want the source fallback", lines[inline.CapStart])
 	}
 }
 
@@ -917,9 +919,9 @@ func TestInlineImageLinkTextAsCaption(t *testing.T) {
 	if strings.Contains(joined, "](") {
 		t.Errorf("stray link tail around the linked image: %q", joined)
 	}
-	var logo *imageBlock
+	var logo *compose.ImageBlock
 	for i := range m.article.imageBlocks {
-		if m.article.imageBlocks[i].url == "logo.jpg" {
+		if m.article.imageBlocks[i].URL == "logo.jpg" {
 			logo = &m.article.imageBlocks[i]
 		}
 	}
@@ -927,7 +929,7 @@ func TestInlineImageLinkTextAsCaption(t *testing.T) {
 		t.Fatalf("logo block not composed: %q", joined)
 	}
 	lines := strippedLines(m.article.lines)
-	caption := strings.Join(lines[logo.capStart:logo.imgEnd+1], " ")
+	caption := strings.Join(lines[logo.CapStart:logo.ImgEnd+1], " ")
 	if !strings.Contains(caption, "Read Our Complete Coverage") || !strings.Contains(caption, "TomDispatch") {
 		t.Errorf("logo caption = %q, want the link text", caption)
 	}
@@ -974,11 +976,11 @@ func TestInlineImageDoesNotBorrowAnotherImagesCaption(t *testing.T) {
 	lines := strippedLines(m.article.lines)
 	var bookCap, inlineCap string
 	for _, b := range m.article.imageBlocks {
-		if b.url == "book.jpg" {
-			bookCap = lines[b.capStart]
+		if b.URL == "book.jpg" {
+			bookCap = lines[b.CapStart]
 		}
-		if b.url == "inline.jpg" {
-			inlineCap = lines[b.capStart]
+		if b.URL == "inline.jpg" {
+			inlineCap = lines[b.CapStart]
 		}
 	}
 	if !strings.Contains(bookCap, "Book cover caption") {
@@ -1011,9 +1013,9 @@ func TestInlineImagePhotoGridCaptionOwnership(t *testing.T) {
 	m.imgCache.Set("right.jpg", testImg())
 	m.article = m.newArticleState(a)
 
-	var left, right *imageBlock
+	var left, right *compose.ImageBlock
 	for i := range m.article.imageBlocks {
-		switch m.article.imageBlocks[i].url {
+		switch m.article.imageBlocks[i].URL {
 		case "left.jpg":
 			left = &m.article.imageBlocks[i]
 		case "right.jpg":
@@ -1024,10 +1026,10 @@ func TestInlineImagePhotoGridCaptionOwnership(t *testing.T) {
 		t.Fatalf("want left and right grid blocks, got left=%v right=%v", left, right)
 	}
 	lines := strippedLines(m.article.lines)
-	if left.capStart != left.imgEnd+1 {
-		t.Errorf("left grid photo capStart %d, want %d (no caption lines composed)", left.capStart, left.imgEnd+1)
+	if left.CapStart != left.ImgEnd+1 {
+		t.Errorf("left grid photo capStart %d, want %d (no caption lines composed)", left.CapStart, left.ImgEnd+1)
 	}
-	caption := strings.Join(lines[right.capStart:right.imgEnd+1], " ")
+	caption := strings.Join(lines[right.CapStart:right.ImgEnd+1], " ")
 	if !strings.Contains(caption, "Left: 2024 scene. Right: 2026 scene.") {
 		t.Errorf("right grid photo caption = %q, want the combined figure caption", caption)
 	}
@@ -1079,11 +1081,11 @@ func TestInlineImageLoadRecomposesInPlace(t *testing.T) {
 	}
 	inline := m.article.imageBlocks[1]
 	lines := strippedLines(m.article.lines)
-	if !strings.HasSuffix(strings.TrimRight(lines[inline.imgStart], " "), wide) {
-		t.Errorf("inline image row after load = %q, want the wide block line", lines[inline.imgStart])
+	if !strings.HasSuffix(strings.TrimRight(lines[inline.ImgStart], " "), wide) {
+		t.Errorf("inline image row after load = %q, want the wide block line", lines[inline.ImgStart])
 	}
-	if !strings.Contains(lines[inline.capStart], "Alt") {
-		t.Errorf("inline attribution after load = %q, want the alt text", lines[inline.capStart])
+	if !strings.Contains(lines[inline.CapStart], "Alt") {
+		t.Errorf("inline attribution after load = %q, want the alt text", lines[inline.CapStart])
 	}
 	lineOf := func(sub string) int {
 		for i, l := range lines {
@@ -1093,9 +1095,9 @@ func TestInlineImageLoadRecomposesInPlace(t *testing.T) {
 		}
 		return -1
 	}
-	if iIntro, iOutro := lineOf("intro text"), lineOf("outro text"); iIntro < 0 || iIntro > inline.imgStart || iOutro < inline.imgEnd {
+	if iIntro, iOutro := lineOf("intro text"), lineOf("outro text"); iIntro < 0 || iIntro > inline.ImgStart || iOutro < inline.ImgEnd {
 		t.Errorf("inline block (lines %d..%d) should sit between intro at %d and outro at %d",
-			inline.imgStart, inline.imgEnd, iIntro, iOutro)
+			inline.ImgStart, inline.ImgEnd, iIntro, iOutro)
 	}
 }
 
@@ -1103,9 +1105,9 @@ func TestSnapYOffsetBlockList(t *testing.T) {
 	// A mid-document inline block between a lead block and trailing body text.
 	// The inline block is shorter than the viewport, as fitted images are,
 	// exercising the two-stage snap.
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	inline := imageBlock{url: "inline", imgStart: 20, capStart: 22, imgEnd: 25}
-	blocks := []imageBlock{lead, inline}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	inline := compose.ImageBlock{URL: "inline", ImgStart: 20, CapStart: 22, ImgEnd: 25}
+	blocks := []compose.ImageBlock{lead, inline}
 
 	cases := []struct {
 		name      string
@@ -1148,8 +1150,8 @@ func TestSnapYOffsetBlockList(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, c.native); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d,%+v,%d,%v) = %d, want %d", c.offset, c.vpH, c.before, blocks, c.direction, c.native, got, c.want)
+			if got := compose.SnapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, c.native); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d,%+v,%d,%v) = %d, want %d", c.offset, c.vpH, c.before, blocks, c.direction, c.native, got, c.want)
 			}
 		})
 	}
@@ -1162,9 +1164,9 @@ func TestSnapYOffsetWrappedCaptionBottomBoundary(t *testing.T) {
 	// only the caption's first line above the fold snaps to the bottom
 	// boundary so the full wrapped caption is visible, rather than leaving its
 	// tail hanging below the fold.
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	inline := imageBlock{url: "inline", imgStart: 20, capStart: 23, imgEnd: 25}
-	blocks := []imageBlock{lead, inline}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	inline := compose.ImageBlock{URL: "inline", ImgStart: 20, CapStart: 23, ImgEnd: 25}
+	blocks := []compose.ImageBlock{lead, inline}
 
 	cases := []struct {
 		name      string
@@ -1186,8 +1188,8 @@ func TestSnapYOffsetWrappedCaptionBottomBoundary(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
+			if got := compose.SnapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1201,10 +1203,10 @@ func TestSnapYOffsetSkipLeavesNextImagePartial(t *testing.T) {
 	// partially visible (a deleted placement renders blank) awaiting manual
 	// scrolling. Modeled on the Intercept smoke-test geometry: 20-row images,
 	// one caption line, ~19 rows between image captions, 27-row viewport.
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	one := imageBlock{url: "one", imgStart: 20, capStart: 40, imgEnd: 41}
-	two := imageBlock{url: "two", imgStart: 60, capStart: 80, imgEnd: 81}
-	blocks := []imageBlock{lead, one, two}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	one := compose.ImageBlock{URL: "one", ImgStart: 20, CapStart: 40, ImgEnd: 41}
+	two := compose.ImageBlock{URL: "two", ImgStart: 60, CapStart: 80, ImgEnd: 81}
+	blocks := []compose.ImageBlock{lead, one, two}
 	vpH := 27
 
 	cases := []struct {
@@ -1228,8 +1230,8 @@ func TestSnapYOffsetSkipLeavesNextImagePartial(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapYOffset(c.offset, vpH, c.before, blocks, c.d, false); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, vpH, c.before, got, c.want)
+			if got := compose.SnapYOffset(c.offset, vpH, c.before, blocks, c.d, false); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1240,9 +1242,9 @@ func TestSnapYOffsetUpFromBottomBoundaryScrollsOff(t *testing.T) {
 	// viewport's last row) snaps it fully out of view in one press — its top
 	// lands at the fold — rather than pausing on the caption or revealing the
 	// previous image with this one still partially visible.
-	lead := imageBlock{url: "lead", imgStart: 5, capStart: 19, imgEnd: 19}
-	inline := imageBlock{url: "inline", imgStart: 21, capStart: 35, imgEnd: 35}
-	blocks := []imageBlock{lead, inline}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 5, CapStart: 19, ImgEnd: 19}
+	inline := compose.ImageBlock{URL: "inline", ImgStart: 21, CapStart: 35, ImgEnd: 35}
+	blocks := []compose.ImageBlock{lead, inline}
 
 	cases := []struct {
 		name      string
@@ -1261,8 +1263,8 @@ func TestSnapYOffsetUpFromBottomBoundaryScrollsOff(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
+			if got := compose.SnapYOffset(c.offset, c.vpH, c.before, blocks, c.direction, false); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1273,15 +1275,15 @@ func TestSnapYOffsetUpFromBottomBoundaryRevealsPreviousWhenClose(t *testing.T) {
 	// lower image's bottom boundary scrolls it off onto the previous image's
 	// top, so the previous image is never left partially visible (its photo
 	// range would otherwise catch the scroll-off target).
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	one := imageBlock{url: "one", imgStart: 20, capStart: 40, imgEnd: 41}
-	two := imageBlock{url: "two", imgStart: 60, capStart: 80, imgEnd: 81}
-	blocks := []imageBlock{lead, one, two}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	one := compose.ImageBlock{URL: "one", ImgStart: 20, CapStart: 40, ImgEnd: 41}
+	two := compose.ImageBlock{URL: "two", ImgStart: 60, CapStart: 80, ImgEnd: 81}
+	blocks := []compose.ImageBlock{lead, one, two}
 	vpH := 27
 
 	// two's bottom boundary is 55; its off target (33) lands inside one's
 	// photo range, so one is revealed at its top instead.
-	if got := snapYOffset(54, vpH, 55, blocks, -1, false); got != 20 {
+	if got := compose.SnapYOffset(54, vpH, 55, blocks, -1, false); got != 20 {
 		t.Errorf("up from two's bottom boundary = %d, want %d (one revealed)", got, 20)
 	}
 }
@@ -1293,13 +1295,13 @@ func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
 	// models the native render fit at a 27-row viewport: block rows run from
 	// imgStart (image top) through capStart-1 (photo) with a caption line, and
 	// one's caption is directly above two's top.
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	one := imageBlock{url: "one", imgStart: 11, capStart: 31, imgEnd: 31}
-	two := imageBlock{url: "two", imgStart: 33, capStart: 53, imgEnd: 53}
-	blocks := []imageBlock{lead, one, two}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	one := compose.ImageBlock{URL: "one", ImgStart: 11, CapStart: 31, ImgEnd: 31}
+	two := compose.ImageBlock{URL: "two", ImgStart: 33, CapStart: 53, ImgEnd: 53}
+	blocks := []compose.ImageBlock{lead, one, two}
 	vpH := 27
-	if one.imgEnd+2 != two.imgStart {
-		t.Fatalf("blocks not adjacent: one end %d + 2 = %d, two start %d", one.imgEnd, one.imgEnd+2, two.imgStart)
+	if one.ImgEnd+2 != two.ImgStart {
+		t.Fatalf("blocks not adjacent: one end %d + 2 = %d, two start %d", one.ImgEnd, one.ImgEnd+2, two.ImgStart)
 	}
 
 	// Down: from the lead's caption, the first image is entered and revealed
@@ -1316,7 +1318,7 @@ func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
 		{"two top flush", 34, 33, 53},
 	}
 	for _, c := range downtab {
-		if got := snapYOffset(c.raw, vpH, c.before, blocks, 1, false); got != c.want {
+		if got := compose.SnapYOffset(c.raw, vpH, c.before, blocks, 1, false); got != c.want {
 			t.Errorf("down %s = %d, want %d", c.name, got, c.want)
 		}
 	}
@@ -1324,7 +1326,7 @@ func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
 	// Up: from the lower image's bottom boundary the upper image is revealed
 	// flush at its top (not skipped), then sinks to its bottom, then off.
 	uptab := []struct {
-		name        string
+		name         string
 		before, want int
 	}{
 		{"from two bottom reveal one top", 27, 11},
@@ -1333,7 +1335,7 @@ func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
 	}
 	for _, c := range uptab {
 		raw := c.before - 1
-		if got := snapYOffset(raw, vpH, c.before, blocks, -1, false); got != c.want {
+		if got := compose.SnapYOffset(raw, vpH, c.before, blocks, -1, false); got != c.want {
 			t.Errorf("up %s from %d = %d, want %d", c.name, c.before, got, c.want)
 		}
 	}
@@ -1346,26 +1348,26 @@ func TestSnapYOffsetCaptionlessGridNextImageFlush(t *testing.T) {
 	// photo row, the separator gap) would leave the second image resting one
 	// line below the viewport top, needing an extra scroll to snap flush; the
 	// snap must go straight to the second image's TOP.
-	lead := imageBlock{url: "lead", imgStart: 5, capStart: 35, imgEnd: 35}
-	one := imageBlock{url: "one", imgStart: 39, capStart: 69, imgEnd: 68} // caption-less grid photo
-	two := imageBlock{url: "two", imgStart: 70, capStart: 100, imgEnd: 100}
-	blocks := []imageBlock{lead, one, two}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 5, CapStart: 35, ImgEnd: 35}
+	one := compose.ImageBlock{URL: "one", ImgStart: 39, CapStart: 69, ImgEnd: 68} // caption-less grid photo
+	two := compose.ImageBlock{URL: "two", ImgStart: 70, CapStart: 100, ImgEnd: 100}
+	blocks := []compose.ImageBlock{lead, one, two}
 	vpH := 37
-	if one.capStart != one.imgEnd+1 {
-		t.Fatalf("one not caption-less: capStart %d, imgEnd %d", one.capStart, one.imgEnd)
+	if one.CapStart != one.ImgEnd+1 {
+		t.Fatalf("one not caption-less: capStart %d, imgEnd %d", one.CapStart, one.ImgEnd)
 	}
-	if two.imgStart != one.imgEnd+2 {
-		t.Fatalf("two not adjacent: one end %d + 2 = %d, two start %d", one.imgEnd, one.imgEnd+2, two.imgStart)
+	if two.ImgStart != one.ImgEnd+2 {
+		t.Fatalf("two not adjacent: one end %d + 2 = %d, two start %d", one.ImgEnd, one.ImgEnd+2, two.ImgStart)
 	}
 
 	// Down from one's top: skip past the caption-less EXIT+gap to two's flush
 	// top, so the second image never rests one line below the viewport top.
-	if got := snapYOffset(40, vpH, 39, blocks, 1, false); got != two.imgStart {
-		t.Errorf("down from grid first photo top = %d, want %d (second photo flush)", got, two.imgStart)
+	if got := compose.SnapYOffset(40, vpH, 39, blocks, 1, false); got != two.ImgStart {
+		t.Errorf("down from grid first photo top = %d, want %d (second photo flush)", got, two.ImgStart)
 	}
 	// The second image then skips onto its (shared) caption.
-	if got := snapYOffset(two.imgStart+1, vpH, two.imgStart, blocks, 1, false); got != two.capStart {
-		t.Errorf("down from second photo top = %d, want %d (its caption)", got, two.capStart)
+	if got := compose.SnapYOffset(two.ImgStart+1, vpH, two.ImgStart, blocks, 1, false); got != two.CapStart {
+		t.Errorf("down from second photo top = %d, want %d (its caption)", got, two.CapStart)
 	}
 }
 
@@ -1375,9 +1377,9 @@ func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
 	// block's last line. A down move landing on that separator line must snap
 	// to the next image's top, so the 1-vertical gap between photos is never
 	// a resting scroll position.
-	lead := imageBlock{url: "lead", imgStart: 5, capStart: 19, imgEnd: 19}
-	inline := imageBlock{url: "inline", imgStart: 21, capStart: 35, imgEnd: 35}
-	blocks := []imageBlock{lead, inline}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 5, CapStart: 19, ImgEnd: 19}
+	inline := compose.ImageBlock{URL: "inline", ImgStart: 21, CapStart: 35, ImgEnd: 35}
+	blocks := []compose.ImageBlock{lead, inline}
 
 	cases := []struct {
 		name      string
@@ -1403,10 +1405,10 @@ func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
 				// The inline is not adjacent: text occupies the separator, and
 				// the short image is fully visible so the bottom snap does not
 				// preempt the unchanged outcome.
-				bs = []imageBlock{lead, imageBlock{url: "inline", imgStart: 30, capStart: 34, imgEnd: 34}}
+				bs = []compose.ImageBlock{lead, compose.ImageBlock{URL: "inline", ImgStart: 30, CapStart: 34, ImgEnd: 34}}
 			}
-			if got := snapYOffset(c.offset, c.vpH, c.before, bs, c.direction, false); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
+			if got := compose.SnapYOffset(c.offset, c.vpH, c.before, bs, c.direction, false); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1420,10 +1422,10 @@ func TestSnapYOffsetFullViewportBlockDoesNotLoop(t *testing.T) {
 	// reveal the previous image) rather than snapping back onto itself and
 	// looping forever.
 	vpH := 22
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	one := imageBlock{url: "one", imgStart: 30, capStart: 50, imgEnd: 51} // fills vpH
-	two := imageBlock{url: "two", imgStart: 60, capStart: 80, imgEnd: 81} // fills vpH
-	blocks := []imageBlock{lead, one, two}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	one := compose.ImageBlock{URL: "one", ImgStart: 30, CapStart: 50, ImgEnd: 51} // fills vpH
+	two := compose.ImageBlock{URL: "two", ImgStart: 60, CapStart: 80, ImgEnd: 81} // fills vpH
+	blocks := []compose.ImageBlock{lead, one, two}
 
 	cases := []struct {
 		name   string
@@ -1444,8 +1446,8 @@ func TestSnapYOffsetFullViewportBlockDoesNotLoop(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapYOffset(c.offset, vpH, c.before, blocks, c.d, false); got != c.want {
-				t.Errorf("snapYOffset(%d,%d,%d) = %d, want %d", c.offset, vpH, c.before, got, c.want)
+			if got := compose.SnapYOffset(c.offset, vpH, c.before, blocks, c.d, false); got != c.want {
+				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, vpH, c.before, got, c.want)
 			}
 		})
 	}
@@ -1473,8 +1475,8 @@ func TestScrollUpThroughFullViewportImageDoesNotLoop(t *testing.T) {
 	vpH := m.article.viewport.Height
 	inline := m.article.imageBlocks[1]
 	// Precondition: the block fills the viewport (no distinct bottom stage).
-	if inline.imgEnd-inline.imgStart+1 < vpH {
-		t.Fatalf("block %d..%d (rows=%d) does not fill viewport %d", inline.imgStart, inline.imgEnd, inline.imgEnd-inline.imgStart+1, vpH)
+	if inline.ImgEnd-inline.ImgStart+1 < vpH {
+		t.Fatalf("block %d..%d (rows=%d) does not fill viewport %d", inline.ImgStart, inline.ImgEnd, inline.ImgEnd-inline.ImgStart+1, vpH)
 	}
 	m.article.viewport.GotoBottom()
 	stuck := 0
@@ -1493,9 +1495,9 @@ func TestScrollUpThroughFullViewportImageDoesNotLoop(t *testing.T) {
 }
 
 func TestSnapAfterRecompose(t *testing.T) {
-	lead := imageBlock{url: "lead", imgStart: 4, capStart: 6, imgEnd: 9}
-	inline := imageBlock{url: "inline", imgStart: 20, capStart: 22, imgEnd: 40}
-	blocks := []imageBlock{lead, inline}
+	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
+	inline := compose.ImageBlock{URL: "inline", ImgStart: 20, CapStart: 22, ImgEnd: 40}
+	blocks := []compose.ImageBlock{lead, inline}
 	cases := []struct {
 		name   string
 		offset int
@@ -1511,8 +1513,8 @@ func TestSnapAfterRecompose(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := snapAfterRecompose(c.offset, c.vpH, blocks); got != c.want {
-				t.Errorf("snapAfterRecompose(%d,%d) = %d, want %d", c.offset, c.vpH, got, c.want)
+			if got := compose.SnapAfterRecompose(c.offset, c.vpH, blocks); got != c.want {
+				t.Errorf("compose.SnapAfterRecompose(%d,%d) = %d, want %d", c.offset, c.vpH, got, c.want)
 			}
 		})
 	}
@@ -1534,10 +1536,10 @@ func TestRecomposeArticleSnapsOffsetOutOfInlinePhoto(t *testing.T) {
 	// An offset sitting inside the inline photo range (a load could bump the
 	// offset there) must snap to the image's top on re-composition, matching
 	// motion 1, rather than leaving the photo partially clipped.
-	m.article.viewport.SetYOffset(inline.imgStart + 1)
+	m.article.viewport.SetYOffset(inline.ImgStart + 1)
 	m.recomposeArticle()
-	if got := m.article.viewport.YOffset; got != inline.imgStart {
-		t.Errorf("offset after recompose = %d, want %d (inline top)", got, inline.imgStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("offset after recompose = %d, want %d (inline top)", got, inline.ImgStart)
 	}
 }
 
@@ -1566,14 +1568,14 @@ func TestRecomposeKeepsBottomWhenOffsetInPhotoRange(t *testing.T) {
 	inline := m.article.imageBlocks[1]
 	// Precondition: the bottom lands inside the inline photo's range (the
 	// position the old recompose snap would pull back up to its top).
-	if !(inline.imgStart <= bottom && bottom < inline.capStart) {
+	if !(inline.ImgStart <= bottom && bottom < inline.CapStart) {
 		t.Fatalf("precondition not met: bottom %d not inside inline photo range %d..%d",
-			bottom, inline.imgStart, inline.capStart)
+			bottom, inline.ImgStart, inline.CapStart)
 	}
 	m.recomposeArticle()
 	if got := m.article.viewport.YOffset; got != len(m.article.lines)-vpH {
 		t.Errorf("offset after recompose = %d, want the bottom %d, not the inline top %d",
-			got, len(m.article.lines)-vpH, m.article.imageBlocks[1].imgStart)
+			got, len(m.article.lines)-vpH, m.article.imageBlocks[1].ImgStart)
 	}
 }
 
@@ -1591,20 +1593,20 @@ func TestScrollSnapsInlineImageBottomThenTop(t *testing.T) {
 
 	// Place the inline top exactly at the fold; the next down move snaps its
 	// bottom to the viewport bottom (stage one).
-	m.article.viewport.SetYOffset(inline.imgStart - vpH)
+	m.article.viewport.SetYOffset(inline.ImgStart - vpH)
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgEnd-vpH+1 {
-		t.Errorf("down into inline = %d, want %d (bottom-aligned)", got, inline.imgEnd-vpH+1)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd-vpH+1 {
+		t.Errorf("down into inline = %d, want %d (bottom-aligned)", got, inline.ImgEnd-vpH+1)
 	}
 	// The next down move snaps its top to the viewport top (stage two).
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgStart {
-		t.Errorf("down again = %d, want %d (top-aligned)", got, inline.imgStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("down again = %d, want %d (top-aligned)", got, inline.ImgStart)
 	}
 	// The next down move skips it onto its caption.
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.capStart {
-		t.Errorf("down third = %d, want %d (its caption)", got, inline.capStart)
+	if got := m.article.viewport.YOffset; got != inline.CapStart {
+		t.Errorf("down third = %d, want %d (its caption)", got, inline.CapStart)
 	}
 }
 
@@ -1638,13 +1640,13 @@ func TestScrollDownNeverLeavesInlineImageBlank(t *testing.T) {
 	one, two := m.article.imageBlocks[1], m.article.imageBlocks[2]
 	// Precondition: the images are close enough that a plain skip onto one's
 	// caption would leave two's top inside the window (the transient case).
-	if two.imgStart >= one.capStart+vpH {
-		t.Fatalf("test images not close: two.top %d >= one.caption %d + vpH %d", two.imgStart, one.capStart, vpH)
+	if two.ImgStart >= one.CapStart+vpH {
+		t.Fatalf("test images not close: two.top %d >= one.caption %d + vpH %d", two.ImgStart, one.CapStart, vpH)
 	}
 
-	partial := func(b imageBlock) bool {
-		return b.imgStart < m.article.viewport.YOffset+vpH && b.capStart > m.article.viewport.YOffset &&
-			!(b.imgStart >= m.article.viewport.YOffset && b.capStart <= m.article.viewport.YOffset+vpH)
+	partial := func(b compose.ImageBlock) bool {
+		return b.ImgStart < m.article.viewport.YOffset+vpH && b.CapStart > m.article.viewport.YOffset &&
+			!(b.ImgStart >= m.article.viewport.YOffset && b.CapStart <= m.article.viewport.YOffset+vpH)
 	}
 	stuck := 0
 	sawPartial := false
@@ -1697,9 +1699,9 @@ func TestScrollUpNeverLeavesInlineImageBlank(t *testing.T) {
 		t.Fatalf("want lead + two inline blocks, got %d", len(m.article.imageBlocks))
 	}
 
-	partial := func(b imageBlock) bool {
-		return b.imgStart < m.article.viewport.YOffset+vpH && b.capStart > m.article.viewport.YOffset &&
-			!(b.imgStart >= m.article.viewport.YOffset && b.capStart <= m.article.viewport.YOffset+vpH)
+	partial := func(b compose.ImageBlock) bool {
+		return b.ImgStart < m.article.viewport.YOffset+vpH && b.CapStart > m.article.viewport.YOffset &&
+			!(b.ImgStart >= m.article.viewport.YOffset && b.CapStart <= m.article.viewport.YOffset+vpH)
 	}
 	m.article.viewport.GotoBottom()
 	stuck := 0
@@ -1737,9 +1739,9 @@ func TestPageDownDoesNotSnapToInlineImage(t *testing.T) {
 	// A page-down from just above the inline image lands a full page, even
 	// mid-photo, rather than snapping to the image: paging must never skip the
 	// text between images.
-	m.article.viewport.SetYOffset(inline.imgStart - 1)
+	m.article.viewport.SetYOffset(inline.ImgStart - 1)
 	m.scrollArticle(func() { m.article.viewport.PageDown() }, false)
-	if got, want := m.article.viewport.YOffset, inline.imgStart-1+m.article.viewport.Height; got != want {
+	if got, want := m.article.viewport.YOffset, inline.ImgStart-1+m.article.viewport.Height; got != want {
 		t.Errorf("page-down offset = %d, want %d (full page, no snap)", got, want)
 	}
 }
@@ -1757,33 +1759,33 @@ func TestScrollSnapsThroughInlineImage(t *testing.T) {
 	// A down move from just above the inline photo snaps to its top so the
 	// image is shown (motion 1), rather than skipping straight onto the
 	// caption.
-	m.article.viewport.SetYOffset(inline.imgStart - 1)
+	m.article.viewport.SetYOffset(inline.ImgStart - 1)
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgStart {
-		t.Errorf("down into inline photo = %d, want %d (its top, motion 1)", got, inline.imgStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("down into inline photo = %d, want %d (its top, motion 1)", got, inline.ImgStart)
 	}
 	// The next downward move skips the now-shown image onto its caption
 	// (motion 2).
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.capStart {
-		t.Errorf("down again = %d, want %d (its caption, motion 2)", got, inline.capStart)
+	if got := m.article.viewport.YOffset; got != inline.CapStart {
+		t.Errorf("down again = %d, want %d (its caption, motion 2)", got, inline.CapStart)
 	}
 	// Down again scrolls within the caption line by line (no snap loop).
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.capStart+1 {
-		t.Errorf("down within the caption = %d, want %d", got, inline.capStart+1)
+	if got := m.article.viewport.YOffset; got != inline.CapStart+1 {
+		t.Errorf("down within the caption = %d, want %d", got, inline.CapStart+1)
 	}
 	// Up from a photo row reveals the full inline image.
-	m.article.viewport.SetYOffset(inline.imgStart + 1)
+	m.article.viewport.SetYOffset(inline.ImgStart + 1)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgStart {
-		t.Errorf("up from an inline photo row = %d, want %d (reveal)", got, inline.imgStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("up from an inline photo row = %d, want %d (reveal)", got, inline.ImgStart)
 	}
 	// Up from just below the inline block lands on its caption line.
-	m.article.viewport.SetYOffset(inline.imgEnd + 1)
+	m.article.viewport.SetYOffset(inline.ImgEnd + 1)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgEnd {
-		t.Errorf("up from below the inline block = %d, want %d (its caption)", got, inline.imgEnd)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd {
+		t.Errorf("up from below the inline block = %d, want %d (its caption)", got, inline.ImgEnd)
 	}
 }
 
@@ -1805,30 +1807,30 @@ func TestScrollSnapsAcrossAdjacentPhotosSkipsGap(t *testing.T) {
 	m.imgCache.Set("inline.jpg", testImg())
 	m.article = m.newArticleState(a)
 	lead, inline := m.article.imageBlocks[0], m.article.imageBlocks[1]
-	gap := inline.imgStart - 1
-	if lead.imgEnd+2 != inline.imgStart {
-		t.Fatalf("photos not adjacent: lead end %d + 2 = %d, inline start %d", lead.imgEnd, lead.imgEnd+2, inline.imgStart)
+	gap := inline.ImgStart - 1
+	if lead.ImgEnd+2 != inline.ImgStart {
+		t.Fatalf("photos not adjacent: lead end %d + 2 = %d, inline start %d", lead.ImgEnd, lead.ImgEnd+2, inline.ImgStart)
 	}
 
 	// Down: the lead is pre-consumed (skip onto its caption), then a single
 	// move snaps to the inline's top without pausing on the gap.
 	m.article.viewport.SetYOffset(0)
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != lead.capStart {
-		t.Fatalf("down into the lead = %d, want %d (its caption)", got, lead.capStart)
+	if got := m.article.viewport.YOffset; got != lead.CapStart {
+		t.Fatalf("down into the lead = %d, want %d (its caption)", got, lead.CapStart)
 	}
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.imgStart {
-		t.Errorf("down from the lead caption = %d, want %d (inline top, gap %d skipped)", got, inline.imgStart, gap)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("down from the lead caption = %d, want %d (inline top, gap %d skipped)", got, inline.ImgStart, gap)
 	}
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.capStart {
-		t.Errorf("down again = %d, want %d (inline caption)", got, inline.capStart)
+	if got := m.article.viewport.YOffset; got != inline.CapStart {
+		t.Errorf("down again = %d, want %d (inline caption)", got, inline.CapStart)
 	}
 
 	// Up: from the inline's top the snap steps back through the inline's own
 	// stages, never pausing on the separator gap.
-	m.article.viewport.SetYOffset(inline.imgStart)
+	m.article.viewport.SetYOffset(inline.ImgStart)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 	if got := m.article.viewport.YOffset; got == gap || got == gap+1 {
 		t.Errorf("up move rested on the separator gap (offset %d); want a snap", got)
@@ -1861,12 +1863,12 @@ func TestScrollUpFromBottomBoundarySnapsPhotoOut(t *testing.T) {
 		t.Fatalf("want lead + two inline blocks, got %d", len(m.article.imageBlocks))
 	}
 	one, two := m.article.imageBlocks[1], m.article.imageBlocks[2]
-	bottom := two.imgEnd - vpH + 1
+	bottom := two.ImgEnd - vpH + 1
 
 	m.article.viewport.SetYOffset(bottom)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != one.imgStart {
-		t.Errorf("up from lower photo bottom boundary = %d, want %d (upper photo revealed flush)", got, one.imgStart)
+	if got := m.article.viewport.YOffset; got != one.ImgStart {
+		t.Errorf("up from lower photo bottom boundary = %d, want %d (upper photo revealed flush)", got, one.ImgStart)
 	}
 }
 
@@ -1903,8 +1905,8 @@ func TestInlineImageRepeatedURLShownOnce(t *testing.T) {
 	if len(m.article.imageBlocks) != 2 {
 		t.Fatalf("imageBlocks = %d, want 2 (lead + one inline occurrence)", len(m.article.imageBlocks))
 	}
-	if m.article.imageBlocks[1].url != "a.jpg" {
-		t.Errorf("inline block url = %q, want a.jpg", m.article.imageBlocks[1].url)
+	if m.article.imageBlocks[1].URL != "a.jpg" {
+		t.Errorf("inline block url = %q, want a.jpg", m.article.imageBlocks[1].URL)
 	}
 	joined := strings.Join(strippedLines(m.article.lines), "\n")
 	if !strings.Contains(joined, "one") || !strings.Contains(joined, "two") || !strings.Contains(joined, "three") {
@@ -1923,7 +1925,7 @@ func TestNativeClippedImageDoesNotPaintOverBorder(t *testing.T) {
 	m.imgCache.Set(imageArticle().ImageURL, testImg())
 	m.imgCache.Set("inline.jpg", testImg())
 	m.view = viewArticle
-	contentW, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
 	// A native block taller than the viewport, as a real fitted photo can be
 	// when its top sits mid-window: its placement would extend past the fold
 	// and draw over the article border.
@@ -1936,15 +1938,15 @@ func TestNativeClippedImageDoesNotPaintOverBorder(t *testing.T) {
 	m.imgNatives.Set(imgpkg.NativeKey("inline.jpg", contentW, vpH), tall)
 	m.article = m.newArticleState(a)
 	inline := m.article.imageBlocks[1]
-	if !inline.nativeImg {
+	if !inline.NativeImg {
 		t.Fatal("inline block should be flagged native")
 	}
 
 	// Top visible, bottom below the fold: the frame deletes the placement and
 	// suppresses the transmit so the image cannot paint over the border.
-	m.article.viewport.SetYOffset(inline.imgStart)
+	m.article.viewport.SetYOffset(inline.ImgStart)
 	view := m.View()
-	if !strings.Contains(view, imgpkg.DeleteByID(inline.nativeID)) {
+	if !strings.Contains(view, imgpkg.DeleteByID(inline.NativeID)) {
 		t.Errorf("clipped image placement should be deleted by its render id: %q", view)
 	}
 	if strings.Contains(view, "a=T,f=100") {
@@ -1977,8 +1979,8 @@ func TestInlineLinkTextCaptionFitsNativeBlock(t *testing.T) {
 	}
 
 	// Render the inline photo natively with that caption and re-compose.
-	width, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, captionWidth(width))()
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -1986,13 +1988,13 @@ func TestInlineLinkTextCaptionFitsNativeBlock(t *testing.T) {
 	m.imgNatives.Set(imgpkg.NativeKey("inline.jpg", width, vpH), nm.Lines)
 	m.recomposeArticle()
 	inline := m.article.imageBlocks[1]
-	if !inline.nativeImg {
+	if !inline.NativeImg {
 		t.Fatal("inline block should be native after the render")
 	}
 	// The fitted image plus its composed caption fits the viewport budget, so
 	// the two-stage snap keeps a distinct bottom stage.
-	if inline.imgEnd-inline.imgStart+1 >= vpH {
-		t.Errorf("native inline block %d..%d does not fit viewport %d", inline.imgStart, inline.imgEnd, vpH)
+	if inline.ImgEnd-inline.ImgStart+1 >= vpH {
+		t.Errorf("native inline block %d..%d does not fit viewport %d", inline.ImgStart, inline.ImgEnd, vpH)
 	}
 }
 
@@ -2009,7 +2011,7 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 	m.imgCache.Set(imageArticle().ImageURL, testImg())
 	m.imgCache.Set("inline.jpg", testImg())
 	m.view = viewArticle
-	contentW, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
 	tall := make([]string, vpH+40)
 	esc := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=2,r=2;AAAA\x1b\\"
 	tall[0] = esc + "  "
@@ -2019,18 +2021,18 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 	m.imgNatives.Set(imgpkg.NativeKey("inline.jpg", contentW, vpH), tall)
 	m.article = m.newArticleState(a)
 	inline := m.article.imageBlocks[1]
-	if !inline.nativeImg {
+	if !inline.NativeImg {
 		t.Fatal("inline block should be flagged native")
 	}
 
 	// Partial at the bottom edge: the visible rows must carry the preview.
-	m.article.viewport.SetYOffset(inline.imgStart)
+	m.article.viewport.SetYOffset(inline.ImgStart)
 	view := m.View()
 	if !strings.Contains(view, "PREVIEW1") {
 		t.Errorf("clipped image should show its halfblock preview, got: %q", view)
 	}
 	// The transmit and placement handling is unchanged.
-	if !strings.Contains(view, imgpkg.DeleteByID(inline.nativeID)) {
+	if !strings.Contains(view, imgpkg.DeleteByID(inline.NativeID)) {
 		t.Errorf("clipped image placement should still be deleted by its render id: %q", view)
 	}
 	if strings.Contains(view, "a=T,f=100") {
@@ -2048,8 +2050,8 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	m.imgCache.Set("inline.jpg", testImg())
 	m.article = m.newArticleState(a)
 	for i := range m.article.imageBlocks {
-		m.article.imageBlocks[i].nativeImg = true
-		m.article.imageBlocks[i].nativeID = uint32(100 + i)
+		m.article.imageBlocks[i].NativeImg = true
+		m.article.imageBlocks[i].NativeID = uint32(100 + i)
 	}
 	lead := m.article.imageBlocks[0]
 	inline := m.article.imageBlocks[1]
@@ -2057,17 +2059,17 @@ func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	// Lead scrolled off while the inline is on screen: the clear must delete
 	// the lead's placement by its recorded id and leave the visible inline
 	// alone.
-	m.article.viewport.SetYOffset(inline.imgStart)
+	m.article.viewport.SetYOffset(inline.ImgStart)
 	got := m.nativeImageClear()
-	if !strings.Contains(got, imgpkg.DeleteByID(lead.nativeID)) {
+	if !strings.Contains(got, imgpkg.DeleteByID(lead.NativeID)) {
 		t.Errorf("clear should delete the scrolled-out lead placement by its render id: %q", got)
 	}
-	if strings.Contains(got, imgpkg.DeleteByID(inline.nativeID)) {
+	if strings.Contains(got, imgpkg.DeleteByID(inline.NativeID)) {
 		t.Errorf("clear must not delete the visible inline placement: %q", got)
 	}
 
 	// Everything on screen: no clear at all.
-	m.article.viewport.SetYOffset(lead.imgStart)
+	m.article.viewport.SetYOffset(lead.ImgStart)
 	if got := m.nativeImageClear(); strings.Contains(got, "a=d") {
 		t.Errorf("clear issued while all images visible: %q", got)
 	}
@@ -2089,7 +2091,7 @@ func TestNativeKittyResizeDeletesPriorIDBeforeTransmit(t *testing.T) {
 	if !m.article.nativeImg {
 		t.Fatal("expected a native render at the initial size")
 	}
-	oldID := m.article.imageBlocks[0].nativeID
+	oldID := m.article.imageBlocks[0].NativeID
 	if oldID == 0 {
 		t.Fatal("native block must record its render id")
 	}
@@ -2108,7 +2110,7 @@ func TestNativeKittyResizeDeletesPriorIDBeforeTransmit(t *testing.T) {
 	if !m.article.nativeImg {
 		t.Fatal("expected a native render at the resized geometry")
 	}
-	newID := m.article.imageBlocks[0].nativeID
+	newID := m.article.imageBlocks[0].NativeID
 	if newID == 0 || newID == oldID {
 		t.Fatalf("resize should mint a new render id: old %d new %d", oldID, newID)
 	}
@@ -2140,8 +2142,8 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	nativeRenderLines(t, m, a)
 	m.article = m.newArticleState(a)
 	m.view = viewArticle
-	width, vpH, _ := contentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, captionWidth(width))()
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.cfg.Display.PaddingX, m.cfg.Display.PaddingY)
+	msg := imgpkg.NativeCmd(m.imgNative, m.imgPhotos, m.imgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg for the inline image, got %T", msg)
@@ -2150,11 +2152,11 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	m.recomposeArticle()
 	var ids []uint32
 	for _, b := range m.article.imageBlocks {
-		if b.nativeImg {
-			if b.nativeID == 0 {
-				t.Fatalf("native block for %s should record its render id", b.url)
+		if b.NativeImg {
+			if b.NativeID == 0 {
+				t.Fatalf("native block for %s should record its render id", b.URL)
 			}
-			ids = append(ids, b.nativeID)
+			ids = append(ids, b.NativeID)
 		}
 	}
 	if len(ids) < 2 {
@@ -2169,7 +2171,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 
 	// Scrolling to the inline deletes the scrolled-out lead by id while the
 	// inline records its id, so both remain tracked as held by the terminal.
-	m.article.viewport.SetYOffset(m.article.imageBlocks[1].imgStart)
+	m.article.viewport.SetYOffset(m.article.imageBlocks[1].ImgStart)
 	if got := m.View(); !strings.Contains(got, imgpkg.DeleteByID(ids[0])) {
 		t.Fatalf("scrolled-out lead should be deleted by its recorded id: %q", got)
 	}

@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 func TestContentGeom(t *testing.T) {
 	cases := []struct {
-		name                         string
-		w, h, padX, padY             int
+		name                                  string
+		w, h, padX, padY                      int
 		wantTextW, wantViewportH, wantEffPadY int
 	}{
 		{"normal", 80, 24, 2, 1, 74, 21, 1},
@@ -22,9 +23,9 @@ func TestContentGeom(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			textW, viewportH, effPadY := contentGeom(tc.w, tc.h, tc.padX, tc.padY)
+			textW, viewportH, effPadY := render.ContentGeom(tc.w, tc.h, tc.padX, tc.padY)
 			if textW != tc.wantTextW || viewportH != tc.wantViewportH || effPadY != tc.wantEffPadY {
-				t.Fatalf("contentGeom(%d,%d,%d,%d) = (%d,%d,%d), want (%d,%d,%d)",
+				t.Fatalf("render.ContentGeom(%d,%d,%d,%d) = (%d,%d,%d), want (%d,%d,%d)",
 					tc.w, tc.h, tc.padX, tc.padY, textW, viewportH, effPadY,
 					tc.wantTextW, tc.wantViewportH, tc.wantEffPadY)
 			}

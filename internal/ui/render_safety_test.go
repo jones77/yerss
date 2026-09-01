@@ -7,6 +7,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 func TestRenderListZeroHeight(t *testing.T) {
@@ -67,8 +68,8 @@ func TestRenderArticleZeroHeight(t *testing.T) {
 
 func TestListWindow(t *testing.T) {
 	cases := []struct {
-		name              string
-		n, cursor, height int
+		name               string
+		n, cursor, height  int
 		wantStart, wantEnd int
 	}{
 		{"all fit", 5, 2, 10, 0, 5},
@@ -91,7 +92,7 @@ func TestListWindow(t *testing.T) {
 
 func TestTruncateLongTitle(t *testing.T) {
 	long := strings.Repeat("x", 200)
-	got := truncate(long, 40)
+	got := render.Truncate(long, 40)
 	if runewidth.StringWidth(got) > 40 {
 		t.Errorf("truncate exceeded width: %q", got)
 	}
@@ -102,15 +103,15 @@ func TestTruncateCJKTitle(t *testing.T) {
 	if runewidth.StringWidth(title) != 20 {
 		t.Fatalf("expected 20 display columns for test title, got %d", runewidth.StringWidth(title))
 	}
-	got := truncate(title, 10)
+	got := render.Truncate(title, 10)
 	if runewidth.StringWidth(got) != 10 {
 		t.Errorf("expected exactly 10 columns, got %d: %q", runewidth.StringWidth(got), got)
 	}
 }
 
 func TestRenderArticleBorderHeightClamp(t *testing.T) {
-	g := glyphsFor(true)
-	p := darkPalette()
+	g := render.GlyphsFor(true)
+	p := render.DarkPalette()
 	cases := []struct {
 		name    string
 		h, padY int
@@ -121,7 +122,7 @@ func TestRenderArticleBorderHeightClamp(t *testing.T) {
 		{"h3 padY5", 3, 5},
 	}
 	for _, c := range cases {
-		got := renderArticleBorder(80, c.h, 2, c.padY, g, p, "", "t", scrollState{totalH: 100, viewportH: 10, offset: 0}, []string{"x"})
+		got := render.RenderArticleBorder(80, c.h, 2, c.padY, g, p, "", "t", render.ScrollState{TotalH: 100, ViewportH: 10, Offset: 0}, []string{"x"})
 		if n := len(strings.Split(got, "\n")); n > c.h {
 			t.Errorf("%s: emitted %d lines, want <= %d", c.name, n, c.h)
 		}

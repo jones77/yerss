@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 func withLocalZone(t *testing.T, loc *time.Location) {
@@ -247,8 +248,8 @@ func TestStatusBarShowsNT(t *testing.T) {
 
 	// rows: [header, one, two]; select the second article (position 2 of 2).
 	m.list.cursor = 2
-	if got := m.renderStatusBar(); !strings.Contains(got, "100% "+glyphsFor(m.ascii).bullet+" 2/2") {
-		t.Errorf("status bar = %q, want 100%% %s 2/2", got, glyphsFor(m.ascii).bullet)
+	if got := m.renderStatusBar(); !strings.Contains(got, "100% "+render.GlyphsFor(m.ascii).Bullet+" 2/2") {
+		t.Errorf("status bar = %q, want 100%% %s 2/2", got, render.GlyphsFor(m.ascii).Bullet)
 	}
 
 	m.popupData = popupState{
@@ -259,8 +260,8 @@ func TestStatusBarShowsNT(t *testing.T) {
 	// filtered to [header, one]; select article one (position 1 of 2 total).
 	m.list.cursor = 1
 	got := m.renderStatusBar()
-	if !strings.Contains(got, "50% "+glyphsFor(m.ascii).bullet+" 1/2") {
-		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, glyphsFor(m.ascii).bullet)
+	if !strings.Contains(got, "50% "+render.GlyphsFor(m.ascii).Bullet+" 1/2") {
+		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, render.GlyphsFor(m.ascii).Bullet)
 	}
 	if !strings.Contains(got, "filter tech") {
 		t.Errorf("filtered status bar missing filter name: %q", got)
@@ -292,8 +293,8 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	if !strings.Contains(got, formatSize(m.dbSize)) {
 		t.Errorf("status bar = %q, want size with refresh date", got)
 	}
-	if !strings.Contains(got, formatSize(m.dbSize)+" "+glyphsFor(m.ascii).bullet+" 100% "+glyphsFor(m.ascii).bullet+" 1/1") {
-		t.Errorf("status bar = %q, want size %s percentage %s position", got, glyphsFor(m.ascii).bullet, glyphsFor(m.ascii).bullet)
+	if !strings.Contains(got, formatSize(m.dbSize)+" "+render.GlyphsFor(m.ascii).Bullet+" 100% "+render.GlyphsFor(m.ascii).Bullet+" 1/1") {
+		t.Errorf("status bar = %q, want size %s percentage %s position", got, render.GlyphsFor(m.ascii).Bullet, render.GlyphsFor(m.ascii).Bullet)
 	}
 }
 
@@ -309,7 +310,7 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	got := m.renderStatusBar()
 	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
 	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
-	bullet := glyphsFor(m.ascii).bullet
+	bullet := render.GlyphsFor(m.ascii).Bullet
 	if !strings.Contains(got, dim.Render(bullet)) {
 		t.Errorf("bullets should render in the dim role (ANSI 8): %q", got)
 	}
@@ -333,7 +334,7 @@ func TestStatusBarHelpHintTrailing(t *testing.T) {
 	got := ansi.Strip(m.renderStatusBar())
 	// left = "never refreshed" (15), right = "?: help · 100% · 1/1" (20);
 	// the 45-column gap is plain space padding.
-	b := glyphsFor(m.ascii).bullet
+	b := render.GlyphsFor(m.ascii).Bullet
 	want := "never refreshed" + strings.Repeat(" ", 45) + "?: help " + b + " 100% " + b + " 1/1"
 	if got != want {
 		t.Errorf("status bar = %q, want %q", got, want)
@@ -421,7 +422,7 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	if !strings.Contains(line, "timed") {
 		t.Errorf("row should contain the title: %q", line)
 	}
-	if strings.Contains(line, glyphsFor(m.ascii).bullet) {
+	if strings.Contains(line, render.GlyphsFor(m.ascii).Bullet) {
 		t.Errorf("row should not contain bullets: %q", line)
 	}
 }

@@ -1,4 +1,4 @@
-package ui
+package render
 
 import (
 	"strings"
@@ -6,14 +6,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// truncate truncates s to at most width display columns, keeping ANSI escape
+// Truncate truncates s to at most width display columns, keeping ANSI escape
 // sequences intact.
-func truncate(s string, width int) string {
+func Truncate(s string, width int) string {
 	return ansi.Truncate(s, width, "")
 }
 
-// padRight pads s to at least width display columns.
-func padRight(s string, width int) string {
+// PadRight pads s to at least width display columns.
+func PadRight(s string, width int) string {
 	gap := width - ansi.StringWidth(s)
 	if gap <= 0 {
 		return s
@@ -21,11 +21,11 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", gap)
 }
 
-// elideMiddle shortens s to at most maxWidth display columns, keeping the
+// ElideMiddle shortens s to at most maxWidth display columns, keeping the
 // start and end readable and removing the middle with the given ellipsis.
 // Strings already within the limit (or with no room for an ellipsis) are
 // returned unchanged.
-func elideMiddle(s string, maxWidth int, ellipsis string) string {
+func ElideMiddle(s string, maxWidth int, ellipsis string) string {
 	w := ansi.StringWidth(s)
 	e := ansi.StringWidth(ellipsis)
 	if w <= maxWidth || e >= maxWidth {

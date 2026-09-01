@@ -14,6 +14,7 @@ import (
 	"yerss/internal/feed"
 	"yerss/internal/image"
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 type viewState int
@@ -47,7 +48,7 @@ type Model struct {
 	article   articleState
 	popupData popupState
 
-	palette Palette
+	palette render.Palette
 	ascii   bool
 
 	mdRenderer      *glamour.TermRenderer
@@ -106,8 +107,8 @@ func New(cfg *config.Config, st *store.Store) *Model {
 		cfg:         cfg,
 		store:       st,
 		view:        viewList,
-		palette:     resolvePalette(cfg.Display.Theme),
-		ascii:       cfg.Display.Ascii || detectAsciiNeeded(),
+		palette:     render.ResolvePalette(cfg.Display.Theme),
+		ascii:       cfg.Display.Ascii || render.DetectAsciiNeeded(),
 		imgRenderer: image.Halfblocks{},
 		imgCache:    image.NewCache(),
 		imgBlocks:   image.NewBlocks(),
@@ -354,7 +355,7 @@ func overlay(base, pop string) string {
 func spliceStyled(baseRow, popRow string, bx, pw int) string {
 	left := ansi.Truncate(baseRow, bx, "")
 	if ansi.StringWidth(left) < bx {
-		left = padRight(left, bx)
+		left = render.PadRight(left, bx)
 	}
 	right := ansi.Cut(baseRow, bx+pw, ansi.StringWidth(baseRow))
 	return left + popRow + right

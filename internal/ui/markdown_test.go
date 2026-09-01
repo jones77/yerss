@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/config"
+	"yerss/internal/ui/compose"
 )
 
 func TestGlamourStandardStyleMapping(t *testing.T) {
@@ -23,8 +24,8 @@ func TestGlamourStandardStyleMapping(t *testing.T) {
 		if c.theme == "auto" {
 			continue
 		}
-		if got := glamourStandardStyle(c.theme); got != c.want {
-			t.Errorf("glamourStandardStyle(%q) = %q, want %q", c.theme, got, c.want)
+		if got := compose.GlamourStandardStyle(c.theme); got != c.want {
+			t.Errorf("compose.GlamourStandardStyle(%q) = %q, want %q", c.theme, got, c.want)
 		}
 	}
 }
@@ -117,8 +118,8 @@ func TestEscapeMarkdownText(t *testing.T) {
 		{"https://example.com/a_(b)", `https://example.com/a\_(b)`},
 	}
 	for _, c := range cases {
-		if got := escapeMarkdownText(c.in); got != c.want {
-			t.Errorf("escapeMarkdownText(%q) = %q, want %q", c.in, got, c.want)
+		if got := compose.EscapeMarkdownText(c.in); got != c.want {
+			t.Errorf("compose.EscapeMarkdownText(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
@@ -144,7 +145,7 @@ func TestIndentListContinuationsHangsIndent(t *testing.T) {
 
 func TestIndentListContinuationsSkipsPlainParagraph(t *testing.T) {
 	in := "first line of plain text\nsecond line of the same paragraph"
-	if got := indentListContinuations(in); got != in {
+	if got := compose.IndentListContinuations(in); got != in {
 		t.Errorf("plain paragraph lines must be untouched, got %q", got)
 	}
 }
@@ -219,7 +220,7 @@ func TestFixBlockquoteRewrapUnit(t *testing.T) {
 		bar + "vacillate. Space is killed by the railways, and we are left with   \n" +
 		"time\n" +
 		bar + "alone."
-	got := ansi.Strip(fixBlockquoteRewrap(in))
+	got := ansi.Strip(compose.FixBlockquoteRewrap(in))
 	lines := strings.Split(got, "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "to" || strings.TrimSpace(line) == "time" {
@@ -262,7 +263,7 @@ func TestRenderMarkdownBlockquoteNoClip(t *testing.T) {
 }
 
 func TestMarkdownToPlainTextFallback(t *testing.T) {
-	got := markdownToPlainText("**bold** and [world](https://example.com/post)\n\n# Title\n\n> quote\n\n* item")
+	got := compose.MarkdownToPlainText("**bold** and [world](https://example.com/post)\n\n# Title\n\n> quote\n\n* item")
 	if strings.Contains(got, "**") {
 		t.Errorf("plain-text fallback should not contain emphasis markers: %q", got)
 	}
@@ -286,7 +287,7 @@ func TestFixBlockquoteRewrapConsecutiveOrphans(t *testing.T) {
 		"time\n" +
 		bar + "vacillate. Space is killed by the railways, and we are left with   \n" +
 		bar + "alone."
-	got := ansi.Strip(fixBlockquoteRewrap(in))
+	got := ansi.Strip(compose.FixBlockquoteRewrap(in))
 	for _, line := range strings.Split(got, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "to" || trimmed == "time" {
@@ -308,13 +309,13 @@ func TestStyledCellsSkipsEscapesAndWideChars(t *testing.T) {
 	// The bar prefix is escape-heavy: cutting 2 visible cells must land exactly
 	// after the styled "│ ", regardless of the bytes the escapes occupy.
 	bar := "\x1b[38;5;252m│ \x1b[m"
-	if got, want := styledCells(bar+"world", 2), len("\x1b[38;5;252m│ "); got != want {
+	if got, want := compose.StyledCells(bar+"world", 2), len("\x1b[38;5;252m│ "); got != want {
 		t.Errorf("styledCells over ANSI prefix = %d, want %d", got, want)
 	}
-	if cellWidth('世') != 2 {
-		t.Errorf("wide rune width = %d, want 2", cellWidth('世'))
+	if compose.CellWidth('世') != 2 {
+		t.Errorf("wide rune width = %d, want 2", compose.CellWidth('世'))
 	}
-	if cellWidth('\u0301') != 0 {
-		t.Errorf("combining mark width = %d, want 0", cellWidth('\u0301'))
+	if compose.CellWidth('\u0301') != 0 {
+		t.Errorf("combining mark width = %d, want 0", compose.CellWidth('\u0301'))
 	}
 }

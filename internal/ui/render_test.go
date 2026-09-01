@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 func TestRenderList(t *testing.T) {
@@ -20,7 +21,7 @@ func TestRenderList(t *testing.T) {
 	if !strings.Contains(s, "one") || !strings.Contains(s, "two") {
 		t.Errorf("list render missing articles: %q", s)
 	}
-	if !strings.Contains(s, "0% "+glyphsFor(m.ascii).bullet+" 0/2") {
+	if !strings.Contains(s, "0% "+render.GlyphsFor(m.ascii).Bullet+" 0/2") {
 		t.Errorf("status bar missing position count: %q", s)
 	}
 }
@@ -177,7 +178,7 @@ func TestRenderTagPopup(t *testing.T) {
 
 func TestOverlayCentersByDisplayWidth(t *testing.T) {
 	base := "abcdefghijklmnopqrstuvwxyz" // 26 wide
-	pop := "XXX"                          // 3 wide
+	pop := "XXX"                         // 3 wide
 	got := overlay(base, pop)
 	want := "abcdefghijk" + "XXX" + "opqrstuvwxyz"
 	if got != want {

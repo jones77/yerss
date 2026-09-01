@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/compose"
+	"yerss/internal/ui/render"
 )
 
 func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
@@ -103,8 +105,8 @@ func TestHeaderLinkWrapsSpecialURLs(t *testing.T) {
 		"https://example.com/<id>":  "<https://example.com/<id>>",
 	}
 	for in, want := range cases {
-		if got := headerLink(in); got != want {
-			t.Errorf("headerLink(%q) = %q, want %q", in, got, want)
+		if got := compose.HeaderLink(in); got != want {
+			t.Errorf("compose.HeaderLink(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -112,7 +114,7 @@ func TestHeaderLinkWrapsSpecialURLs(t *testing.T) {
 func TestTruncateWidthWithOSC8(t *testing.T) {
 	url := "https://example.com/post"
 	linked := ansi.SetHyperlink(url) + "a-very-long-link-text-that-exceeds" + ansi.ResetHyperlink()
-	got := truncate(linked, 10)
+	got := render.Truncate(linked, 10)
 	if ansi.StringWidth(got) != 10 {
 		t.Errorf("truncated width = %d, want 10: %q", ansi.StringWidth(got), got)
 	}
@@ -127,7 +129,7 @@ func TestTruncateWidthWithOSC8(t *testing.T) {
 func TestPadRightWidthWithOSC8(t *testing.T) {
 	url := "https://example.com/post"
 	linked := ansi.SetHyperlink(url) + "world" + ansi.ResetHyperlink()
-	got := padRight(linked, 10)
+	got := render.PadRight(linked, 10)
 	if ansi.StringWidth(got) != 10 {
 		t.Errorf("padded width = %d, want 10: %q", ansi.StringWidth(got), got)
 	}

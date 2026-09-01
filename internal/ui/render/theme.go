@@ -1,4 +1,4 @@
-package ui
+package render
 
 import (
 	"os"
@@ -23,7 +23,8 @@ type Palette struct {
 	StatusBar lipgloss.Color
 }
 
-func darkPalette() Palette {
+// DarkPalette returns the dark-theme palette.
+func DarkPalette() Palette {
 	return Palette{
 		Text:      lipgloss.Color("7"),
 		Bright:    lipgloss.Color("15"),
@@ -32,7 +33,8 @@ func darkPalette() Palette {
 	}
 }
 
-func lightPalette() Palette {
+// LightPalette returns the light-theme palette.
+func LightPalette() Palette {
 	return Palette{
 		Text:      lipgloss.Color("0"),
 		Bright:    lipgloss.Color("0"),
@@ -41,25 +43,25 @@ func lightPalette() Palette {
 	}
 }
 
-// resolvePalette picks the palette for the configured theme mode. "auto"
+// ResolvePalette picks the palette for the configured theme mode. "auto"
 // detects the terminal's preferred background from the environment.
-func resolvePalette(mode string) Palette {
+func ResolvePalette(mode string) Palette {
 	switch mode {
 	case "light":
-		return lightPalette()
+		return LightPalette()
 	case "dark":
-		return darkPalette()
+		return DarkPalette()
 	default:
-		if detectLightBackground() {
-			return lightPalette()
+		if DetectLightBackground() {
+			return LightPalette()
 		}
-		return darkPalette()
+		return DarkPalette()
 	}
 }
 
-// detectLightBackground reports whether the terminal prefers a light
+// DetectLightBackground reports whether the terminal prefers a light
 // background, inferred from the COLORFGBG environment variable ("fg;bg").
-func detectLightBackground() bool {
+func DetectLightBackground() bool {
 	fgbg := os.Getenv("COLORFGBG")
 	if fgbg == "" {
 		return false
@@ -75,9 +77,9 @@ func detectLightBackground() bool {
 	return false
 }
 
-// detectAsciiNeeded reports whether the terminal is unlikely to render
+// DetectAsciiNeeded reports whether the terminal is unlikely to render
 // Unicode box-drawing characters and ASCII fallback should be used.
-func detectAsciiNeeded() bool {
+func DetectAsciiNeeded() bool {
 	term := os.Getenv("TERM")
 	if strings.HasPrefix(term, "linux") || strings.Contains(term, "dumb") {
 		return true

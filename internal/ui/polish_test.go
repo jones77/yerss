@@ -12,6 +12,7 @@ import (
 
 	"yerss/internal/config"
 	"yerss/internal/store"
+	"yerss/internal/ui/render"
 )
 
 // escapePrefix returns the ANSI escape prefix of a lipgloss-rendered string
@@ -31,11 +32,11 @@ func forceTrueColor(t *testing.T) {
 }
 
 func TestTopBorderBulletGlyph(t *testing.T) {
-	u := stripTop(t, topBorder(40, glyphsFor(false), darkPalette(), "2026-01-02 15:04:05", "short"))
+	u := stripTop(t, render.TopBorder(40, render.GlyphsFor(false), render.DarkPalette(), "2026-01-02 15:04:05", "short"))
 	if !strings.Contains(u, "·") {
 		t.Errorf("unicode top border missing · bullet: %q", u)
 	}
-	a := stripTop(t, topBorder(40, glyphsFor(true), darkPalette(), "2026-01-02 15:04:05", "short"))
+	a := stripTop(t, render.TopBorder(40, render.GlyphsFor(true), render.DarkPalette(), "2026-01-02 15:04:05", "short"))
 	if !strings.Contains(a, "2026-01-02 15:04:05 . ") {
 		t.Errorf("ascii top border missing . bullet: %q", a)
 	}
@@ -45,8 +46,8 @@ func TestTopBorderBulletGlyph(t *testing.T) {
 }
 
 func TestTopBorderShowsTime(t *testing.T) {
-	g := glyphsFor(false)
-	line := stripTop(t, topBorder(40, g, darkPalette(), "2026-01-02 15:04:05", strings.Repeat("x", 100)))
+	g := render.GlyphsFor(false)
+	line := stripTop(t, render.TopBorder(40, g, render.DarkPalette(), "2026-01-02 15:04:05", strings.Repeat("x", 100)))
 	if !strings.Contains(line, "2026-01-02 15:04:05") {
 		t.Errorf("date+time prefix must stay intact: %q", line)
 	}
@@ -80,14 +81,14 @@ func TestSourceID(t *testing.T) {
 }
 
 func TestElideMiddle(t *testing.T) {
-	if got := elideMiddle("short", 15, "…"); got != "short" {
+	if got := render.ElideMiddle("short", 15, "…"); got != "short" {
 		t.Errorf("string within the limit should be unchanged, got %q", got)
 	}
 	s := "reallylongnewspaperdomainname" // 29 columns
 	for _, e := range []string{"…", "..."} {
-		got := elideMiddle(s, 15, e)
+		got := render.ElideMiddle(s, 15, e)
 		if ansi.StringWidth(got) != 15 {
-			t.Errorf("elideMiddle(...,%q) width = %d, want 15: %q", e, ansi.StringWidth(got), got)
+			t.Errorf("render.ElideMiddle(...,%q) width = %d, want 15: %q", e, ansi.StringWidth(got), got)
 		}
 		if !strings.Contains(got, e) {
 			t.Errorf("elided string should contain the ellipsis %q: %q", e, got)
@@ -124,7 +125,7 @@ func TestArticleRowSourceRightAligned(t *testing.T) {
 	if !strings.HasSuffix(line, "newrepublic") {
 		t.Errorf("source should be the only right-aligned field: %q", line)
 	}
-	if strings.Contains(line, glyphsFor(m.ascii).bullet) {
+	if strings.Contains(line, render.GlyphsFor(m.ascii).Bullet) {
 		t.Errorf("row should not contain bullets: %q", line)
 	}
 	if ansi.StringWidth(line) != m.width {
@@ -140,9 +141,9 @@ func TestArticleRowTitleTruncatedWithEllipsis(t *testing.T) {
 	item := &m.list.groups[0].articles[0]
 	item.Link = "https://newrepublic.com/story/1"
 
-	g := glyphsFor(m.ascii)
+	g := render.GlyphsFor(m.ascii)
 	line := ansi.Strip(m.renderArticleRow(item, false))
-	if !strings.HasSuffix(line, g.ellipsis+" newrepublic") {
+	if !strings.HasSuffix(line, g.Ellipsis+" newrepublic") {
 		t.Errorf("truncated title should end with an ellipsis and keep a space before the source: %q", line)
 	}
 	if ansi.StringWidth(line) != m.width {
@@ -230,8 +231,8 @@ func TestArticleFrameBorderColors(t *testing.T) {
 }
 
 func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
-	g := glyphsFor(false)
-	line := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
+	g := render.GlyphsFor(false)
+	line := stripTop(t, render.BottomBorder(80, g, render.DarkPalette(), render.ScrollState{TotalH: 120, ViewportH: 20, Offset: 100}))
 	if !strings.HasPrefix(line, "└─ o: open article in browser") {
 		t.Errorf("hint should be inset past a horizontal line: %q", line)
 	}
@@ -248,15 +249,15 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 		t.Errorf("bottom border width = %d, want 80: %q", ansi.StringWidth(line), line)
 	}
 
-	fits := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 4, viewportH: 20, offset: 0}))
+	fits := stripTop(t, render.BottomBorder(80, g, render.DarkPalette(), render.ScrollState{TotalH: 4, ViewportH: 20, Offset: 0}))
 	if !strings.Contains(fits, "100% · 4/4") {
 		t.Errorf("short article indicator should be 100%% · 4/4: %q", fits)
 	}
 }
 
 func TestBottomBorderHelpHintTrailing(t *testing.T) {
-	g := glyphsFor(false)
-	line := stripTop(t, bottomBorder(80, g, darkPalette(), scrollState{totalH: 120, viewportH: 20, offset: 100}))
+	g := render.GlyphsFor(false)
+	line := stripTop(t, render.BottomBorder(80, g, render.DarkPalette(), render.ScrollState{TotalH: 120, ViewportH: 20, Offset: 100}))
 	// hint = "o: open article in browser" (26), indicator = "?: help · 100% ·
 	// 120/120" (24); fill = 80-2-6-26-24 = 22.
 	want := "└─ o: open article in browser " + strings.Repeat("─", 22) + " ?: help · 100% · 120/120 ─┘"
