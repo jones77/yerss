@@ -1245,11 +1245,13 @@ downward scroll that would move the offset into the photo's range from above
 SHALL snap to the photo's first line (the top boundary); one starting at or
 inside it skips the block past its caption onto the line after it. An inline
 image whose block is shorter than
-the viewport SHALL snap to the top boundary (its first line at the viewport top)
-as soon as a downward single-line scroll brings its top into the window from
-below, mirroring the upward scroll's entry snap, so a short photo entered from
-above is aligned flush rather than scrolled through line-by-line; the next
-downward scroll then skips the whole block onto the line after its caption. The
+the viewport SHALL snap to the bottom boundary (its first line at or inside the
+window with the block's last line at the viewport bottom) as soon as a downward
+single-line scroll brings its top into the window from below, so a short photo
+entered from below is aligned flush rather than scrolled through line-by-line —
+the image and its full wrapped caption appear at the viewport bottom; the next
+downward scroll SHALL rise it to the top boundary, and the following downward
+scroll then skips the whole block onto the line after its caption. The
 fully-visible skip SHALL NOT
 apply to inline images, so an inline image is never skipped past without first
 being shown. Upward single-line scrolls mirror the transitions: an image
@@ -1308,10 +1310,10 @@ suppressed so the image never paints over the article border.
 - **WHEN** a downward scroll leaves an inline image partially visible in the window — its top inside the window, its last line below the fold — because a skip of the preceding image left its top already inside the window (consecutive tall images are spaced closer than the viewport height)
 - **THEN** the viewport offset snaps to put the block's last line at the viewport bottom so the image and caption are fully visible, rather than leaving it partially clipped
 
-#### Scenario: Short inline image entered from above snaps flush to the viewport top
+#### Scenario: Short inline image entered from below snaps to the viewport bottom
 
 - **WHEN** a downward single-line scroll brings a short inline image's top into the window from below (its block is shorter than the viewport, so it is never partially clipped), the viewport height is 15, and the image's top line is 10
-- **THEN** the viewport offset snaps to 10 (the top boundary) so the image aligns flush to the viewport top in a single step, rather than scrolling into view line-by-line
+- **THEN** the viewport offset snaps to the block's bottom boundary so the image and its full caption are visible at the bottom of the screen, and the next downward scroll snaps the image's first line to the viewport top (the top boundary)
 
 #### Scenario: Inline image snaps to the viewport top on the next downward scroll
 

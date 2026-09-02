@@ -150,9 +150,10 @@ func offRevealTop(t, i, vpH int, blocks []ImageBlock) (int, bool) {
 // its TOP (the second stage); starting at or inside it skips the block past
 // its caption.
 // A short inline block (shorter than the viewport) whose top a downward move
-// brings into the window from below snaps straight to its TOP boundary,
-// mirroring the upward entry snap, so it lands flush at the viewport top and
-// the next downward move skips the whole block past its caption. An upward
+// brings into the window from below snaps to its BOTTOM boundary, aligning the
+// image and its wrapped caption at the viewport bottom as the two-stage entry;
+// the next downward move rises it to its TOP boundary, the following one skips
+// the whole block past its caption. An upward
 // scroll-off that would land inside a preceding image's range reveals the
 // immediately preceding image at its TOP, so consecutive images each show in
 // sequence. On a full-image-capable terminal
@@ -227,10 +228,12 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// Down entry snap for a short inline image: a single-line down move
 		// that brings a short block's top into the window from below (its top
 		// sat at or below the fold before the move, its block is shorter than
-		// the viewport) snaps its TOP boundary so it lands flush at the
-		// viewport top, mirroring the upward entry snap — a short photo
-		// entered from above is aligned flush rather than scrolled into view
-		// line-by-line — and the next down move skips it onto its caption. The
+		// the viewport) snaps its BOTTOM boundary, aligning the whole image
+		// and wrapped caption at the viewport bottom as the two-stage entry —
+		// the image is never skipped past without first being shown, and a
+		// short photo entered from below is aligned flush rather than scrolled
+		// into view line-by-line. The next downward move rises it to its TOP
+		// boundary, the following move skips it onto its caption. The
 		// partial-visibility bottom snap below still handles blocks taller
 		// than the viewport (which the top entering at the fold leaves
 		// genuinely clipped) and images whose top was already inside the
@@ -241,7 +244,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 				b.ImgEnd-b.ImgStart+1 < vpH &&
 				b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH &&
 				b.ImgStart >= before+vpH {
-				return snap(b.ImgStart)
+				return snap(pos[i].bottom)
 			}
 		}
 		// Bottom snap: an inline image that is partially visible in the window
