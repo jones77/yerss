@@ -40,7 +40,10 @@ func (m *Model) nativeImages() bool {
 // before the new transmit, so the terminal never holds two sizes of one image),
 // and blocks that reverted to a placeholder. Leaving the article view frees
 // every held image by its id — delete-all only clears visible placements and
-// can leave the terminal's cached image data to accumulate. An article with no
+// can leave the terminal's cached image data to accumulate; on Ghostty, whose
+// by-id delete handling is partial, leaving the article view additionally
+// clears every visible placement so none can survive over the list. An article
+// with no
 // composed native image falls back to the delete-all clear so the previous
 // article's photos cannot linger, but only on the transition into that article
 // (nativeClearArticleID), not on every no-native-image frame. The sequence is
@@ -65,6 +68,12 @@ func (m *Model) computeNativeClear() string {
 			sb.WriteString(image.DeleteByID(id))
 		}
 		m.nativeSent = make(map[string]uint32)
+		// Ghostty's by-id delete handling is partial, so a placement can
+		// survive the per-id deletes and float over the list; the delete-all
+		// clears every visible placement as a belt-and-suspenders guarantee.
+		if m.sess.ImgNative.Ghostty {
+			sb.WriteString(m.sess.ImgNative.Clear())
+		}
 		// Leaving the article view: the next entry into a no-native article
 		// must re-emit the delete-all.
 		m.nativeClearArticleID = -1

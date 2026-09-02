@@ -24,6 +24,9 @@ import (
 // cell box the halfblock block would.
 type NativeRenderer struct {
 	Protocol Protocol
+	// Ghostty marks a Ghostty terminal, whose kitty-graphics delete handling
+	// is partial; the exit clear appends a delete-all fallback for it.
+	Ghostty bool
 }
 
 // cellPixelSizeFn is overridable in tests; by default it detects the terminal
@@ -141,16 +144,17 @@ func (r NativeRenderer) Clear() string {
 }
 
 // DeleteByID returns the kitty sequence that deletes the image (and its
-// placements) transmitted under id. Unlike Clear's d=a, which only removes
-// placements visible on screen, deleting by id also frees the terminal's cached
-// image data, so an image scrolled out of view or superseded by a re-render
-// cannot linger in the terminal's image cache. It returns "" for id 0 (nothing
-// was transmitted). q=1 suppresses the response.
+// placements) transmitted under id, freeing the terminal's cached image data
+// via the data-freeing delete action (d=I). Unlike Clear's d=a, which only
+// removes placements visible on screen, deleting by id also releases the
+// terminal's cached image data, so an image scrolled out of view or superseded
+// by a re-render cannot linger in the terminal's image cache. It returns "" for
+// id 0 (nothing was transmitted). q=1 suppresses the response.
 func DeleteByID(id uint32) string {
 	if id == 0 {
 		return ""
 	}
-	return fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=1\x1b\\", id)
+	return fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=1\x1b\\", id)
 }
 
 // kittyChunkSize bounds a single kitty graphics chunk in base64 characters.

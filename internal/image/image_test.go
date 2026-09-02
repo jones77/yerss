@@ -817,6 +817,36 @@ func TestDetectProtocolEnv(t *testing.T) {
 	}
 }
 
+func TestDetectGhosttyEnv(t *testing.T) {
+	old := detectGhostty
+	defer func() { detectGhostty = old }()
+	cases := []struct {
+		name string
+		env  map[string]string
+		want bool
+	}{
+		{"ghostty program", map[string]string{"TERM_PROGRAM": "ghostty"}, true},
+		{"ghostty resources dir", map[string]string{"GHOSTTY_RESOURCES_DIR": "/x"}, true},
+		{"kitty program", map[string]string{"TERM_PROGRAM": "kitty"}, false},
+		{"kitty term", map[string]string{"TERM": "xterm-kitty"}, false},
+		{"iterm", map[string]string{"TERM_PROGRAM": "iTerm.app"}, false},
+		{"empty", map[string]string{}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for _, k := range []string{"TERM_PROGRAM", "GHOSTTY_RESOURCES_DIR"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range c.env {
+				t.Setenv(k, v)
+			}
+			if got := detectEnvGhostty(); got != c.want {
+				t.Errorf("detectEnvGhostty() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestDetectProtocolTmuxGated(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/tmux")
 	t.Setenv("TERM_PROGRAM", "iTerm.app")
@@ -959,11 +989,11 @@ func TestNativeRendererSmallImageRendersAtNaturalSize(t *testing.T) {
 
 func TestDeleteByID(t *testing.T) {
 	got := DeleteByID(7)
-	want := "\x1b_Ga=d,d=i,i=7,q=1\x1b\\"
+	want := "\x1b_Ga=d,d=I,i=7,q=1\x1b\\"
 	if got != want {
 		t.Errorf("DeleteByID = %q, want %q", got, want)
 	}
-	if !strings.HasPrefix(got, "\x1b_Ga=d,d=i,i=") || !strings.HasSuffix(got, ",q=1\x1b\\") {
+	if !strings.HasPrefix(got, "\x1b_Ga=d,d=I,i=") || !strings.HasSuffix(got, ",q=1\x1b\\") {
 		t.Errorf("DeleteByID shape wrong: %q", got)
 	}
 	if got := DeleteByID(0); got != "" {

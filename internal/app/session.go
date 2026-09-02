@@ -38,7 +38,7 @@ func New(cfg *config.Config, st *store.Store) *Session {
 		ImgBlocks:   image.NewBlocks(),
 		ImgPhotos:   image.NewPhotos(),
 		ImgNatives:  image.NewNatives(),
-		ImgNative:   image.NativeRenderer{Protocol: image.DetectProtocol()},
+		ImgNative:   image.NativeRenderer{Protocol: image.DetectProtocol(), Ghostty: image.DetectGhostty()},
 	}
 }
 

@@ -42,6 +42,19 @@ var detectProtocol = detectEnvProtocol
 // images would otherwise be captured by the multiplexer.
 func DetectProtocol() Protocol { return detectProtocol() }
 
+// detectGhostty is a variable so tests can override the environment probe.
+var detectGhostty = detectEnvGhostty
+
+// DetectGhostty reports whether the terminal is Ghostty, inferred from the
+// environment the same way DetectProtocol works (TERM_PROGRAM is "ghostty" or
+// GHOSTTY_RESOURCES_DIR is set). Ghostty's kitty-graphics delete handling is
+// partial, so the cleanup path adds a delete-all fallback on it.
+func DetectGhostty() bool { return detectGhostty() }
+
+func detectEnvGhostty() bool {
+	return os.Getenv("TERM_PROGRAM") == "ghostty" || os.Getenv("GHOSTTY_RESOURCES_DIR") != ""
+}
+
 func detectEnvProtocol() Protocol {
 	if os.Getenv("TMUX") != "" && os.Getenv("TMUX_ALLOW_PASSTHROUGH") != "1" {
 		return ProtocolNone

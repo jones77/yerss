@@ -2187,7 +2187,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
 		strings.Repeat("<p>long paragraph body text</p>", 60)
 	m, _ := newImageModel(t, nil)
-	m.sess.ImgNative.Protocol = imgpkg.ProtocolKitty
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}
 	m.sess.ImgPhotos.Set(a.ImageURL, pngBytes(t, 40, 40))
 	m.sess.ImgPhotos.Set("inline.jpg", pngBytes(t, 40, 40))
 
@@ -2241,7 +2241,70 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 			t.Errorf("exit frame must delete recorded id %d: %q", id, got)
 		}
 	}
+	if !strings.Contains(got, "d=I") {
+		t.Errorf("exit frame must use the data-freeing delete form d=I: %q", got)
+	}
 	if strings.Contains(got, "a=d,d=a") {
 		t.Errorf("exit frame should free images by id, not delete-all: %q", got)
+	}
+}
+
+func TestNativeKittyGhosttyExitEmitsDeleteAllFallback(t *testing.T) {
+	// Ghostty's kitty-graphics delete handling is partial, so a placement can
+	// survive the per-id by-id deletes; the frame that leaves the article view
+	// must additionally emit a delete-all clear so no photo lingers over the
+	// list.
+	m, _ := newImageModel(t, nil)
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty, Ghostty: true}
+	m.sess.ImgPhotos.Set(imageArticle().ImageURL, pngBytes(t, 40, 40))
+	nativeRenderLines(t, m, imageArticle())
+	m.article = m.newArticleState(imageArticle())
+	m.view = viewArticle
+	if !m.article.nativeImg {
+		t.Fatal("expected a native render")
+	}
+	leadID := m.article.imageBlocks[0].NativeID
+	if leadID == 0 {
+		t.Fatal("native block should record its kitty render id")
+	}
+	if got := frameView(m); !strings.Contains(got, fmt.Sprintf("i=%d", leadID)) {
+		t.Fatalf("article frame should transmit the photo id %d: %q", leadID, got)
+	}
+	m.backToList()
+	got := frameView(m)
+	if !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+		t.Errorf("ghostty exit frame must delete the placement by its recorded id: %q", got)
+	}
+	if !strings.Contains(got, "a=d,d=a") {
+		t.Errorf("ghostty exit frame must also carry the delete-all fallback: %q", got)
+	}
+}
+
+func TestNativeKittyNonGhosttyExitHasNoDeleteAll(t *testing.T) {
+	// A kitty-family terminal that handles d=I correctly needs only the per-id
+	// deletes; the delete-all fallback must not appear on non-Ghostty terminals.
+	m, _ := newImageModel(t, nil)
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}
+	m.sess.ImgPhotos.Set(imageArticle().ImageURL, pngBytes(t, 40, 40))
+	nativeRenderLines(t, m, imageArticle())
+	m.article = m.newArticleState(imageArticle())
+	m.view = viewArticle
+	if !m.article.nativeImg {
+		t.Fatal("expected a native render")
+	}
+	leadID := m.article.imageBlocks[0].NativeID
+	if leadID == 0 {
+		t.Fatal("native block should record its kitty render id")
+	}
+	if got := frameView(m); !strings.Contains(got, fmt.Sprintf("i=%d", leadID)) {
+		t.Fatalf("article frame should transmit the photo id %d: %q", leadID, got)
+	}
+	m.backToList()
+	got := frameView(m)
+	if !strings.Contains(got, imgpkg.DeleteByID(leadID)) {
+		t.Errorf("kitty exit frame must delete the placement by its recorded id: %q", got)
+	}
+	if strings.Contains(got, "a=d,d=a") {
+		t.Errorf("kitty exit frame must not carry the delete-all on a non-Ghostty terminal: %q", got)
 	}
 }
