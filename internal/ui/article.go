@@ -170,18 +170,33 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		parts = append(parts, "")
 		lineCount++
 	}
-	if a.ImageURL != "" && m.imagesEnabled() {
+
+	bodyMD, inline := convert.ConvertImages(a.Content)
+	suppressLead := false
+	if a.ImageURL != "" {
+		leadSrc := compose.CanonicalSource(a.ImageURL)
+		for _, im := range inline {
+			if compose.CanonicalSource(im.URL) == leadSrc {
+				suppressLead = true
+				break
+			}
+		}
+	}
+	if !suppressLead && a.ImageURL != "" && m.imagesEnabled() {
 		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, headerLines); len(block) > 0 {
 			addImageBlock(a.ImageURL, block, rows, native, id)
 		}
 	}
 
-	bodyMD, inline := convert.ConvertImages(a.Content)
-	inline = compose.DedupeInline(a.ImageURL, inline)
-	bodyMD = compose.StripDuplicateSentinels(bodyMD, a.ImageURL)
+	leadURL := ""
+	if !suppressLead {
+		leadURL = a.ImageURL
+	}
+	inline = compose.DedupeInline(leadURL, inline)
+	bodyMD = compose.StripDuplicateSentinels(bodyMD, leadURL)
 	imageURLs := []string{}
-	if a.ImageURL != "" {
-		imageURLs = append(imageURLs, a.ImageURL)
+	if leadURL != "" {
+		imageURLs = append(imageURLs, leadURL)
 	}
 	for _, im := range inline {
 		imageURLs = append(imageURLs, im.URL)

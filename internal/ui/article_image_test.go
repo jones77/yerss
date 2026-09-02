@@ -1884,22 +1884,68 @@ func TestScrollUpFromBottomBoundarySnapsPhotoOut(t *testing.T) {
 func TestInlineImageLeadDuplicateSkipped(t *testing.T) {
 	wide := strings.Repeat("I", 40)
 	a := imageArticle()
-	// The lead image URL also appears in the body; only the lead block should
-	// compose, not a duplicate inline block, and the body paragraphs remain.
+	// The lead image URL also appears in the body; the duplicate top lead is
+	// suppressed and the body copy renders in place, so the photo appears once
+	// at its natural position in the article flow, not as a top-of-article lead.
 	a.Content = `<p>intro</p><p><img src="` + a.ImageURL + `"></p><p>outro</p>` +
 		strings.Repeat("<p>body text</p>", 20)
 	m, _ := newImageModel(t, []string{wide, wide})
 	m.article = m.newArticleState(a)
 
 	if len(m.article.imageBlocks) != 1 {
-		t.Fatalf("imageBlocks = %d, want 1 (lead only; duplicate inline skipped)", len(m.article.imageBlocks))
+		t.Fatalf("imageBlocks = %d, want 1 (lead suppressed; body copy shown)", len(m.article.imageBlocks))
 	}
 	if len(m.article.imageURLs) != 1 || m.article.imageURLs[0] != a.ImageURL {
-		t.Errorf("imageURLs = %v, want just the lead URL", m.article.imageURLs)
+		t.Errorf("imageURLs = %v, want just the lead URL once", m.article.imageURLs)
 	}
-	joined := strings.Join(strippedLines(m.article.lines), "\n")
-	if !strings.Contains(joined, "intro") || !strings.Contains(joined, "outro") {
-		t.Errorf("body text missing around the skipped duplicate: %q", joined)
+	lines := strippedLines(m.article.lines)
+	introIdx := -1
+	for i, l := range lines {
+		if strings.Contains(l, "intro") {
+			introIdx = i
+			break
+		}
+	}
+	if introIdx < 0 {
+		t.Fatalf("intro text not found: %q", strings.Join(lines, "\n"))
+	}
+	block := m.article.imageBlocks[0]
+	if block.ImgStart <= introIdx {
+		t.Errorf("image block at line %d should render after intro at line %d (body copy, not a top lead)", block.ImgStart, introIdx)
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "outro") {
+		t.Errorf("outro text missing around the body image: %q", joined)
+	}
+}
+
+func TestSuppressedLeadNotFetchedOrStoredSeparately(t *testing.T) {
+	wide := strings.Repeat("I", 40)
+	a := imageArticle()
+	// Dropsite-style: the enclosure and the first body image are different CDN
+	// transform URLs of the same source photo. Only the body URL should be
+	// fetched/stored; the enclosure URL is suppressed and never appears in
+	// imageURLs (which drives the fetch and the article_images position).
+	src := "https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fac2c7f0f-6fe9-48ad-8b7e-23d3974439ef_1600x900.jpeg"
+	a.ImageURL = "https://substackcdn.com/image/fetch/$s_!GO48!,f_auto,q_auto:good,fl_progressive:steep/" + src
+	bodyURL := "https://substackcdn.com/image/fetch/$s_!GO48!,w_2400,c_limit,f_auto,q_auto:good,fl_progressive:steep/" + src
+	a.Content = `<p>intro</p><p><img src="` + bodyURL + `"></p><p>outro</p>` +
+		strings.Repeat("<p>body text</p>", 20)
+	m, _ := newImageModel(t, []string{wide, wide})
+	m.sess.ImgCache.Set(bodyURL, testImg())
+	m.article = m.newArticleState(a)
+
+	if len(m.article.imageBlocks) != 1 {
+		t.Fatalf("imageBlocks = %d, want 1 (lead suppressed; body copy shown)", len(m.article.imageBlocks))
+	}
+	if m.article.imageBlocks[0].URL != bodyURL {
+		t.Errorf("block url = %q, want the body URL %q", m.article.imageBlocks[0].URL, bodyURL)
+	}
+	if len(m.article.imageURLs) != 1 || m.article.imageURLs[0] != bodyURL {
+		t.Errorf("imageURLs = %v, want only the body URL (enclosure not fetched/stored)", m.article.imageURLs)
+	}
+	if m.article.imageURLs[0] == a.ImageURL {
+		t.Errorf("enclosure URL %q should be suppressed, not stored at position 0", a.ImageURL)
 	}
 }
 

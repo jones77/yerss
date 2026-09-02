@@ -418,9 +418,11 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 		return nil
 	}
 	a := *m.article.article
-	attr := compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
-	if url != a.ImageURL {
-		attr = m.inlineAttrFor(url)
+	attr := ""
+	if cap := m.inlineAttrFor(url); cap != "" {
+		attr = cap
+	} else {
+		attr = compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	}
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	return image.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width))

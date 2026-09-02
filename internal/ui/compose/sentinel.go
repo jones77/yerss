@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -134,6 +135,30 @@ func DedupeInline(leadURL string, inline []convert.InlineImage) []convert.Inline
 		kept = append(kept, im)
 	}
 	return kept
+}
+
+// CanonicalSource recovers the underlying image source from a CDN fetch URL. A
+// CDN fetch proxy URL carries a URL-encoded source segment in its path (for
+// example substackcdn's ".../fetch/<params>/https%3A%2F%2F..."); the trailing
+// encoded http(s) segment is decoded and returned as the canonical source, so
+// two transform variants of the same photo resolve to one identity. A URL with
+// no recognizable encoded source segment is returned unchanged, so plain image
+// URLs keep their exact-URL identity.
+func CanonicalSource(rawURL string) string {
+	schemeIdx := -1
+	for _, prefix := range []string{"https%3A%2F%2F", "http%3A%2F%2F"} {
+		if i := strings.LastIndex(rawURL, prefix); i > schemeIdx {
+			schemeIdx = i
+		}
+	}
+	if schemeIdx < 0 {
+		return rawURL
+	}
+	decoded, err := url.PathUnescape(rawURL[schemeIdx:])
+	if err != nil || !strings.HasPrefix(decoded, "http://") && !strings.HasPrefix(decoded, "https://") {
+		return rawURL
+	}
+	return decoded
 }
 
 // LineCountOf returns the number of lines the given parts occupy when joined
