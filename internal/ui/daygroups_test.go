@@ -448,8 +448,8 @@ func TestTreeRailBookendGlyphs(t *testing.T) {
 	if !strings.HasPrefix(lines[1], "12:00 ") {
 		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[1])
 	}
-	if !strings.HasPrefix(lines[2], "└──── ") {
-		t.Errorf("last day header should be prefixed with the bottom corner: %q", lines[2])
+	if !strings.HasPrefix(lines[2], "├──── ") {
+		t.Errorf("last day header should be a T-junction while expanded: %q", lines[2])
 	}
 	if !strings.HasPrefix(lines[3], "12:00 ") {
 		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[3])
@@ -494,13 +494,14 @@ func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
 	m.loadList()
 	m.collapse(0)
 
-	// rows: [header today, header yesterday, b]
+	// rows: [header today, header yesterday, b]; yesterday is the last group
+	// but still expanded, so it stays a T-junction.
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
 	if !strings.HasPrefix(lines[0], "┌──── ") {
 		t.Errorf("first day header should stay the top corner: %q", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], "└──── ") {
-		t.Errorf("last day header should take the bottom corner: %q", lines[1])
+	if !strings.HasPrefix(lines[1], "├──── ") {
+		t.Errorf("last expanded day header should take the T-junction: %q", lines[1])
 	}
 	if !strings.HasPrefix(lines[2], "12:00 ") {
 		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[2])

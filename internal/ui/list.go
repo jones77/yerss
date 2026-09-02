@@ -252,16 +252,18 @@ func (m *Model) renderList() string {
 }
 
 // railGlyph returns the tree-rail corner for day group i of n: `┌` on the
-// first day group, `└` on the last, `├` on every interior group. Corners are
-// computed against the full group list, not the scroll window, so they do not
-// move as the window scrolls. Only day headers render a rail; article rows
-// carry no tree glyph.
+// first day group, `└` on the last when it is collapsed (the terminal visible
+// row), and `├` everywhere else — including an expanded last group, whose
+// articles continue the rail below the header. Corners are computed against
+// the full group list, not the scroll window, so they do not move as the
+// window scrolls. Only day headers render a rail; article rows carry no tree
+// glyph.
 func (m *Model) railGlyph(n, i int) string {
 	g := m.glyphs()
 	if i == 0 {
 		return g.TL
 	}
-	if i == n-1 {
+	if i == n-1 && m.list.groups[i].collapsed {
 		return g.BL
 	}
 	return g.Tee
