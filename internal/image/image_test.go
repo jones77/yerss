@@ -117,6 +117,48 @@ func TestBlockWidth(t *testing.T) {
 	}
 }
 
+func TestDecodeCapped(t *testing.T) {
+	t.Run("oversized source downscaled to cap", func(t *testing.T) {
+		// A 4096x2731 hero photo decodes to a bitmap capped at 2048 wide.
+		data := pngBytes(t, 4096, 2731)
+		img, err := decodeCapped(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := img.Bounds()
+		if b.Dx() != maxDecodeWidth {
+			t.Errorf("decoded width = %d, want %d", b.Dx(), maxDecodeWidth)
+		}
+		if wantH := (2731*maxDecodeWidth + 4096/2) / 4096; b.Dy() != wantH {
+			t.Errorf("decoded height = %d, want %d (aspect preserved)", b.Dy(), wantH)
+		}
+	})
+	t.Run("at-or-below cap returned unchanged", func(t *testing.T) {
+		data := pngBytes(t, 1024, 640)
+		img, err := decodeCapped(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := img.Bounds()
+		if b.Dx() != 1024 || b.Dy() != 640 {
+			t.Errorf("natural decode = %dx%d, want 1024x640", b.Dx(), b.Dy())
+		}
+		exact := pngBytes(t, maxDecodeWidth, 400)
+		img, err = decodeCapped(exact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := img.Bounds(); b.Dx() != maxDecodeWidth || b.Dy() != 400 {
+			t.Errorf("exact-cap decode = %dx%d, want %dx400", b.Dx(), b.Dy(), maxDecodeWidth)
+		}
+	})
+	t.Run("unparseable bytes error", func(t *testing.T) {
+		if _, err := decodeCapped([]byte("not an image")); err == nil {
+			t.Fatal("unparseable bytes should error")
+		}
+	})
+}
+
 func TestBlockCmdInMemoryHit(t *testing.T) {
 	st := newImageTestStore(t)
 	img := image.NewRGBA(image.Rect(0, 0, 480, 320))

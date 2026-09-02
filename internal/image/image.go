@@ -51,6 +51,33 @@ type FailedMsg struct {
 	Key string
 }
 
+// maxDecodeWidth caps the in-memory decoded width of article images: a source
+// wider than this is downscaled immediately after decode, before it is cached
+// or rendered, so a full-resolution decoded bitmap is never retained for the
+// session. The compressed photo bytes cached and stored are unaffected.
+const maxDecodeWidth = 2048
+
+// decodeCapped decodes data and, when the decoded image is wider than
+// maxDecodeWidth, downscales it to maxDecodeWidth wide preserving aspect ratio
+// via scaleTo. Images at or below the cap are returned unchanged, keeping
+// small logos and icons at their natural size. It only bounds the retained
+// decoded bitmap; the source bytes are never altered.
+func decodeCapped(data []byte) (image.Image, error) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	if b.Dx() > maxDecodeWidth {
+		h := (b.Dy()*maxDecodeWidth + b.Dx()/2) / b.Dx()
+		if h < 1 {
+			h = 1
+		}
+		return scaleTo(img, maxDecodeWidth, h), nil
+	}
+	return img, nil
+}
+
 // fetchTimeout bounds a single image download. It is a variable so tests can
 // shorten it.
 var fetchTimeout = 15 * time.Second
@@ -160,7 +187,7 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 					return BlockMsg{Key: url, Lines: stored}
 				}
 				if len(img.Photo) > 0 {
-					if decoded, _, derr := image.Decode(bytes.NewReader(img.Photo)); derr == nil {
+					if decoded, derr := decodeCapped(img.Photo); derr == nil {
 						cache.Set(url, decoded)
 						if lines, err := renderBlock(blocks, url, decoded, width, maxHeight); err == nil {
 							_ = st.SetArticleImageBlock(articleID, img.Position, url, strings.Join(lines, "\n"), BlockWidth(lines))
@@ -178,7 +205,7 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
-		img, _, err := image.Decode(bytes.NewReader(data))
+		img, err := decodeCapped(data)
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
@@ -214,7 +241,7 @@ func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, art
 		photos.Set(url, data)
 		var blockLines []string
 		if _, ok := cache.Get(url); !ok {
-			if img, _, derr := image.Decode(bytes.NewReader(data)); derr == nil {
+			if img, derr := decodeCapped(data); derr == nil {
 				cache.Set(url, img)
 				if _, ok := blocks.Get(url); !ok {
 					blockLines, _ = renderBlock(blocks, url, img, width, maxHeight)

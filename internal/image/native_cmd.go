@@ -6,8 +6,6 @@
 package image
 
 import (
-	"bytes"
-	"image"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -55,7 +53,7 @@ func NativeCmd(native NativeRenderer, photos *Photos, natives *Natives, url stri
 // (image rows only; the UI centers them and appends the attribution). Any
 // render error propagates to the caller.
 func renderNativeFitted(native NativeRenderer, data []byte, url string, width, maxHeight, headerLines int, attr string, captionW int) ([]string, error) {
-	src, _, err := image.Decode(bytes.NewReader(data))
+	src, err := decodeCapped(data)
 	if err != nil {
 		return nil, err
 	}
