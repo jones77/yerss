@@ -100,8 +100,8 @@ func TestArticleDragClampsToContentArea(t *testing.T) {
 	m.updateArticleMouse(mouseClick(3, 1))
 	m.updateArticleMouse(mouseDrag(1000, 1000)) // far outside content
 	sel := m.article.sel
-	if sel.curX != 73 || sel.curY != 20 {
-		t.Errorf("drag outside content = (%d,%d), want clamped (73,20)", sel.curX, sel.curY)
+	if sel.curX != 73 || sel.curY != 21 {
+		t.Errorf("drag outside content = (%d,%d), want clamped (73,21)", sel.curX, sel.curY)
 	}
 	m.updateArticleMouse(mouseDrag(-100, -100))
 	sel = m.article.sel

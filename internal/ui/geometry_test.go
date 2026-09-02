@@ -11,24 +11,22 @@ import (
 
 func TestContentGeom(t *testing.T) {
 	cases := []struct {
-		name                                  string
-		w, h, padX, padY                      int
-		wantTextW, wantViewportH, wantEffPadY int
+		name                  string
+		w, h, padX            int
+		wantTextW, wantViewH  int
 	}{
-		{"normal", 80, 24, 2, 1, 74, 21, 1},
-		{"no padding", 80, 24, 0, 0, 78, 22, 0},
-		{"degenerate height", 80, 2, 2, 1, 74, 1, 0},
-		{"padding exceeds height", 30, 6, 2, 2, 24, 3, 1},
-		{"zero width", 0, 24, 2, 1, 1, 21, 1},
-		{"zero height", 80, 0, 2, 1, 74, 1, 0},
+		{"normal", 80, 24, 2, 74, 22},
+		{"no padding", 80, 24, 0, 78, 22},
+		{"degenerate height", 80, 2, 2, 74, 1},
+		{"zero width", 0, 24, 2, 1, 22},
+		{"zero height", 80, 0, 2, 74, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			textW, viewportH, effPadY := render.ContentGeom(tc.w, tc.h, tc.padX, tc.padY)
-			if textW != tc.wantTextW || viewportH != tc.wantViewportH || effPadY != tc.wantEffPadY {
-				t.Fatalf("render.ContentGeom(%d,%d,%d,%d) = (%d,%d,%d), want (%d,%d,%d)",
-					tc.w, tc.h, tc.padX, tc.padY, textW, viewportH, effPadY,
-					tc.wantTextW, tc.wantViewportH, tc.wantEffPadY)
+			textW, viewportH := render.ContentGeom(tc.w, tc.h, tc.padX)
+			if textW != tc.wantTextW || viewportH != tc.wantViewH {
+				t.Fatalf("render.ContentGeom(%d,%d,%d) = (%d,%d), want (%d,%d)",
+					tc.w, tc.h, tc.padX, textW, viewportH, tc.wantTextW, tc.wantViewH)
 			}
 		})
 	}
@@ -39,7 +37,6 @@ func TestContentGeomStateAndRectAgree(t *testing.T) {
 	m.width = 30
 	m.height = 6
 	m.sess.Config().Display.PaddingX = 2
-	m.sess.Config().Display.PaddingY = 2
 
 	st := m.newArticleState(store.Article{ID: 1})
 	_, _, w, h := m.contentRect()

@@ -33,32 +33,18 @@ func GlyphsFor(ascii bool) BorderGlyphs {
 	return BorderGlyphs{TL: "┌", BL: "└", TR: "┐", BR: "┘", Tee: "├", H: "─", V: "│", Fill: "│", Unfill: "│", Ellipsis: "…", Bullet: "·", Half: "½"}
 }
 
-// ClampPadY clamps the vertical content padding so the article frame (top +
-// 2*padY + viewport + bottom) never exceeds the terminal height on degenerate
-// terminals. It is shared by the content geometry so the border renderer and
-// the mouse coordinate mapping agree on the content area layout.
-func ClampPadY(padY, h int) int {
-	if maxPad := (h - 3) / 2; padY > maxPad {
-		padY = maxPad
-	}
-	if padY < 0 {
-		return 0
-	}
-	return padY
-}
-
 // RenderArticleBorder draws the article reader frame: a thin border with the
 // date and title inline in the top edge, a percent-scrolled indicator in the
 // bottom edge, and a double-line right edge that acts as a scrollbar. A
 // contiguous accent thumb positioned by the scroll offset represents the
 // currently visible portion of the content, and the rest of the track is dim.
-// Content is padded inside the border by padX columns on each side and padY
-// rows above and below.
-func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, title string, sc ScrollState, content []string) string {
+// Content is padded inside the border by padX columns on each side and fills
+// the interior between the top and bottom borders with no vertical padding.
+func RenderArticleBorder(w, h, padX int, g BorderGlyphs, p Palette, date, title string, sc ScrollState, content []string) string {
 	if h < 1 {
 		h = 1
 	}
-	textW, viewportH, effPadY := ContentGeom(w, h, padX, padY)
+	textW, viewportH := ContentGeom(w, h, padX)
 	interiorW := max(1, w-2)
 	interiorH := max(1, h-2)
 	thumbTop, thumbH := sc.Thumb(interiorH)
@@ -79,8 +65,7 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 	var lines []string
 	lines = append(lines, TopBorder(w, g, p, date, title))
 
-	// Content starts directly beneath the top border with no padding above it;
-	// the vertical padding pads only the bottom.
+	// Content fills the interior directly beneath the top border.
 	row := 0
 	blank := func() string {
 		return border.Render(g.V) + space + right(row)
@@ -92,10 +77,6 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 		}
 		line = PadRight(line, textW)
 		lines = append(lines, border.Render(g.V)+ipad+line+ipad+right(row))
-		row++
-	}
-	for i := 0; i < effPadY; i++ {
-		lines = append(lines, blank())
 		row++
 	}
 	lines = append(lines, BottomBorder(w, g, p, sc))

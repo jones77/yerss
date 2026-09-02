@@ -58,7 +58,7 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-1], "o: open article in browser") {
 		t.Errorf("bottom border missing help hint: %q", lines[len(lines)-1])
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% · 5/5") {
+	if !strings.Contains(lines[len(lines)-1], "100% · 6/6") {
 		t.Errorf("bottom border missing line indicator: %q", lines[len(lines)-1])
 	}
 }
@@ -123,8 +123,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.ascii = true
 	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
-	// 70 content lines vs viewport height 21 (height 24, padY 1, no top
-	// padding): scrollable range 49, track height 22, thumb height 22*21/70 = 6.
+	// 70 content lines vs viewport height 22 (height 24, no vertical padding):
+	// scrollable range 48, track height 22, thumb height 22*22/70 = 6.
 	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 
 	cases := []struct {
@@ -133,8 +133,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 		wantTrack string
 		wantLabel string
 	}{
-		{"on open", 0, "||||||::::::::::::::::", "0% . 21/70"},
-		{"43%", 21, "::::::||||||::::::::::", "43% . 42/70"},
+		{"on open", 0, "||||||::::::::::::::::", "0% . 22/70"},
+		{"mid", 21, ":::::::||||||:::::::::", "44% . 43/70"},
 		{"100%", 50, "::::::::::::::::||||||", "100% . 70/70"},
 	}
 	for _, c := range cases {
@@ -159,7 +159,7 @@ func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 	if got := trackGlyphs(t, s); got != strings.Repeat(":", 22) {
 		t.Errorf("fitting article track = %q, want all %q", got, strings.Repeat(":", 22))
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% . 3/3") {
+	if !strings.Contains(lines[len(lines)-1], "100% . 4/4") {
 		t.Errorf("bottom border missing 100%%: %q", lines[len(lines)-1])
 	}
 }
