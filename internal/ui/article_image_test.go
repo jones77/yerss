@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/convert"
 	imgpkg "yerss/internal/image"
 	"yerss/internal/store"
 	"yerss/internal/ui/compose"
@@ -177,6 +179,7 @@ func TestImageLoadRecomposesAndPreservesScroll(t *testing.T) {
 	m.sess.ImgCache.Set(imageArticle().ImageURL, testImg())
 	m.view = viewArticle
 	m.onBlockLoaded(imgpkg.BlockMsg{Key: imageArticle().ImageURL, Lines: []string{"IMG1", "IMG2"}})
+	m.flushRecompose()
 
 	if m.article.imgStart <= 0 {
 		t.Fatalf("image block not composed after load: imgStart=%d", m.article.imgStart)
@@ -199,6 +202,7 @@ func TestImageLoadAtTopInsertsBlockAbove(t *testing.T) {
 	m.sess.ImgCache.Set(imageArticle().ImageURL, testImg())
 	m.view = viewArticle
 	m.onBlockLoaded(imgpkg.BlockMsg{Key: imageArticle().ImageURL, Lines: []string{"IMG1"}})
+	m.flushRecompose()
 	if m.article.viewport.YOffset != 0 {
 		t.Errorf("offset = %d, want 0 when at the top", m.article.viewport.YOffset)
 	}
@@ -303,6 +307,7 @@ func TestRestoreArticleFiresImageLoadCmd(t *testing.T) {
 	}
 	wantOffset := m2.article.viewport.YOffset
 	m2.onBlockLoaded(lm)
+	m2.flushRecompose()
 	if m2.article.imgStart <= 0 {
 		t.Errorf("image block missing after load: imgStart=%d", m2.article.imgStart)
 	}
@@ -801,6 +806,7 @@ func TestNativePhotoMsgFlowRecomposes(t *testing.T) {
 	// The NativeMsg recomposes the article with the native block.
 	beforeCalls := len(fr.calls)
 	m.onNativeLoaded(nm)
+	m.flushRecompose()
 	if m.article.imgStart <= 0 {
 		t.Fatalf("native block missing after NativeMsg: imgStart=%d", m.article.imgStart)
 	}
@@ -1084,6 +1090,7 @@ func TestInlineImageLoadRecomposesInPlace(t *testing.T) {
 	m.sess.ImgCache.Set("inline.jpg", testImg())
 	m.view = viewArticle
 	m.onBlockLoaded(imgpkg.BlockMsg{Key: "inline.jpg", Lines: []string{wide, wide}})
+	m.flushRecompose()
 
 	if len(m.article.imageBlocks) != 2 {
 		t.Fatalf("imageBlocks after load = %d, want 2", len(m.article.imageBlocks))
@@ -2306,5 +2313,138 @@ func TestNativeKittyNonGhosttyExitHasNoDeleteAll(t *testing.T) {
 	}
 	if strings.Contains(got, "a=d,d=a") {
 		t.Errorf("kitty exit frame must not carry the delete-all on a non-Ghostty terminal: %q", got)
+	}
+}
+
+// articleStateSnapshot captures the composed article fields a recompose must
+// reproduce byte-for-byte, for asserting the cached-derivation path matches a
+// fresh derivation.
+type articleStateSnapshot struct {
+	lines        string
+	imageBlocks  []compose.ImageBlock
+	imageURLs    []string
+	inlineImages []convert.InlineImage
+	inlineCaps   map[string]string
+	links        []articleLink
+	headerLines  int
+	imgStart     int
+	imgEnd       int
+	capStart     int
+	nativeImg    bool
+}
+
+func snapshotArticleState(st articleState) articleStateSnapshot {
+	return articleStateSnapshot{
+		lines:        strings.Join(st.lines, "\n"),
+		imageBlocks:  st.imageBlocks,
+		imageURLs:    st.imageURLs,
+		inlineImages: st.inlineImages,
+		inlineCaps:   st.inlineCaps,
+		links:        st.links,
+		headerLines:  st.headerLines,
+		imgStart:     st.imgStart,
+		imgEnd:       st.imgEnd,
+		capStart:     st.capStart,
+		nativeImg:    st.nativeImg,
+	}
+}
+
+func TestArticleDerivationCacheRecomposeByteIdentical(t *testing.T) {
+	// A fixture with a lead photo, two inline images (one link-wrapped), and
+	// the lead repeated in the body — a duplicate sentinel the derivation
+	// strips — exercising every segment/sentinel path the cache re-joins.
+	a := imageArticle()
+	a.Content = `<p>intro text</p>` +
+		`<p><img src="inline.jpg" alt="A"></p>` +
+		`<p><a href="https://example.com/banner"><img src="banner.jpg" alt="B"></a></p>` +
+		`<p><img src="https://example.com/lead.jpg" alt="duplicate lead"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 30)
+	a.ImageURL = "https://example.com/lead.jpg"
+	m, _ := newImageModel(t, []string{"IMG1"})
+	m.sess.ImgCache.Set("inline.jpg", testImg())
+	m.sess.ImgCache.Set("banner.jpg", testImg())
+
+	m.article = m.newArticleState(a)
+	first := snapshotArticleState(m.article)
+	if len(m.article.imageURLs) != 3 {
+		t.Fatalf("expected lead + 2 inline image urls, got %v", m.article.imageURLs)
+	}
+
+	// A second composition at the same geometry reuses the cached derivation.
+	m.article = m.newArticleState(a)
+	second := snapshotArticleState(m.article)
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("cache-hit recompose diverged from the fresh derivation:\nfirst: %+v\nsecond: %+v", first, second)
+	}
+
+	// Forcing a derivation miss (same inputs, no cache) must reproduce the
+	// same composed output byte-for-byte.
+	m.derivValid = false
+	m.article = m.newArticleState(a)
+	third := snapshotArticleState(m.article)
+	if !reflect.DeepEqual(first, third) {
+		t.Errorf("re-derived composition diverged from the cached one:\nfirst: %+v\nthird: %+v", first, third)
+	}
+
+	// A cache-hit derivation returns the stored segment slices rather than
+	// re-rendering them.
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	hit := m.deriveArticle(a, contentW, vpH)
+	if len(hit.segments) == 0 || len(hit.segments) != len(m.derivCache.segments) {
+		t.Fatalf("cache-hit derivation should reuse the stored segments")
+	}
+	if &hit.segments[0] != &m.derivCache.segments[0] {
+		t.Errorf("cache-hit derivation should reuse the stored segment backing array")
+	}
+}
+
+func TestImageMessageBatchRecomposesOncePerMessage(t *testing.T) {
+	// Several image-load messages land while the article is open. Each message
+	// must recompose the article exactly once (through the flag + flush path),
+	// reuse the cached derivation rather than re-running it, and preserve the
+	// reading position.
+	a := imageArticle()
+	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 40)
+	m, _ := newImageModel(t, []string{"IMG1"})
+	m.sess.ImgNative.Protocol = imgpkg.ProtocolNone
+	m.sess.ImgCache.Set("inline.jpg", testImg())
+	m.article = m.newArticleState(a)
+	m.view = viewArticle
+	m.article.viewport.SetYOffset(6)
+	if !m.derivValid {
+		t.Fatal("composition should populate the derivation cache")
+	}
+	key := m.derivKey
+	m.recomposeCount = 0
+
+	msgs := []tea.Msg{
+		imgpkg.BlockMsg{Key: a.ImageURL, Lines: []string{"L"}},
+		imgpkg.BlockMsg{Key: "inline.jpg", Lines: []string{"I"}},
+		imgpkg.PhotoMsg{Key: a.ImageURL},
+		imgpkg.NativeMsg{Key: a.ImageURL},
+	}
+	pos := -1
+	for i, msg := range msgs {
+		m.Update(msg)
+		if m.recomposeCount != 1 {
+			t.Fatalf("message %d (%T) must recompose exactly once, got %d", i, msg, m.recomposeCount)
+		}
+		m.recomposeCount = 0
+		if i >= 1 && m.article.viewport.YOffset != pos {
+			t.Errorf("reading position not preserved at message %d: %d -> %d", i, pos, m.article.viewport.YOffset)
+		}
+		pos = m.article.viewport.YOffset
+	}
+
+	// The derivation was reused across the whole batch — never re-run on the
+	// UI thread while images load.
+	if m.derivKey != key {
+		t.Errorf("derivation cache key changed across the batch: %+v -> %+v", key, m.derivKey)
+	}
+
+	// Both images composed into the article.
+	if len(m.article.imageBlocks) != 2 {
+		t.Fatalf("imageBlocks after batch = %d, want 2", len(m.article.imageBlocks))
 	}
 }

@@ -66,7 +66,7 @@ type visibleRow struct {
 }
 
 func (m *Model) loadList() {
-	arts, err := m.sess.ListArticles(m.list.filter)
+	arts, err := m.sess.ListArticlesLite(m.list.filter)
 	if err != nil {
 		m.setStatus("load error: " + err.Error())
 		return

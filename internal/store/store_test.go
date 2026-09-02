@@ -64,6 +64,30 @@ func TestUpsertArticleDeduplicates(t *testing.T) {
 	}
 }
 
+func TestListArticlesLiteOmitsBody(t *testing.T) {
+	st := newTestStore(t)
+	if _, err := st.UpsertArticle(sampleArticle()); err != nil {
+		t.Fatal(err)
+	}
+	articles, err := st.ListArticlesLite("")
+	if err != nil {
+		t.Fatalf("ListArticlesLite: %v", err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(articles))
+	}
+	a := articles[0]
+	if a.Content != "" || a.Description != "" {
+		t.Errorf("lite rows must not carry the article body, got content=%q description=%q", a.Content, a.Description)
+	}
+	if a.Title != sampleArticle().Title || a.Read != sampleArticle().Read || a.Link == "" || a.Author == "" {
+		t.Errorf("lite row should still carry the list-rendered columns: %+v", a)
+	}
+	if len(a.Categories) != 0 {
+		t.Errorf("lite rows should have no categories, got %v", a.Categories)
+	}
+}
+
 func TestUpsertArticleInsertsNewGuid(t *testing.T) {
 	st := newTestStore(t)
 	a := sampleArticle()

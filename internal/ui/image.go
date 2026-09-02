@@ -361,6 +361,7 @@ func (m *Model) hasImageSource(url string, contentW, vpH int) bool {
 // the offset inside a photo range or with an image's top materialized
 // mid-window.
 func (m *Model) recomposeArticle() {
+	m.recomposeCount++
 	oldOffset := m.article.viewport.YOffset
 	oldLen := len(m.article.lines)
 	vpH := m.article.viewport.Height
@@ -385,8 +386,24 @@ func (m *Model) recomposeArticle() {
 	}
 }
 
-// onBlockLoaded re-composes the open article when the message's URL is one of
-// its images, preserving the reading position.
+// flushRecompose runs the pending article recompose, at most once, when the
+// flag is set and the article view is still active. Image-load message handlers
+// set recomposePending; Update calls flushRecompose after the message switch so
+// the per-message work stays bounded to cache updates and the recompose — which
+// reuses the cached derivation — runs once per image message.
+func (m *Model) flushRecompose() {
+	if !m.recomposePending {
+		return
+	}
+	m.recomposePending = false
+	if m.view == viewArticle {
+		m.recomposeArticle()
+	}
+}
+
+// onBlockLoaded marks the article for recomposition when the message's URL is
+// one of its images; the recompose runs via flushRecompose after the Update
+// switch. The block cache is always updated so a later open renders the block.
 func (m *Model) onBlockLoaded(msg image.BlockMsg) {
 	m.imgLoading[msg.Key] = false
 	m.sess.ImgBlocks.Set(msg.Key, msg.Lines)
@@ -396,7 +413,7 @@ func (m *Model) onBlockLoaded(msg image.BlockMsg) {
 	if !m.article.rendersImage(msg.Key) {
 		return
 	}
-	m.recomposeArticle()
+	m.recomposePending = true
 }
 
 // inlineAttrFor returns the composed caption for an inline image by URL: the
@@ -449,13 +466,15 @@ func (m *Model) onPhotoLoaded(msg image.PhotoMsg) tea.Cmd {
 	if !m.article.rendersImage(msg.Key) {
 		return nil
 	}
+	m.recomposePending = true
 	return m.nativeRenderCmd(msg.Key)
 }
 
-// onNativeLoaded re-composes the open article with its freshly rendered native
-// block for msg's URL, replacing the placeholder halfblock and preserving the
-// reading position. It always clears the in-flight guard, even when the article
-// changed or the view departed meanwhile (the render is still cached for later).
+// onNativeLoaded marks the article for recomposition with its freshly rendered
+// native block for msg's URL, replacing the placeholder halfblock; the recompose
+// runs via flushRecompose after the Update switch. It always clears the
+// in-flight guard, even when the article changed or the view departed meanwhile
+// (the render is still cached for later).
 func (m *Model) onNativeLoaded(msg image.NativeMsg) {
 	m.imgLoading[msg.Key] = false
 	if m.view != viewArticle {
@@ -464,13 +483,13 @@ func (m *Model) onNativeLoaded(msg image.NativeMsg) {
 	if !m.article.rendersImage(msg.Key) {
 		return
 	}
-	m.recomposeArticle()
+	m.recomposePending = true
 }
 
 // onImageFailed clears the in-flight guard and, when a block became available
-// meanwhile (the native placeholder path), re-composes so the block appears;
-// otherwise the article already renders without an image block and the failure
-// is never surfaced.
+// meanwhile (the native placeholder path), marks the article for recomposition
+// so the block appears; otherwise the article already renders without an image
+// block and the failure is never surfaced.
 func (m *Model) onImageFailed(msg image.FailedMsg) {
 	m.imgLoading[msg.Key] = false
 	if m.view != viewArticle {
@@ -480,7 +499,7 @@ func (m *Model) onImageFailed(msg image.FailedMsg) {
 		return
 	}
 	if _, ok := m.sess.ImgBlocks.Get(msg.Key); ok {
-		m.recomposeArticle()
+		m.recomposePending = true
 	}
 }
 

@@ -680,11 +680,20 @@ FROM articles WHERE id = ?`, id))
 	return a, nil
 }
 
-// ListArticles returns all articles, newest first, optionally filtered to
-// those associated with a tag name.
-func (s *Store) ListArticles(filterTag string) ([]Article, error) {
+// listFullCols is the column list the full-row list query scans; it includes
+// the article body so GetArticle and the JSON dump can serve complete rows.
+const listFullCols = "a.id, a.feed_url, a.guid, a.title, a.link, a.author, a.published_at, a.content, a.description, a.read, a.fetched_at, a.image_url"
+
+// listLiteCols is the column list the list-view query scans; it omits the
+// article body so loading the list never copies every article's HTML content
+// out of the database. The list view renders none of the omitted columns.
+const listLiteCols = "a.id, a.feed_url, a.guid, a.title, a.link, a.author, a.published_at, a.read, a.fetched_at, a.image_url"
+
+// listQuery builds the article-list SELECT for the given columns, newest
+// first, optionally filtered to those associated with a tag name.
+func (s *Store) listQuery(cols, filterTag string) (string, []any) {
 	query := `
-SELECT a.id, a.feed_url, a.guid, a.title, a.link, a.author, a.published_at, a.content, a.description, a.read, a.fetched_at, a.image_url
+SELECT ` + cols + `
 FROM articles a
 `
 	args := []any{}
@@ -696,8 +705,13 @@ WHERE c.name = ?
 `
 		args = append(args, filterTag)
 	}
-	query += ` ORDER BY COALESCE(a.published_at, 0) DESC, a.id DESC`
+	return query + ` ORDER BY COALESCE(a.published_at, 0) DESC, a.id DESC`, args
+}
 
+// ListArticles returns all articles, newest first, optionally filtered to
+// those associated with a tag name, including the full article body.
+func (s *Store) ListArticles(filterTag string) ([]Article, error) {
+	query, args := s.listQuery(listFullCols, filterTag)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -707,6 +721,29 @@ WHERE c.name = ?
 	var articles []Article
 	for rows.Next() {
 		a, err := s.scanArticle(rows)
+		if err != nil {
+			return nil, err
+		}
+		articles = append(articles, *a)
+	}
+	return articles, rows.Err()
+}
+
+// ListArticlesLite returns all articles, newest first, optionally filtered to
+// those associated with a tag name, selecting only the columns the list view
+// renders. The returned rows carry empty Content and Description, which the
+// list never displays; the article view loads the full row via GetArticle.
+func (s *Store) ListArticlesLite(filterTag string) ([]Article, error) {
+	query, args := s.listQuery(listLiteCols, filterTag)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []Article
+	for rows.Next() {
+		a, err := s.scanListArticle(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -862,6 +899,40 @@ func (s *Store) scanArticle(row scanner) (*Article, error) {
 	}
 	if desc.Valid {
 		a.Description = desc.String
+	}
+	if pub.Valid {
+		a.PublishedAt = time.Unix(pub.Int64, 0)
+	}
+	if fetched.Valid {
+		a.FetchedAt = time.Unix(fetched.Int64, 0)
+	}
+	if imgURL.Valid {
+		a.ImageURL = imgURL.String
+	}
+	return &a, nil
+}
+
+// scanListArticle scans a slim list row (the listLiteCols column list) into an
+// Article, leaving Content and Description empty since the list query does not
+// select the article body.
+func (s *Store) scanListArticle(row scanner) (*Article, error) {
+	var (
+		a       Article
+		author  sql.NullString
+		link    sql.NullString
+		pub     sql.NullInt64
+		fetched sql.NullInt64
+		imgURL  sql.NullString
+	)
+	err := row.Scan(&a.ID, &a.FeedURL, &a.GUID, &a.Title, &link, &author, &pub, &a.Read, &fetched, &imgURL)
+	if err != nil {
+		return nil, err
+	}
+	if link.Valid {
+		a.Link = link.String
+	}
+	if author.Valid {
+		a.Author = author.String
 	}
 	if pub.Valid {
 		a.PublishedAt = time.Unix(pub.Int64, 0)

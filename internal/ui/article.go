@@ -136,12 +136,149 @@ func (m *Model) openArticle() tea.Cmd {
 func (m *Model) newArticleState(a store.Article) articleState {
 	padX, padY := m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY
 	contentW, vpH, _ := render.ContentGeom(m.width, m.height, padX, padY)
-	headerLines := 0
+	return m.composeArticle(a, m.deriveArticle(a, contentW, vpH), contentW, vpH)
+}
+
+// articleDerivation holds the expensive, content-only display derivation of an
+// article — the converted markdown body, rendered text segments, inline-image
+// list, harvested links, and rendered header — that image-load recomposes must
+// not re-run. Its rendered pieces depend only on the article content and the
+// content width; the viewport height feeds the key because the composition that
+// consumes it fits image blocks against the viewport.
+type articleDerivation struct {
+	content     string
+	header      string
+	headerLines int
+	bodyMD      string
+	segments    []string
+	inline      []convert.InlineImage
+	imageURLs   []string
+	links       []articleLink
+	captions    map[string]string
+	leadURL     string
+}
+
+// derivationKey identifies a cached articleDerivation: the article (id and
+// source content), the content geometry, and the renderer inputs that change
+// the derived output (ascii mode, palette, and the glamour theme style).
+type derivationKey struct {
+	id       int64
+	contentW int
+	vpH      int
+	ascii    bool
+	palette  render.Palette
+	style    string
+	content  string
+}
+
+// deriveArticle returns the article's derived display content, reusing the
+// cached single entry when the article and all derivation inputs match. A
+// stale entry (different article, geometry, or renderer inputs) is replaced.
+func (m *Model) deriveArticle(a store.Article, contentW, vpH int) articleDerivation {
+	key := derivationKey{
+		id:       a.ID,
+		contentW: contentW,
+		vpH:      vpH,
+		ascii:    m.ascii,
+		palette:  m.palette,
+		style:    compose.GlamourStandardStyle(m.sess.Config().Display.Theme),
+		content:  a.Content,
+	}
+	if m.derivValid && m.derivKey == key {
+		return m.derivCache
+	}
+	der := m.computeDerivation(a, contentW)
+	m.derivCache = der
+	m.derivKey = key
+	m.derivValid = true
+	return der
+}
+
+// computeDerivation converts the article's HTML content to marked markdown,
+// discovers and dedupes the inline images, harvests the links, renders the
+// header and each body text segment through the markdown renderer, and records
+// the per-image captions — the work an image-load recompose must not repeat.
+func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivation {
 	header := m.renderHeader(a, contentW)
+	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
+	bodyMD, inline := convert.ConvertImages(a.Content)
+	leadURL := ""
+	if a.ImageURL != "" {
+		leadSrc := compose.CanonicalSource(a.ImageURL)
+		suppressed := false
+		for _, im := range inline {
+			if compose.CanonicalSource(im.URL) == leadSrc {
+				suppressed = true
+				break
+			}
+		}
+		if !suppressed {
+			leadURL = a.ImageURL
+		}
+	}
+	inline = compose.DedupeInline(leadURL, inline)
+	bodyMD = compose.StripDuplicateSentinels(bodyMD, leadURL)
 
+	// Render the body's text segments in document order, matching the segment
+	// walk spliceBody re-runs so the pre-rendered chunks slot back in exactly.
+	var segments []string
+	var captions map[string]string
+	if len(inline) == 0 {
+		segments = append(segments, m.renderMarkdown(bodyMD, contentW))
+	} else {
+		captions = map[string]string{}
+		pos := 0
+		idx := 0
+		for {
+			start, end, url, linkText, ok := compose.NextSentinel(bodyMD, pos)
+			if !ok {
+				break
+			}
+			if seg := strings.TrimSpace(bodyMD[pos:start]); seg != "" {
+				segments = append(segments, m.renderMarkdown(bodyMD[pos:start], contentW))
+			}
+			alt := ""
+			if idx < len(inline) && inline[idx].URL == url {
+				alt = inline[idx].Alt
+				idx++
+			}
+			captions[url] = compose.ResolveImageAttribution(a, url, alt, linkText, false)
+			pos = end
+		}
+		if rest := strings.TrimSpace(bodyMD[pos:]); rest != "" {
+			segments = append(segments, m.renderMarkdown(bodyMD[pos:], contentW))
+		}
+	}
+	imageURLs := []string{}
+	if leadURL != "" {
+		imageURLs = append(imageURLs, leadURL)
+	}
+	for _, im := range inline {
+		imageURLs = append(imageURLs, im.URL)
+	}
+	return articleDerivation{
+		content:     a.Content,
+		header:      header,
+		headerLines: headerLines,
+		bodyMD:      bodyMD,
+		segments:    segments,
+		inline:      inline,
+		imageURLs:   imageURLs,
+		links:       harvestArticleLinks(a),
+		captions:    captions,
+		leadURL:     leadURL,
+	}
+}
+
+// composeArticle builds the article view state from the cached derivation:
+// it renders the image blocks (served from the image caches), splices them
+// into the derived text segments at the sentinel positions, and builds the
+// viewport. This is the per-recompose part — image blocks change as loads land
+// while the derived body stays put.
+func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW, vpH int) articleState {
 	var parts []string
 	var blocks []compose.ImageBlock
 	var captions map[string]string
@@ -165,46 +302,21 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		lineCount++
 	}
 
-	if header != "" {
-		addPart(header)
+	if der.header != "" {
+		addPart(der.header)
 		parts = append(parts, "")
 		lineCount++
 	}
-
-	bodyMD, inline := convert.ConvertImages(a.Content)
-	suppressLead := false
-	if a.ImageURL != "" {
-		leadSrc := compose.CanonicalSource(a.ImageURL)
-		for _, im := range inline {
-			if compose.CanonicalSource(im.URL) == leadSrc {
-				suppressLead = true
-				break
-			}
-		}
-	}
-	if !suppressLead && a.ImageURL != "" && m.imagesEnabled() {
-		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, headerLines); len(block) > 0 {
+	if der.leadURL != "" && m.imagesEnabled() {
+		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.headerLines); len(block) > 0 {
 			addImageBlock(a.ImageURL, block, rows, native, id)
 		}
 	}
 
-	leadURL := ""
-	if !suppressLead {
-		leadURL = a.ImageURL
-	}
-	inline = compose.DedupeInline(leadURL, inline)
-	bodyMD = compose.StripDuplicateSentinels(bodyMD, leadURL)
-	imageURLs := []string{}
-	if leadURL != "" {
-		imageURLs = append(imageURLs, leadURL)
-	}
-	for _, im := range inline {
-		imageURLs = append(imageURLs, im.URL)
-	}
-	if len(inline) == 0 {
-		addPart(m.renderMarkdown(bodyMD, contentW))
+	if len(der.inline) == 0 {
+		addPart(der.segments[0])
 	} else {
-		bodyParts, bodyBlocks, inlineCaps := m.inlineBodyParts(a, bodyMD, inline, contentW, vpH, headerLines, lineCount)
+		bodyParts, bodyBlocks, inlineCaps := m.spliceBody(der, contentW, vpH, der.headerLines, lineCount)
 		parts = append(parts, bodyParts...)
 		lineCount += compose.LineCountOf(bodyParts)
 		blocks = append(blocks, bodyBlocks...)
@@ -224,16 +336,16 @@ func (m *Model) newArticleState(a store.Article) articleState {
 		article:      &a,
 		lines:        strings.Split(rendered, "\n"),
 		viewport:     vp,
-		headerLines:  headerLines,
+		headerLines:  der.headerLines,
 		imgStart:     imgStart,
 		imgEnd:       imgEnd,
 		capStart:     capStart,
 		nativeImg:    nativeImg,
 		imageBlocks:  blocks,
-		imageURLs:    imageURLs,
-		inlineImages: inline,
+		imageURLs:    der.imageURLs,
+		inlineImages: der.inline,
 		inlineCaps:   captions,
-		links:        harvestArticleLinks(a),
+		links:        der.links,
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.sess.Store())
@@ -241,19 +353,18 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	return st
 }
 
-// inlineBodyParts renders the article body with inline image blocks interleaved
-// at the sentinel positions ConvertImages emitted. It returns the body parts
-// (each joined into the final content with newline separators) and the ordered
-// inline image blocks with content-relative line indices. An inline image whose
+// spliceBody renders the cached body text segments with inline image blocks
+// interleaved at the sentinel positions the derivation walked, so the joined
+// output is byte-identical to the pre-cache composition. An inline image whose
 // source is not yet composed renders a blank placeholder line in its place so
 // the text flow stays stable until its load lands and re-composes the block. A
-// sentinel wrapped in a markdown link (`<a><img></a>`) consumes the whole link
-// construct, so no stray `[`/`](...)` renders around the image.
-func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.InlineImage, contentW, vpH, headerLines, base int) ([]string, []compose.ImageBlock, map[string]string) {
+// sentinel wrapped in a markdown link (`<a><img></a>`) is already consumed by
+// the sentinel walk, so no stray `[`/`](...)` renders around the image.
+func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, base int) ([]string, []compose.ImageBlock, map[string]string) {
 	var parts []string
 	var blocks []compose.ImageBlock
-	captions := map[string]string{}
 	lineCount := base
+	segIdx := 0
 	addPart := func(s string) {
 		parts = append(parts, s)
 		lineCount += len(strings.Split(s, "\n"))
@@ -270,23 +381,16 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 		lineCount++
 	}
 	pos := 0
-	idx := 0
 	for {
-		start, end, url, linkText, ok := compose.NextSentinel(md, pos)
+		start, end, url, _, ok := compose.NextSentinel(der.bodyMD, pos)
 		if !ok {
 			break
 		}
-		if seg := strings.TrimSpace(md[pos:start]); seg != "" {
-			addPart(m.renderMarkdown(md[pos:start], contentW))
+		if seg := strings.TrimSpace(der.bodyMD[pos:start]); seg != "" {
+			addPart(der.segments[segIdx])
+			segIdx++
 		}
-		alt := ""
-		if idx < len(inline) && inline[idx].URL == url {
-			alt = inline[idx].Alt
-			idx++
-		}
-		attr := compose.ResolveImageAttribution(a, url, alt, linkText, false)
-		captions[url] = attr
-		if block, rows, native, id := m.composeImageBlock(url, attr, contentW, vpH, headerLines); len(block) > 0 {
+		if block, rows, native, id := m.composeImageBlock(url, der.captions[url], contentW, vpH, headerLines); len(block) > 0 {
 			addImageBlock(url, block, rows, native, id)
 		} else {
 			// Placeholder: keep the paragraph break so the body text stays
@@ -299,10 +403,10 @@ func (m *Model) inlineBodyParts(a store.Article, md string, inline []convert.Inl
 		}
 		pos = end
 	}
-	if rest := strings.TrimSpace(md[pos:]); rest != "" {
-		addPart(m.renderMarkdown(rest, contentW))
+	if rest := strings.TrimSpace(der.bodyMD[pos:]); rest != "" {
+		addPart(der.segments[segIdx])
 	}
-	return parts, blocks, captions
+	return parts, blocks, der.captions
 }
 
 // renderHeader renders the reader header: the article URL as the very first

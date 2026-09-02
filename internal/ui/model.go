@@ -60,6 +60,27 @@ type Model struct {
 	mdRendererW     int
 	mdRendererStyle string
 
+	// derivCache holds the open article's derived display content (converted
+	// markdown, rendered body segments, harvested links, inline images) so an
+	// image-load recompose at the same geometry reuses the expensive
+	// derivation instead of re-running it on the UI thread. derivKey records
+	// what the entry was derived from; a miss on any component (article id or
+	// content, geometry, ascii mode, palette, theme style) — or no cached entry
+	// — re-derives and replaces the single-entry cache.
+	derivCache articleDerivation
+	derivKey   derivationKey
+	derivValid bool
+
+	// recomposePending is set by the image-load message handlers when the open
+	// article needs recomposing. Update flushes it once after the message switch
+	// (flushRecompose), so the per-message work is bounded to cache updates and
+	// the recompose — which reuses the cached derivation — runs at most once per
+	// message.
+	recomposePending bool
+	// recomposeCount counts article recompositions (recomposeArticle calls), so
+	// tests can assert how many recomposes a message batch triggered.
+	recomposeCount int
+
 	imgLoading map[string]bool
 	// nativeSent tracks the kitty image id last transmitted per URL, so a
 	// frame can delete the prior size's image before a re-render at a new
@@ -272,14 +293,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case image.BlockMsg:
 		m.onBlockLoaded(msg)
+		m.flushRecompose()
 		return m, nil
 	case image.PhotoMsg:
-		return m, m.onPhotoLoaded(msg)
+		cmd := m.onPhotoLoaded(msg)
+		m.flushRecompose()
+		return m, cmd
 	case image.NativeMsg:
 		m.onNativeLoaded(msg)
+		m.flushRecompose()
 		return m, nil
 	case image.FailedMsg:
 		m.onImageFailed(msg)
+		m.flushRecompose()
 		return m, nil
 	case refreshFinishedMsg:
 		m.refreshing = false

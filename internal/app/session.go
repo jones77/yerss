@@ -53,6 +53,12 @@ func (s *Session) ListArticles(filterTag string) ([]store.Article, error) {
 	return s.store.ListArticles(filterTag)
 }
 
+// ListArticlesLite delegates to the store's slim list query, which selects
+// only the columns the list view renders (no article body).
+func (s *Session) ListArticlesLite(filterTag string) ([]store.Article, error) {
+	return s.store.ListArticlesLite(filterTag)
+}
+
 // ArticleCount delegates to the store.
 func (s *Session) ArticleCount() (int, error) { return s.store.ArticleCount() }
 
