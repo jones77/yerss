@@ -442,13 +442,13 @@ func TestTreeRailBookendGlyphs(t *testing.T) {
 
 	// rows: [header today, a, header yesterday, b]
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	if !strings.HasPrefix(lines[0], "┌ ") {
+	if !strings.HasPrefix(lines[0], "┌──── ") {
 		t.Errorf("first day header should be prefixed with the top corner: %q", lines[0])
 	}
 	if !strings.HasPrefix(lines[1], "12:00 ") {
 		t.Errorf("article row should carry no tree glyph and start with the time: %q", lines[1])
 	}
-	if !strings.HasPrefix(lines[2], "└ ") {
+	if !strings.HasPrefix(lines[2], "└──── ") {
 		t.Errorf("last day header should be prefixed with the bottom corner: %q", lines[2])
 	}
 	if !strings.HasPrefix(lines[3], "12:00 ") {
@@ -476,7 +476,7 @@ func TestTreeRailStableWhileScrolling(t *testing.T) {
 		line := lines[i-start]
 		if rows[i].kind == rowHeader {
 			want := m.railGlyph(len(m.list.groups), rows[i].groupIdx)
-			if !strings.HasPrefix(line, want+" ") {
+			if !strings.HasPrefix(line, want+"──── ") {
 				t.Errorf("scrolled window day header %d should use %q, got %q", i, want, line)
 			}
 		} else if strings.HasPrefix(line, "├") {
@@ -496,10 +496,10 @@ func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
 
 	// rows: [header today, header yesterday, b]
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	if !strings.HasPrefix(lines[0], "┌ ") {
+	if !strings.HasPrefix(lines[0], "┌──── ") {
 		t.Errorf("first day header should stay the top corner: %q", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], "└ ") {
+	if !strings.HasPrefix(lines[1], "└──── ") {
 		t.Errorf("last day header should take the bottom corner: %q", lines[1])
 	}
 	if !strings.HasPrefix(lines[2], "12:00 ") {
@@ -517,7 +517,7 @@ func TestTreeRailASCIIFallback(t *testing.T) {
 	m.loadList()
 
 	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	for i, want := range []string{"+ ", "12:00 ", "+ ", "12:00 "} {
+	for i, want := range []string{"+---- ", "12:00 ", "+---- ", "12:00 "} {
 		if !strings.HasPrefix(lines[i], want) {
 			t.Errorf("ascii rail row %d = %q, want prefix %q", i, lines[i], want)
 		}

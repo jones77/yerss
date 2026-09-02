@@ -107,6 +107,7 @@ type modelStyles struct {
 	selText   lipgloss.Style // Foreground(Text), Background(Selection)
 	selBright lipgloss.Style // Bold(true), Foreground(Bright), Background(Selection)
 	selDim    lipgloss.Style // Foreground(Dim), Background(Selection)
+	selStatus lipgloss.Style // Foreground(StatusBar), Background(Selection)
 	selRow    lipgloss.Style // Background(Selection)
 }
 
@@ -123,6 +124,7 @@ func buildModelStyles(p render.Palette) modelStyles {
 		selText:    lipgloss.NewStyle().Foreground(p.Text).Background(sel),
 		selBright:  lipgloss.NewStyle().Bold(true).Foreground(p.Bright).Background(sel),
 		selDim:     lipgloss.NewStyle().Foreground(p.Dim).Background(sel),
+		selStatus:  lipgloss.NewStyle().Foreground(p.StatusBar).Background(sel),
 		selRow:     lipgloss.NewStyle().Background(sel),
 	}
 }

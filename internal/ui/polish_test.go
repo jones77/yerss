@@ -189,10 +189,10 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	m.loadList()
 	item := &m.list.groups[0].articles[0]
 
-	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#707070")).Render("x"))
+	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	// The selected rail renders its grey foreground and the selection
 	// background in a single escape; expect that combined prefix.
-	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#707070")).Render("x"))
+	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	unselected := m.renderArticleRow(item, false)
 	selected := m.renderArticleRow(item, true)
 	if strings.Contains(unselected, bgEscape) {

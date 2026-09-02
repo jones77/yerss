@@ -542,7 +542,7 @@ func TestTagPopupCellLayout(t *testing.T) {
 	// The selection highlight starts exactly at the tag, covering the full
 	// column width, with no gutter before it.
 	raw := m.renderTagPopup()
-	bg := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#707070")).Render("x"))
+	bg := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	i := strings.Index(raw, bg)
 	if i < 0 {
 		t.Fatal("selected cell should be highlighted")
@@ -594,7 +594,7 @@ func TestTagPopupSelectionUsesBackgroundHighlight(t *testing.T) {
 	if strings.Contains(s, "> ") {
 		t.Errorf("selection should not use a > marker: %q", s)
 	}
-	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#707070")).Render("x"))
+	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	if !strings.Contains(s, bgEscape) {
 		t.Errorf("selected cell should be highlighted: %q", s)
 	}
@@ -750,7 +750,7 @@ func TestTagPopupSubtitlesNotSelectable(t *testing.T) {
 	forceTrueColor(t)
 	m.popupData.cursor = 0
 	s := m.renderTagPopup()
-	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#707070")).Render("x"))
+	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	blueEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.StatusBar).Render("x"))
 	subLine := ""
 	for _, l := range strings.Split(s, "\n") {

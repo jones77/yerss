@@ -268,11 +268,12 @@ func (m *Model) railGlyph(n, i int) string {
 }
 
 func (m *Model) renderDayHeader(g *dayGroup, corner string, selected bool) string {
-	style := m.styles.dim
+	style := m.styles.status
 	if selected {
-		style = m.styles.selDim
+		style = m.styles.selStatus
 	}
-	return style.Render(corner + " " + g.label)
+	connector := strings.Repeat(m.glyphs().H, 4)
+	return style.Render(corner + connector + " " + g.label)
 }
 
 func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
