@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"image"
 	"strings"
 	"testing"
 	"time"
@@ -272,7 +271,7 @@ func TestStatusBarShowsNT(t *testing.T) {
 
 func TestStatusBarShowsDBSize(t *testing.T) {
 	m, st := newTestModel(t)
-	m.width = 120 // the RAM/DB/percent/position right side is long
+	m.width = 120 // the DB/percent/position right side is long
 	insertArticle(t, st, "one", nil)
 	m.loadList()
 
@@ -298,24 +297,6 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	}
 	if !strings.Contains(got, "DB "+formatMB(m.dbSize)+" "+render.GlyphsFor(m.ascii).Bullet+" 100% "+render.GlyphsFor(m.ascii).Bullet+" 1/1") {
 		t.Errorf("status bar = %q, want DB %s percentage %s position", got, render.GlyphsFor(m.ascii).Bullet, render.GlyphsFor(m.ascii).Bullet)
-	}
-}
-
-func TestStatusBarShowsRAM(t *testing.T) {
-	m, st := newTestModel(t)
-	insertArticle(t, st, "one", nil)
-	m.loadList()
-
-	got := m.renderStatusBar()
-	if !strings.Contains(got, "RAM 0MB") {
-		t.Errorf("status bar with empty cache = %q, want RAM 0MB", got)
-	}
-
-	m.sess.ImgCache.Set("u", image.NewRGBA(image.Rect(0, 0, 800, 600)))
-	got = m.renderStatusBar()
-	want := formatMB(int64(800 * 600 * 4))
-	if !strings.Contains(got, "RAM "+want) {
-		t.Errorf("status bar = %q, want RAM %s", got, want)
 	}
 }
 
@@ -354,9 +335,9 @@ func TestStatusBarHelpHintTrailing(t *testing.T) {
 	m.list.groups = []dayGroup{{articles: []articleItem{{ID: 1, Title: "one"}}}}
 	got := ansi.Strip(m.renderStatusBar())
 	// left = "never refreshed" (15); the right side leads with the `?: help`
-	// hint, then the RAM/DB footprints, then the percentage and position.
+	// hint, then the DB footprint, then the percentage and position.
 	b := render.GlyphsFor(m.ascii).Bullet
-	right := "?: help " + b + " RAM 0MB " + b + " DB 0MB " + b + " 100% " + b + " 1/1"
+	right := "?: help " + b + " DB 0MB " + b + " 100% " + b + " 1/1"
 	left := "never refreshed"
 	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	want := left + strings.Repeat(" ", pad) + right

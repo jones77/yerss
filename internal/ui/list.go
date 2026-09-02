@@ -366,15 +366,14 @@ func (m *Model) renderStatusBar() string {
 	if total > 0 {
 		pct = (n*100 + total/2) / total
 	}
-	// The right side runs `?: help · RAM <n>MB · DB <n>MB · <percent>% ·
-	// <n>/<total>`: the help hint first, then the session's decoded-image
-	// footprint (RAM) and the on-disk database size (DB) as whole megabytes,
-	// then the scroll percentage and position. Each element is prepended so
-	// the first right-aligned element is `?: help`.
+	// The right side runs `?: help · DB <n>MB · <percent>% ·
+	// <n>/<total>`: the help hint first, then the on-disk database size
+	// (DB) as a whole number of megabytes, then the scroll percentage and
+	// position. Each element is prepended so the first right-aligned
+	// element is `?: help`.
 	right := base.Render(fmt.Sprintf("%d/%d", n, total))
 	right = base.Render(fmt.Sprintf("%d%%", pct)) + " " + dim.Render(bullet) + " " + right
 	right = base.Render("DB " + formatMB(m.dbSize)) + " " + dim.Render(bullet) + " " + right
-	right = base.Render("RAM " + formatMB(m.sess.ImgCache.TotalBytes())) + " " + dim.Render(bullet) + " " + right
 	right = base.Render("?: help") + " " + dim.Render(bullet) + " " + right
 
 	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)

@@ -91,26 +91,6 @@ func TestCaches(t *testing.T) {
 	}
 }
 
-func TestCacheTotalBytes(t *testing.T) {
-	c := NewCache()
-	if got := c.TotalBytes(); got != 0 {
-		t.Errorf("empty cache total = %d, want 0", got)
-	}
-	c.Set("a", image.NewRGBA(image.Rect(0, 0, 2, 3)))
-	if got := c.TotalBytes(); got != 2*3*4 {
-		t.Errorf("after one set total = %d, want %d", got, 2*3*4)
-	}
-	c.Set("b", image.NewRGBA(image.Rect(0, 0, 5, 5)))
-	if got := c.TotalBytes(); got != 2*3*4+5*5*4 {
-		t.Errorf("after two sets total = %d, want %d", got, 2*3*4+5*5*4)
-	}
-	// Overwriting an entry swaps its contribution for the new image's.
-	c.Set("a", image.NewRGBA(image.Rect(0, 0, 1, 1)))
-	if got := c.TotalBytes(); got != 1*1*4+5*5*4 {
-		t.Errorf("after overwrite total = %d, want %d", got, 1*1*4+5*5*4)
-	}
-}
-
 func TestNativeKey(t *testing.T) {
 	a := NativeKey("https://e/x.png", 50, 24)
 	b := NativeKey("https://e/x.png", 50, 24)

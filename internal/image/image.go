@@ -84,11 +84,9 @@ func (c *cache[V]) Set(key string, v V) {
 	c.items[key] = v
 }
 
-// Cache holds decoded images keyed by URL for the session, tracking the
-// session's running decoded-image byte total for the status bar.
+// Cache holds decoded images keyed by URL for the session.
 type Cache struct {
 	cache[image.Image]
-	totalBytes int64
 }
 
 // NewCache returns an empty in-memory decoded-image cache.
@@ -96,32 +94,11 @@ func NewCache() *Cache {
 	return &Cache{cache: *newCache[image.Image]()}
 }
 
-// Set stores a decoded image under url, updating the running decoded-byte
-// total. The total is an estimate (decoded width*height*4); overwriting an
-// existing entry swaps its contribution for the new image's.
+// Set stores a decoded image under url.
 func (c *Cache) Set(url string, img image.Image) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if old, ok := c.items[url]; ok {
-		c.totalBytes -= estBytes(old)
-	}
 	c.items[url] = img
-	c.totalBytes += estBytes(img)
-}
-
-// TotalBytes returns the session's total decoded-image bytes held in the
-// cache, an estimate (decoded width*height*4) refreshed on each Set.
-func (c *Cache) TotalBytes() int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.totalBytes
-}
-
-// estBytes estimates the memory a decoded image occupies as width*height*4
-// bytes.
-func estBytes(img image.Image) int64 {
-	b := img.Bounds()
-	return int64(b.Dx()) * int64(b.Dy()) * 4
 }
 
 // Blocks holds rendered halfblock text blocks keyed by URL for the session.
