@@ -47,15 +47,14 @@ const (
 )
 
 // Fold keys toggled while the cursor rests on a day-header row. h/l fold and
-// unfold the group; enter/space/tab toggle it. These are context-sensitive
+// unfold the group; enter/tab toggle it. These are context-sensitive
 // (only active on a header row), so they are centralized here rather than
 // registered in the keybinding catalog.
 const (
-	keyFoldIn          = "h"
-	keyFoldOut         = "l"
-	keyFoldToggle      = "enter"
-	keyFoldToggleSpace = " "
-	keyFoldToggleTab   = "tab"
+	keyFoldIn        = "h"
+	keyFoldOut       = "l"
+	keyFoldToggle    = "enter"
+	keyFoldToggleTab = "tab"
 )
 
 // visibleRow identifies a rendered row in the flattened visible-row list.

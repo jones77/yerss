@@ -18,7 +18,7 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case keyFoldOut:
 				m.expand(row.groupIdx)
 				return m, nil
-			case keyFoldToggle, keyFoldToggleSpace, keyFoldToggleTab:
+			case keyFoldToggle, keyFoldToggleTab:
 				m.toggle(row.groupIdx)
 				return m, nil
 			}

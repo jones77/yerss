@@ -228,11 +228,6 @@ func TestFoldKeys(t *testing.T) {
 	if m.list.groups[0].collapsed {
 		t.Error("tab on a header should toggle the fold")
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeySpace})
-	if !m.list.groups[0].collapsed {
-		t.Error("space on a header should toggle the fold")
-	}
-
 	m.expand(0)
 	m.list.cursor = 1 // first article row
 	m.updateList(tea.KeyMsg{Type: tea.KeyTab})
