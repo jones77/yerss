@@ -243,7 +243,44 @@ func TestConvertImagesLinkedImageWithLinkText(t *testing.T) {
 	}
 }
 
-func TestConvertStillEmitsImagePlaceholders(t *testing.T) {
+func TestConvertImagesSuppressesSingleImageFigureCaption(t *testing.T) {
+	// A gallery: three per-photo figures each with its own figcaption wrapped
+	// by an outer figure with a shared credit. The single-image figure
+	// captions compose centered beneath their photos (the attribution path),
+	// so they must not be emitted as body text; the shared credit belongs to
+	// no single photo and stays as body text.
+	html := `<figure class="wp-block-gallery">` +
+		`<figure><img src="one.jpg"><figcaption>One caption</figcaption></figure>` +
+		`<figure><img src="two.jpg"><figcaption>Two caption</figcaption></figure>` +
+		`<figcaption>Gallery credit</figcaption>` +
+		`</figure>`
+	out, imgs := ConvertImages(html)
+	if len(imgs) != 2 {
+		t.Fatalf("inline images = %d, want 2", len(imgs))
+	}
+	for _, u := range []string{"one.jpg", "two.jpg"} {
+		if !strings.Contains(out, "\x00img:"+u+"\x00") {
+			t.Errorf("sentinel for %s missing from output: %q", u, out)
+		}
+	}
+	if strings.Contains(out, "One caption") || strings.Contains(out, "Two caption") {
+		t.Errorf("single-image figure captions must not be duplicated as body text: %q", out)
+	}
+	if !strings.Contains(out, "Gallery credit") {
+		t.Errorf("shared multi-image figure caption should stay as body text: %q", out)
+	}
+}
+
+func TestConvertImagesKeepsMultiImageFigureCaption(t *testing.T) {
+	// A photo-grid: one figure over two photos with a single combined caption.
+	// The caption belongs to no single image, so it stays as body text.
+	html := `<figure><img src="left.jpg"><img src="right.jpg"><figcaption>Left: one. Right: two.</figcaption></figure>`
+	out, _ := ConvertImages(html)
+	if !strings.Contains(out, "Left: one. Right: two.") {
+		t.Errorf("photo-grid caption should stay as body text: %q", out)
+	}
+}
+	func TestConvertStillEmitsImagePlaceholders(t *testing.T) {
 	// Regression: the plain Convert path must keep emitting [alt]/[image]
 	// placeholders, not sentinels.
 	out := Convert(`<p><img src="a.jpg" alt="first"></p><p><img src="b.jpg"></p>`)

@@ -34,24 +34,28 @@ body — interleaved with the surrounding text — using the same rendering path
 the lead image: a native inline photo on a full-image-capable terminal (with a
 halfblock placeholder first), and halfblock art otherwise, sized to the content
 width and centered, capped so the block fits the viewport. Each inline image
-SHALL have its own attribution centered directly beneath it, taken from the
-image's alt text when present, otherwise from the caption or credit of the
-figure whose image source matches the image (a src-matched `<figure>`),
-attributed only when the image is the figure's last `<img>` in document order —
-a figure's caption belongs to its last image, so an image earlier in a shared
-captioned figure has no caption of its own — otherwise from the text of any
-markdown link that wraps the image (promo images like a site's banner render as
-a linked image whose link text labels them), otherwise falling back to `photo:
-<source>` derived by the source-identifier rules. An image SHALL NOT display
-another image's caption: there is no document-global credit fallback — neither
-the first figure with a caption nor the first element whose class indicates a
-credit — for the lead image or any inline image, so an image that has no caption
-of its own renders without one rather than borrowing another image's. When an
-image sits inside a captioned figure whose caption belongs to a later image in
-that figure (a photo-grid), the image SHALL render with no caption at all: it
-SHALL NOT borrow the figure's caption, and it SHALL NOT fall back to `photo:
-<source>`, because the fallback applies only to images with no caption source of
-their own.
+SHALL have its own attribution centered directly beneath it, taken first from
+the caption of the figure that directly contains the image and carries its own
+figcaption (so a photo gallery whose photos each sit in their own figure with
+their own figcaption renders each figcaption centered beneath its photo), then
+from the image's alt text, then from the text of any markdown link that wraps
+the image (promo images like a site's banner render as a linked image whose link
+text labels them), otherwise falling back to `photo: <source>` derived by the
+source-identifier rules. An image's figcaption SHALL be its centered
+attribution, and the article body SHALL NOT also render that caption text as a
+separate left-aligned paragraph: the caption is not duplicated as body content.
+A figure whose single figcaption labels multiple `<img>` elements (a photo-grid)
+attributes the caption only to its last image in document order — a figure's
+caption belongs to its last image, so an image earlier in a shared captioned
+figure has no caption of its own. An image SHALL NOT display another image's
+caption: there is no document-global credit fallback — neither the first figure
+with a caption nor the first element whose class indicates a credit — for the
+lead image or any inline image, so an image that has no caption of its own
+renders without one rather than borrowing another image's. When an image sits
+inside a captioned figure whose caption belongs to a later image in that figure
+(a photo-grid), the image SHALL render with no caption at all: it SHALL NOT
+borrow the figure's caption, and it SHALL NOT fall back to `photo: <source>`,
+because the fallback applies only to images with no caption source of their own.
 
 #### Scenario: Inline image rendered in place
 
@@ -61,7 +65,12 @@ their own.
 #### Scenario: Inline image attribution
 
 - **WHEN** an inline image renders
-- **THEN** a centered attribution appears directly beneath it, using the alt text, the src-matched figure caption, the wrapping link's text, or the `photo: <source>` fallback in that order
+- **THEN** a centered attribution appears directly beneath it, using the directly-containing figure's caption, the alt text, the wrapping link's text, or the `photo: <source>` fallback in that order
+
+#### Scenario: Gallery photo shows its own figure's caption
+
+- **WHEN** a photo gallery contains photos each inside its own figure with its own figcaption (nested figures within a gallery wrapper, as in a WordPress `wp-block-gallery`), and the article renders
+- **THEN** each photo renders its own figcaption centered directly beneath it, and the figcaption text does not also appear as a left-aligned body paragraph elsewhere in the article
 
 #### Scenario: Inline image without its own caption has none
 
@@ -118,8 +127,9 @@ canonical source, the system SHALL render that inline image in place at its
 natural position in the body and SHALL NOT render a separate lead block at the
 top of the article. This supersedes the behavior of suppressing the inline copy
 in favor of the lead: the body copy is the one shown. Attribution for the
-rendered inline image SHALL resolve by the inline attribution rules (alt text,
-figure caption, link text, then `photo: <source>`), including for the case where
+rendered inline image SHALL resolve by the inline attribution rules (the
+directly-containing figure's caption, alt text, link text, then `photo:
+<source>`), including for the case where
 the image URL is also the article's lead URL.
 
 #### Scenario: Inline duplicate of the lead renders in the body
@@ -133,7 +143,7 @@ the image URL is also the article's lead URL.
 
 - **WHEN** an inline image whose URL equals the lead URL has a figure caption or
   alt text
-- **THEN** the rendered image shows the inline attribution (alt, figure caption,
+- **THEN** the rendered image shows the inline attribution (figure caption, alt,
   or link text in that order) rather than the lead-only attribution fallback
 
 ### Requirement: Inline image persistence

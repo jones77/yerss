@@ -1009,6 +1009,77 @@ func TestInlineImageDoesNotBorrowAnotherImagesCaption(t *testing.T) {
 	}
 }
 
+func TestInlineImageGalleryPerPhotoCaptions(t *testing.T) {
+	// A WordPress photo gallery: three nested per-photo figures, each with its
+	// own figcaption, wrapped by an outer gallery figure carrying a shared
+	// credit. Each photo composes its own caption centered beneath it, exactly
+	// once — the single-image figcaptions are suppressed from the body, so no
+	// left-aligned paragraph duplicates the caption text — and the gallery
+	// credit belongs to no single photo, so it stays as body text rather than
+	// becoming any photo's caption.
+	wide := strings.Repeat("I", 40)
+	a := imageArticle()
+	a.Content = `<p>intro</p>` +
+		`<figure class="wp-block-gallery">` +
+		`<figure><img src="one.jpg" alt="Opossum alt"><figcaption>Sandra Rogers devoted herself to the animals</figcaption></figure>` +
+		`<figure><img src="two.jpg" alt="Peach alt"><figcaption>A peach tree blossoms outside the home</figcaption></figure>` +
+		`<figure><img src="three.jpg" alt="Robin alt"><figcaption>Sandra shared her love of wildlife with Kody</figcaption></figure>` +
+		`<figcaption>Courtesy of Joe Rogers</figcaption>` +
+		`</figure>` +
+		`<p>outro</p>`
+	m, _ := newImageModel(t, []string{wide, wide})
+	for _, u := range []string{"one.jpg", "two.jpg", "three.jpg"} {
+		m.sess.ImgCache.Set(u, testImg())
+	}
+	m.article = m.newArticleState(a)
+
+	lines := strippedLines(m.article.lines)
+	joined := strings.Join(lines, "\n")
+	captions := map[string]string{
+		"one.jpg":   "Sandra Rogers devoted herself to the animals",
+		"two.jpg":   "A peach tree blossoms outside the home",
+		"three.jpg": "Sandra shared her love of wildlife with Kody",
+	}
+	for url, cap := range captions {
+		if n := strings.Count(joined, cap); n != 1 {
+			t.Errorf("caption %q appears %d times, want exactly once (centered, not also a body paragraph)", cap, n)
+		}
+		var block *compose.ImageBlock
+		for i := range m.article.imageBlocks {
+			if m.article.imageBlocks[i].URL == url {
+				block = &m.article.imageBlocks[i]
+			}
+		}
+		if block == nil {
+			t.Fatalf("block for %s not composed", url)
+		}
+		if block.CapStart <= block.ImgStart || block.CapStart > block.ImgEnd {
+			t.Fatalf("%s capStart %d out of block range %d..%d", url, block.CapStart, block.ImgStart, block.ImgEnd)
+		}
+		// The caption sits beneath the photo and is centered (padded), not a
+		// flush-left body paragraph.
+		capRows := lines[block.CapStart : block.ImgEnd+1]
+		if !strings.Contains(strings.Join(capRows, " "), cap) {
+			t.Errorf("%s caption rows = %q, want %q", url, capRows, cap)
+		}
+		for _, l := range capRows {
+			if strings.Contains(l, cap) && len(strings.TrimLeft(l, " ")) == len(l) {
+				t.Errorf("%s caption line %q is flush-left, want it centered beneath the photo", url, l)
+			}
+		}
+	}
+	// The gallery credit stays as body text exactly once and never composes as
+	// a photo's centered caption.
+	if n := strings.Count(joined, "Courtesy of Joe Rogers"); n != 1 {
+		t.Errorf("gallery credit appears %d times, want exactly once as body text", n)
+	}
+	for _, b := range m.article.imageBlocks {
+		if strings.Contains(strings.Join(lines[b.CapStart:b.ImgEnd+1], " "), "Courtesy of Joe Rogers") {
+			t.Errorf("gallery credit must not compose as photo %s's caption", b.URL)
+		}
+	}
+}
+
 func TestInlineImagePhotoGridCaptionOwnership(t *testing.T) {
 	// A photo-grid: two per-photo inner figures wrapped by an outer figure
 	// whose combined caption belongs to the last photo. The first photo
@@ -1119,8 +1190,9 @@ func TestInlineImageLoadRecomposesInPlace(t *testing.T) {
 
 func TestSnapYOffsetBlockList(t *testing.T) {
 	// A mid-document inline block between a lead block and trailing body text.
-	// The inline block is shorter than the viewport, as fitted images are,
-	// exercising the two-stage snap.
+	// The inline block is shorter than the viewport, as fitted images are:
+	// its top entering from below snaps flush to the viewport top (the short
+	// entry snap), then the next down move skips it onto its caption.
 	lead := compose.ImageBlock{URL: "lead", ImgStart: 4, CapStart: 6, ImgEnd: 9}
 	inline := compose.ImageBlock{URL: "inline", ImgStart: 20, CapStart: 22, ImgEnd: 25}
 	blocks := []compose.ImageBlock{lead, inline}
@@ -1135,13 +1207,14 @@ func TestSnapYOffsetBlockList(t *testing.T) {
 		want      int
 	}{
 		{"down into lead photo snaps to its caption", 5, 4, 15, 1, false, 6},
-		{"down into inline photo snaps to its caption", 21, 20, 15, 1, false, 22},
+		{"down into inline photo skips past its caption", 21, 20, 15, 1, false, 26},
 		{"up into inline photo reveals", 21, 22, 15, -1, false, 20},
 		{"up into lead photo reveals", 5, 6, 15, -1, false, 4},
-		// Down: the inline image's top entered the window from below this move
-		// (it was fully below the fold before); snap its bottom to the viewport
-		// bottom so it is fully visible there, caption included.
-		{"down brings inline top into view snaps to its bottom", 6, 5, 15, 1, false, 11},
+		// Down: a short inline image (its block shorter than the viewport)
+		// whose top entered the window from below this move snaps flush to its
+		// TOP boundary, mirroring the upward entry snap; the next down move
+		// skips it onto its caption.
+		{"down brings short inline top into view snaps to its top", 6, 5, 15, 1, false, 20},
 		// Down from the bottom-aligned position moves the image to the top.
 		{"down from bottom-aligned snaps to its top", 12, 11, 15, 1, false, 20},
 		// Up: the inline image's bottom entered the window from above this
@@ -1236,7 +1309,7 @@ func TestSnapYOffsetSkipLeavesNextImagePartial(t *testing.T) {
 		// window: the next down move bottom-aligns it.
 		{"skip of preceding image leaves next partial snaps to its bottom", 41, 40, 1, 55},
 		{"down from that bottom-aligned position moves two to the top", 56, 55, 1, 60},
-		{"down from two's top skips it onto its caption", 61, 60, 1, 80},
+		{"down from two's top skips it past its caption", 61, 60, 1, 82},
 		// Up mirror: once two is bottom-aligned and an up move cuts its bottom
 		// below the fold, the next up move snaps it fully below the fold so it
 		// scrolls off cleanly rather than rendering a blank strip. With images
@@ -1322,16 +1395,16 @@ func TestSnapYOffsetAdjacentDoublePhotoNotSkipped(t *testing.T) {
 
 	// Down: from the lead's caption, the first image is entered and revealed
 	// flush at its top (never skipped to the second image's bottom), then
-	// passes onto its caption, then the second image is revealed flush.
+	// passes past its caption, then the second image is revealed flush.
 	downtab := []struct {
 		name        string
 		raw, before int
 		want        int
 	}{
 		{"entry snap reveals one top", 11, 10, 11},
-		{"one top flush", 12, 11, 31},
-		{"one caption", 32, 31, 33},
-		{"two top flush", 34, 33, 53},
+		{"one skips past its caption", 12, 11, 32},
+		{"one gap snaps to two top", 32, 31, 33},
+		{"two skips past its caption", 34, 33, 54},
 	}
 	for _, c := range downtab {
 		if got := compose.SnapYOffset(c.raw, vpH, c.before, blocks, 1, false); got != c.want {
@@ -1381,9 +1454,10 @@ func TestSnapYOffsetCaptionlessGridNextImageFlush(t *testing.T) {
 	if got := compose.SnapYOffset(40, vpH, 39, blocks, 1, false); got != two.ImgStart {
 		t.Errorf("down from grid first photo top = %d, want %d (second photo flush)", got, two.ImgStart)
 	}
-	// The second image then skips onto its (shared) caption.
-	if got := compose.SnapYOffset(two.ImgStart+1, vpH, two.ImgStart, blocks, 1, false); got != two.CapStart {
-		t.Errorf("down from second photo top = %d, want %d (its caption)", got, two.CapStart)
+	// The second image then skips past its (shared) caption onto the line
+	// after the block.
+	if got := compose.SnapYOffset(two.ImgStart+1, vpH, two.ImgStart, blocks, 1, false); got != two.ImgEnd+1 {
+		t.Errorf("down from second photo top = %d, want %d (line after its caption)", got, two.ImgEnd+1)
 	}
 }
 
@@ -1430,6 +1504,109 @@ func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
 	}
 }
 
+func TestSnapHeleneGalleryShortImagesDownFlush(t *testing.T) {
+	// The ProPublica Helene gallery at 80x24 (viewport height 21): three
+	// adjacent short photo blocks (each shorter than the viewport) with their
+	// own captions, modeled on the real height fit. A short photo whose top a
+	// single-line down move brings into the window from below snaps flush to
+	// the viewport top; the next down move skips it onto its caption.
+	blocks := []compose.ImageBlock{
+		{URL: "lead", ImgStart: 7, CapStart: 17, ImgEnd: 18},
+		{URL: "photo1", ImgStart: 184, CapStart: 192, ImgEnd: 195},
+		{URL: "photo2", ImgStart: 197, CapStart: 207, ImgEnd: 208},
+		{URL: "photo3", ImgStart: 210, CapStart: 220, ImgEnd: 221},
+	}
+	vpH := 21
+
+	down := []struct {
+		name        string
+		before, raw int
+		want        int
+	}{
+		{"entry snap flushes photo1 top", 163, 164, 184},
+		{"photo1 skips past its caption", 184, 185, 196},
+		{"photo2 top flush via separator gap", 195, 196, 197},
+		{"photo2 skips past its caption", 197, 198, 209},
+		{"photo3 top flush via separator gap", 208, 209, 210},
+		{"photo3 skips past its caption", 210, 211, 222},
+	}
+	for _, c := range down {
+		if got := compose.SnapYOffset(c.raw, vpH, c.before, blocks, 1, false); got != c.want {
+			t.Errorf("down %s = %d, want %d", c.name, got, c.want)
+		}
+	}
+
+	up := []struct {
+		name        string
+		before, raw int
+		want        int
+	}{
+		{"up into photo3 reveals its top", 220, 219, 210},
+		{"photo3 top sinks to its bottom", 210, 209, 201},
+		{"photo3 bottom scrolls off onto photo2", 201, 200, 197},
+		{"photo2 top sinks to its bottom", 197, 196, 188},
+		{"photo2 bottom scrolls off onto photo1", 188, 187, 184},
+		{"photo1 top sinks to its bottom", 184, 183, 175},
+	}
+	for _, c := range up {
+		if got := compose.SnapYOffset(c.raw, vpH, c.before, blocks, -1, false); got != c.want {
+			t.Errorf("up %s = %d, want %d", c.name, got, c.want)
+		}
+	}
+
+	// No snap loops: walking down then back up advances on every press, never
+	// returning the pre-move offset.
+	off := 163
+	for i := 0; i < 10; i++ {
+		before := off
+		off = compose.SnapYOffset(before+1, vpH, before, blocks, 1, false)
+		if off <= before {
+			t.Fatalf("down press from %d stalled at %d", before, off)
+		}
+	}
+	for i := 0; i < 8; i++ {
+		before := off
+		off = compose.SnapYOffset(before-1, vpH, before, blocks, -1, false)
+		if off >= before {
+			t.Fatalf("up press from %d stalled at %d", before, off)
+		}
+	}
+}
+
+func TestSnapMultilineCaptionUpEntryShowsWholeBlock(t *testing.T) {
+	// A block with a wrapped caption (four caption lines), modeled on the
+	// Helene staircase figure. An upward scroll that would bring only the
+	// caption's last line into the window at its first row must snap the whole
+	// image-and-caption block into view instead, and a downward scroll from the
+	// top boundary must skip the whole block past its caption.
+	blocks := []compose.ImageBlock{
+		{URL: "lead", ImgStart: 5, CapStart: 27, ImgEnd: 31},
+		{URL: "figure", ImgStart: 470, CapStart: 493, ImgEnd: 496},
+	}
+	vpH := 34
+
+	// k from just below the block: the caption's last line (496) would land at
+	// the window's first row; the whole block snaps into view at its top.
+	if got := compose.SnapYOffset(496, vpH, 497, blocks, -1, false); got != 470 {
+		t.Errorf("up entry from below = %d, want %d (whole block, no caption-only frame)", got, 470)
+	}
+	// k from one further below still snaps the whole block once the last line
+	// enters the window from above.
+	if got := compose.SnapYOffset(495, vpH, 496, blocks, -1, false); got != 470 {
+		t.Errorf("up entry at the last line = %d, want %d (whole block)", got, 470)
+	}
+	// j from the top boundary skips the image and its wrapped caption onto the
+	// line after the caption, never resting on a caption line.
+	if got := compose.SnapYOffset(471, vpH, 470, blocks, 1, false); got != 497 {
+		t.Errorf("down skip from the top boundary = %d, want %d (line after the caption)", got, 497)
+	}
+	// The up mirror from the block's bottom boundary scrolls the whole image
+	// and caption off the screen (its top at the fold).
+	if got := compose.SnapYOffset(462, vpH, 463, blocks, -1, false); got != 436 {
+		t.Errorf("up from the bottom boundary = %d, want %d (whole block off)", got, 436)
+	}
+}
+
 func TestSnapYOffsetFullViewportBlockDoesNotLoop(t *testing.T) {
 	// A block whose image plus wrapped caption fills the viewport exactly (a
 	// long shared caption, as in a gallery) has its bottom-aligned position
@@ -1458,7 +1635,7 @@ func TestSnapYOffsetFullViewportBlockDoesNotLoop(t *testing.T) {
 		// Down into a full-viewport block still shows it (bottom-align lands
 		// on its top), then the next down skips it; no loop.
 		{"down into full-viewport one shows it", 31, 29, 1, 30},
-		{"down from full-viewport one skips onto its caption", 31, 30, 1, 50},
+		{"down from full-viewport one skips past its caption", 31, 30, 1, 52},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1595,7 +1772,7 @@ func TestRecomposeKeepsBottomWhenOffsetInPhotoRange(t *testing.T) {
 	}
 }
 
-func TestScrollSnapsInlineImageBottomThenTop(t *testing.T) {
+func TestScrollSnapsShortInlineImageFlushThenCaption(t *testing.T) {
 	wide := strings.Repeat("I", 40)
 	a := imageArticle()
 	a.Content = strings.Repeat("<p>lead text</p>", 30) +
@@ -1607,22 +1784,24 @@ func TestScrollSnapsInlineImageBottomThenTop(t *testing.T) {
 	inline := m.article.imageBlocks[1]
 	vpH := m.article.viewport.Height
 
-	// Place the inline top exactly at the fold; the next down move snaps its
-	// bottom to the viewport bottom (stage one).
+	// The short inline block (shorter than the viewport) has its top exactly
+	// at the fold; the next down move brings the top into the window from
+	// below and snaps it flush to the viewport top in a single step.
 	m.article.viewport.SetYOffset(inline.ImgStart - vpH)
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.ImgEnd-vpH+1 {
-		t.Errorf("down into inline = %d, want %d (bottom-aligned)", got, inline.ImgEnd-vpH+1)
-	}
-	// The next down move snaps its top to the viewport top (stage two).
-	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 	if got := m.article.viewport.YOffset; got != inline.ImgStart {
-		t.Errorf("down again = %d, want %d (top-aligned)", got, inline.ImgStart)
+		t.Errorf("down into inline = %d, want %d (flush to the viewport top)", got, inline.ImgStart)
 	}
-	// The next down move skips it onto its caption.
+	// The next down move skips the whole image-and-caption block onto the
+	// line after its caption.
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.CapStart {
-		t.Errorf("down third = %d, want %d (its caption)", got, inline.CapStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd+1 {
+		t.Errorf("down again = %d, want %d (line after its caption)", got, inline.ImgEnd+1)
+	}
+	// The next down move scrolls past the block line by line (no snap loop).
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd+2 {
+		t.Errorf("down third = %d, want %d (scroll past the block)", got, inline.ImgEnd+2)
 	}
 }
 
@@ -1780,16 +1959,16 @@ func TestScrollSnapsThroughInlineImage(t *testing.T) {
 	if got := m.article.viewport.YOffset; got != inline.ImgStart {
 		t.Errorf("down into inline photo = %d, want %d (its top, motion 1)", got, inline.ImgStart)
 	}
-	// The next downward move skips the now-shown image onto its caption
-	// (motion 2).
+	// The next downward move skips the now-shown image and its caption as
+	// one unit onto the line after the caption (motion 2).
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.CapStart {
-		t.Errorf("down again = %d, want %d (its caption, motion 2)", got, inline.CapStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd+1 {
+		t.Errorf("down again = %d, want %d (line after its caption, motion 2)", got, inline.ImgEnd+1)
 	}
-	// Down again scrolls within the caption line by line (no snap loop).
+	// Down again scrolls past the block line by line (no snap loop).
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.CapStart+1 {
-		t.Errorf("down within the caption = %d, want %d", got, inline.CapStart+1)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd+2 {
+		t.Errorf("down past the block = %d, want %d", got, inline.ImgEnd+2)
 	}
 	// Up from a photo row reveals the full inline image.
 	m.article.viewport.SetYOffset(inline.ImgStart + 1)
@@ -1797,11 +1976,12 @@ func TestScrollSnapsThroughInlineImage(t *testing.T) {
 	if got := m.article.viewport.YOffset; got != inline.ImgStart {
 		t.Errorf("up from an inline photo row = %d, want %d (reveal)", got, inline.ImgStart)
 	}
-	// Up from just below the inline block lands on its caption line.
+	// Up from just below the block snaps the whole image and caption into
+	// view at once rather than showing only the caption's last line.
 	m.article.viewport.SetYOffset(inline.ImgEnd + 1)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.ImgEnd {
-		t.Errorf("up from below the inline block = %d, want %d (its caption)", got, inline.ImgEnd)
+	if got := m.article.viewport.YOffset; got != inline.ImgStart {
+		t.Errorf("up from below the inline block = %d, want %d (whole block)", got, inline.ImgStart)
 	}
 }
 
@@ -1840,8 +2020,8 @@ func TestScrollSnapsAcrossAdjacentPhotosSkipsGap(t *testing.T) {
 		t.Errorf("down from the lead caption = %d, want %d (inline top, gap %d skipped)", got, inline.ImgStart, gap)
 	}
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.CapStart {
-		t.Errorf("down again = %d, want %d (inline caption)", got, inline.CapStart)
+	if got := m.article.viewport.YOffset; got != inline.ImgEnd+1 {
+		t.Errorf("down again = %d, want %d (line after the inline caption)", got, inline.ImgEnd+1)
 	}
 
 	// Up: from the inline's top the snap steps back through the inline's own

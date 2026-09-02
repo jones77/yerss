@@ -39,18 +39,38 @@ func ImageCredit(htmlStr, imageURL string) string {
 }
 
 // figureCaption returns the figcaption text attributed to imageURL and whether
-// imageURL lies inside a captioned figure. The caption belongs to the figure's
-// last <img>; an image earlier in a shared captioned figure returns "", true so
-// the caller can render no caption rather than fall back.
+// imageURL lies inside a captioned figure. The caption comes from the nearest
+// ancestor figure that carries a figcaption of its own — the figure that
+// directly contains the image first, so a gallery photo in its own nested
+// figure resolves that figure's caption instead of the outer gallery's shared
+// credit. The caption belongs to the figure's last <img>; an image earlier in
+// a shared captioned figure returns "", true so the caller can render no
+// caption rather than fall back.
 func figureCaption(n *html.Node, imageURL string) (string, bool) {
-	for _, fig := range findAll(n, "figure") {
-		cap := textOf(findFirst(fig, "figcaption"))
-		if cap == "" || imageURL == "" {
+	if imageURL == "" {
+		return "", false
+	}
+	var img *html.Node
+	for _, cand := range findAll(n, "img") {
+		if v, ok := dom.GetAttribute(cand, "src"); ok && v == imageURL {
+			img = cand
+			break
+		}
+	}
+	if img == nil {
+		return "", false
+	}
+	for f := img.Parent; f != nil; f = f.Parent {
+		if f.Type != html.ElementNode || f.Data != "figure" {
 			continue
 		}
-		imgs := findAll(fig, "img")
-		for i, img := range imgs {
-			if v, ok := dom.GetAttribute(img, "src"); ok && v == imageURL {
+		cap := textOf(figureCaptionElem(f))
+		if cap == "" {
+			continue
+		}
+		imgs := findAll(f, "img")
+		for i, im := range imgs {
+			if v, ok := dom.GetAttribute(im, "src"); ok && v == imageURL {
 				if i == len(imgs)-1 {
 					return cap, true
 				}
@@ -59,6 +79,18 @@ func figureCaption(n *html.Node, imageURL string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// figureCaptionElem returns the figure's own figcaption element — its direct
+// child figcaption, not a nested figure's — or nil when the figure carries
+// none.
+func figureCaptionElem(fig *html.Node) *html.Node {
+	for c := fig.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && c.Data == "figcaption" {
+			return c
+		}
+	}
+	return nil
 }
 
 // findAll collects every element in document order, matching tag when it is
@@ -76,19 +108,6 @@ func findAll(n *html.Node, tag string) []*html.Node {
 	}
 	walk(n)
 	return out
-}
-
-// findFirst returns the first descendant element with the given tag.
-func findFirst(n *html.Node, tag string) *html.Node {
-	for cur := n.FirstChild; cur != nil; cur = cur.NextSibling {
-		if cur.Type == html.ElementNode && cur.Data == tag {
-			return cur
-		}
-		if found := findFirst(cur, tag); found != nil {
-			return found
-		}
-	}
-	return nil
 }
 
 // textOf collects the text content of the subtree rooted at n, collapsed to a

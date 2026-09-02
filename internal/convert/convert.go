@@ -103,8 +103,32 @@ func buildConverter(imgRender func(converter.Context, converter.Writer, *html.No
 		converter.WithEscapeMode(converter.EscapeModeDisabled),
 	)
 	conv.Register.PostRenderer(collapseBlankLines, converter.PriorityLate)
+	conv.Register.PreRenderer(suppressSingleImageCaptions, converter.PriorityEarly)
 	conv.Register.RendererFor("img", converter.TagTypeInline, imgRender, converter.PriorityEarly)
 	return conv
+}
+
+// suppressSingleImageCaptions removes the figcaption of any figure that holds
+// exactly one <img> — its own photo's caption — from the body markdown, because
+// the attribution path composes that caption centered beneath the photo;
+// emitting it as body text would duplicate it. A figcaption over multiple
+// images (a gallery's shared credit, a photo-grid label) belongs to no single
+// image and stays as body text.
+func suppressSingleImageCaptions(_ converter.Context, doc *html.Node) {
+	for _, fig := range findAll(doc, "figure") {
+		if len(findAll(fig, "img")) != 1 {
+			continue
+		}
+		var caps []*html.Node
+		for c := fig.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode && c.Data == "figcaption" {
+				caps = append(caps, c)
+			}
+		}
+		for _, c := range caps {
+			dom.RemoveNode(c)
+		}
+	}
 }
 
 // collapseBlankLines turns whitespace-only lines into empty lines. The
