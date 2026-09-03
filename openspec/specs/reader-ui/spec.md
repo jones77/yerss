@@ -11,7 +11,8 @@ day, with the most recent day first and articles within a day sorted reverse
 chronologically. The day-group headers SHALL be rendered with a tree rail down
 the left edge: the first day group SHALL be prefixed with `┌` (ASCII `+`), the
 last day group with `└` (ASCII `+`), and every other day group with `├`
-(ASCII `+`), each followed by a single space. Article rows SHALL NOT carry a
+(ASCII `+`), each followed by four horizontal dashes (`────`, ASCII `----`) and
+a single space. Article rows SHALL NOT carry a
 tree glyph; the publication time SHALL start the row. Day
 headers SHALL NOT display fold markers. Each day header SHALL display the long
 date in the form `Weekday Day-ordinal Month, Year` (for example
@@ -19,7 +20,9 @@ date in the form `Weekday Day-ordinal Month, Year` (for example
 day is suffixed with an English ordinal (`1st`, `2nd`, `3rd`, `4th`, …). The
 header for the current local calendar day SHALL be prefixed with `today, ` and
 the header for the previous local calendar day SHALL be prefixed with
-`yesterday, `; older days and the `Undated` group SHALL be unprefixed. Each
+`yesterday, `; older days and the `Undated` group SHALL be unprefixed. Day
+headers SHALL render entirely in the blue role: the rail corner, the dash
+connector, and the date label. Each
 article row SHALL show the publication time as `HH:MM` in the user's local
 timezone (`--:--` when undated) at the start of the row, followed by the
 article title; the title SHALL NOT be preceded or followed by bullet points. The
@@ -50,22 +53,22 @@ expanded articles).
 #### Scenario: Tree rail bookends the list
 
 - **WHEN** the article list is displayed with more than one day group
-- **THEN** the first day header is prefixed with `┌`, the last day header with `└`, and every day header between with `├`
+- **THEN** the first day header is prefixed with `┌────`, the last day header with `└────`, and every day header between with `├────`
 
 #### Scenario: Day headers carry the rail, article rows do not
 
 - **WHEN** the list is displayed
-- **THEN** each day header is prefixed `┌`, `├`, or `└` followed by a single space, and each article row carries no tree glyph, starting with its publication time
+- **THEN** each day header is prefixed `┌`, `├`, or `└` followed by four horizontal dashes (`────`) and a single space, and each article row carries no tree glyph, starting with its publication time
 
 #### Scenario: Tree glyphs are stable while scrolling
 
 - **WHEN** the visible window scrolls so the list's first and last day groups are off screen
-- **THEN** the visible day headers are all prefixed `├` and the bookend glyphs stay on the first and last day groups rather than moving to the window edges
+- **THEN** the visible day headers are all prefixed `├────` and the bookend glyphs stay on the first and last day groups rather than moving to the window edges
 
 #### Scenario: ASCII fallback tree glyphs
 
 - **WHEN** ASCII fallback mode is enabled
-- **THEN** the day-header tree glyphs render as `+` (corners and tees) and article rows carry no tree glyph
+- **THEN** the day-header tree glyphs render as `+` (corners and tees) with `----` dash connectors and article rows carry no tree glyph
 
 #### Scenario: Day header shows the long local date
 
@@ -86,6 +89,11 @@ expanded articles).
 
 - **WHEN** the article list is displayed and articles exist on more than one day
 - **THEN** each day's articles are listed beneath a header for that day, with the most recent day first and articles reverse chronological within the day
+
+#### Scenario: Day header renders in the blue role
+
+- **WHEN** a day header is rendered in dark mode
+- **THEN** the rail corner, the dash connector, and the date label render in ANSI color 12 (bright blue), and in ANSI color 4 (blue) in light mode
 
 #### Scenario: Article row shows time and title without bullets
 
@@ -1662,12 +1670,12 @@ The system SHALL derive all UI foreground colors from the standard terminal
 apply across the list, reader, and popup views:
 
 - **grey/dim role** — the colour `#707070` in both dark and light modes:
-  the article border, rails, bullets, scrollbar track, day headers, image
+  the article border, rails, bullets, scrollbar track, image
   attribution, and muted popup text (such as plain tag counts and link URLs).
 - **blue role** — ANSI color 12 (bright blue) in dark mode and ANSI color 4
-  (blue) in light mode: the status bar, the inline text in the article border
-  (date, title, help hint, position indicator), the scrollbar thumb, and popup
-  titles and popup borders.
+  (blue) in light mode: the status bar, day headers, the inline text in the
+  article border (date, title, help hint, position indicator), the scrollbar
+  thumb, and popup titles and popup borders.
 - **text role** — ANSI color 7 (white) in dark mode and ANSI color 0 (black)
   in light mode: the article body text and the list view's article rows (read
   article titles, timestamps, and source identifiers).
@@ -1675,18 +1683,19 @@ apply across the list, reader, and popup views:
   (black) with bold weight in light mode: unread article titles and bold tag
   counts.
 
-The selected-row background highlight SHALL remain a fixed grey
-(`#707070`) in both modes.
+The selected-row background highlight SHALL be theme-aware: `#242424` in dark
+mode and `#d3d3d3` in light mode, so selected text remains readable in both
+modes (white on `#242424`, black on `#d3d3d3`).
 
 #### Scenario: Border and muted text share the grey role
 
 - **WHEN** the reader or list view is rendered
-- **THEN** the article border, rails, bullets, scrollbar track, day headers,
+- **THEN** the article border, rails, bullets, scrollbar track,
   image attribution, and popup URLs render in `#707070`
 
-#### Scenario: Status, inline border text, scrollbar thumb, and popup chrome use the blue role
+#### Scenario: Status, day headers, inline border text, scrollbar thumb, and popup chrome use the blue role
 
-- **WHEN** the status bar, the article border's inline text, the scrollbar
+- **WHEN** the status bar, a day header, the article border's inline text, the scrollbar
   thumb, or a popup's title or border is rendered in dark mode
 - **THEN** it renders in ANSI color 12 (bright blue), and in ANSI color 4
   (blue) in light mode
@@ -1704,10 +1713,11 @@ The selected-row background highlight SHALL remain a fixed grey
 - **THEN** it renders in ANSI color 7 (white), and in ANSI color 0 (black) in
   light mode
 
-#### Scenario: Selection highlight keeps its fixed background
+#### Scenario: Selection highlight is theme-aware
 
-- **WHEN** a row is selected in the list view in either mode
-- **THEN** the selection highlight renders with the fixed `#707070` background
+- **WHEN** a row is selected in the list view in dark mode
+- **THEN** the selection highlight renders with the `#242424` background, and
+  with the `#d3d3d3` background in light mode
 ### Requirement: Inline image caption width
 
 When an inline image renders in the article body with an attribution, the
