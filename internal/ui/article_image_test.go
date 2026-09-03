@@ -576,7 +576,7 @@ const kittyDeleteEsc = "\x1b_Ga=d,d=a,q=1\x1b\\"
 // stand in for the PhotoMsg → NativeCmd → NativeMsg flow.
 func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	t.Helper()
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	header := m.renderHeader(a, width)
 	headerLines := 0
 	if header != "" {
@@ -721,7 +721,7 @@ func TestNativeBlockPlaceholderBeforePhoto(t *testing.T) {
 	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.sess.ImgNative.Protocol = imgpkg.ProtocolITerm
 	m.sess.ImgCache = imgpkg.NewCache() // only the stored block is available
-	contentW, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	contentW, _, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	m.sess.ImgBlocks.Set(imageArticle().ImageURL, []string{strings.Repeat("I", contentW), strings.Repeat("I", contentW)})
 	m.article = m.newArticleState(imageArticle())
 
@@ -841,7 +841,7 @@ func TestNativePhotoMsgFlowRecomposes(t *testing.T) {
 func TestStoredBlockServedAtMatchingWidth(t *testing.T) {
 	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.sess.ImgCache = imgpkg.NewCache()
-	width, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, _, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	lines := []string{strings.Repeat("I", width), strings.Repeat("I", width)}
 	m.sess.ImgBlocks.Set(imageArticle().ImageURL, lines)
 	m.article = m.newArticleState(imageArticle())
@@ -1684,7 +1684,7 @@ func TestSnapYOffsetFullViewportBlockDoesNotLoop(t *testing.T) {
 }
 
 func TestScrollUpThroughFullViewportImageDoesNotLoop(t *testing.T) {
-	// An inline image whose block fills the viewport exactly (21 image rows +
+	// An inline image whose block fills the viewport exactly (20 image rows +
 	// one caption line == viewport height), as a tall gallery photo. Scrolling
 	// up from the bottom must never leave the offset stuck: each up move
 	// either snaps or advances.
@@ -1692,7 +1692,7 @@ func TestScrollUpThroughFullViewportImageDoesNotLoop(t *testing.T) {
 	a.Content = `<p>intro</p>` +
 		`<figure><img src="inline.jpg" alt=""><figcaption>Short caption</figcaption></figure>` +
 		strings.Repeat("<p>long paragraph body text</p>", 60)
-	tall := make([]string, 21)
+	tall := make([]string, 20)
 	for i := range tall {
 		tall[i] = "IMG"
 	}
@@ -1845,96 +1845,6 @@ func TestScrollSnapsShortInlineImageBottomThenTop(t *testing.T) {
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 	if got := m.article.viewport.YOffset; got != inline.ImgEnd+2 {
 		t.Errorf("down fourth = %d, want %d (scroll past the block)", got, inline.ImgEnd+2)
-	}
-}
-
-func TestSnappedInlineCaptionIsLastVisibleRow(t *testing.T) {
-	// Modeled on the ProPublica staircase figure: a short inline block (a
-	// small fitted photo plus a long wrapped figure caption) that the bottom
-	// snap aligns so the caption's last line is the viewport's last visible
-	// row — the last interior row of the rendered frame, directly above the
-	// bottom border, with no fixed padding strip between them.
-	wide := strings.Repeat("I", 40)
-	a := imageArticle()
-	a.Content = strings.Repeat("<p>lead text</p>", 10) +
-		`<p>before</p>` +
-		`<figure><img src="inline.jpg" alt=""><figcaption>At the park, staircases have been built to reach utility boxes mounted more than eight feet in the air. That is the height a future mobile home would need to be lifted. Jesse Barber for ProPublica and The Assembly</figcaption></figure>` +
-		strings.Repeat("<p>body text</p>", 40)
-	m, _ := newImageModel(t, []string{wide, wide})
-	m.sess.ImgCache.Set("inline.jpg", testImg())
-	m.article = m.newArticleState(a)
-	if len(m.article.imageBlocks) < 2 {
-		t.Fatalf("want lead + inline, got %d", len(m.article.imageBlocks))
-	}
-	inline := m.article.imageBlocks[1]
-	vpH := m.article.viewport.Height
-
-	// Bring the short block's top into the window from below: the short-entry
-	// snap aligns its BOTTOM boundary.
-	m.article.viewport.SetYOffset(inline.ImgStart - vpH)
-	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
-	if got := m.article.viewport.YOffset; got != inline.ImgEnd-vpH+1 {
-		t.Fatalf("bottom snap = %d, want %d", got, inline.ImgEnd-vpH+1)
-	}
-
-	// The caption's last line is the last row of the viewport.
-	if last := m.article.viewport.YOffset + vpH - 1; last != inline.ImgEnd {
-		t.Fatalf("viewport last row = %d, want caption last line %d", last, inline.ImgEnd)
-	}
-
-	// In the rendered frame the caption's last line is the last content row,
-	// directly above the bottom border — never a blank padding row.
-	frame := strings.Split(m.renderArticle(), "\n")
-	if len(frame) != m.height {
-		t.Fatalf("frame rows = %d, want %d", len(frame), m.height)
-	}
-	captionRow := ansi.Strip(frame[m.height-2])
-	want := strings.TrimSpace(ansi.Strip(m.article.lines[inline.ImgEnd]))
-	if !strings.Contains(captionRow, want) {
-		t.Errorf("last content row = %q, want it to show the caption last line %q", captionRow, want)
-	}
-	if strings.TrimSpace(captionRow) == "" {
-		t.Error("last content row is blank, want the caption's last line")
-	}
-	if !strings.Contains(frame[m.height-1], "o: open article in browser") {
-		t.Errorf("row after the caption = %q, want the bottom border", frame[m.height-1])
-	}
-}
-
-func TestArticleContentEndsWithPaddingRows(t *testing.T) {
-	// The vertical padding is trailing blank content rows: the article's
-	// scrollable content ends with `padding_y` blank lines, so the article
-	// still ends with breathing room above the bottom border while image
-	// captions can reach the viewport's last line.
-	wide := strings.Repeat("I", 40)
-	a := imageArticle()
-
-	m, _ := newImageModel(t, []string{wide})
-	m.article = m.newArticleState(a)
-	trailing := func() int {
-		lines := m.article.lines
-		n := 0
-		for i := len(lines) - 1; i >= 0 && lines[i] == ""; i-- {
-			n++
-		}
-		return n
-	}()
-	if trailing != 1 {
-		t.Errorf("trailing blank rows (default padding_y=1) = %d, want 1", trailing)
-	}
-
-	m.sess.Config().Display.PaddingY = 2
-	m.article = m.newArticleState(a)
-	vpH := m.article.viewport.Height
-	m.article.viewport.GotoBottom()
-	bottom := m.article.viewport.YOffset
-	// The final text line sits `padding_y` rows above the viewport bottom,
-	// and the viewport's last row is a blank padding row.
-	if lastText := bottom + vpH - 1 - 2; m.article.lines[lastText] == "" {
-		t.Error("line at the padding boundary is blank, want the final text line")
-	}
-	if got := m.article.lines[bottom+vpH-1]; got != "" {
-		t.Errorf("viewport last row = %q, want a blank padding row", got)
 	}
 }
 
@@ -2300,7 +2210,7 @@ func TestNativeClippedImageDoesNotPaintOverBorder(t *testing.T) {
 	m.sess.ImgCache.Set(imageArticle().ImageURL, testImg())
 	m.sess.ImgCache.Set("inline.jpg", testImg())
 	m.view = viewArticle
-	contentW, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	// A native block taller than the viewport, as a real fitted photo can be
 	// when its top sits mid-window: its placement would extend past the fold
 	// and draw over the article border.
@@ -2354,7 +2264,7 @@ func TestInlineLinkTextCaptionFitsNativeBlock(t *testing.T) {
 	}
 
 	// Render the inline photo natively with that caption and re-compose.
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	msg := imgpkg.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
@@ -2386,7 +2296,7 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 	m.sess.ImgCache.Set(imageArticle().ImageURL, testImg())
 	m.sess.ImgCache.Set("inline.jpg", testImg())
 	m.view = viewArticle
-	contentW, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	tall := make([]string, vpH+40)
 	esc := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=2,r=2;AAAA\x1b\\"
 	tall[0] = esc + "  "
@@ -2517,7 +2427,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	nativeRenderLines(t, m, a)
 	m.article = m.newArticleState(a)
 	m.view = viewArticle
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	msg := imgpkg.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, compose.CaptionWidth(width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
@@ -2701,7 +2611,7 @@ func TestArticleDerivationCacheRecomposeByteIdentical(t *testing.T) {
 
 	// A cache-hit derivation returns the stored segment slices rather than
 	// re-rendering them.
-	contentW, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	hit := m.deriveArticle(a, contentW, vpH)
 	if len(hit.segments) == 0 || len(hit.segments) != len(m.derivCache.segments) {
 		t.Fatalf("cache-hit derivation should reuse the stored segments")

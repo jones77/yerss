@@ -134,8 +134,8 @@ func (m *Model) openArticle() tea.Cmd {
 }
 
 func (m *Model) newArticleState(a store.Article) articleState {
-	padX := m.sess.Config().Display.PaddingX
-	contentW, vpH := render.ContentGeom(m.width, m.height, padX)
+	padX, padY := m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, padX, padY)
 	return m.composeArticle(a, m.deriveArticle(a, contentW, vpH), contentW, vpH)
 }
 
@@ -323,14 +323,6 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		captions = inlineCaps
 	}
 
-	// The vertical padding is trailing blank content rows: it scrolls with the
-	// article (never a fixed strip below the viewport), so a bottom-snapped
-	// image caption reaches the viewport's last line while the article still
-	// ends with breathing room before the bottom border.
-	for i := 0; i < m.sess.Config().Display.PaddingY; i++ {
-		parts = append(parts, "")
-	}
-
 	rendered := strings.Join(parts, "\n")
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
@@ -463,7 +455,7 @@ func (m *Model) renderArticle() string {
 		ViewportH: m.article.viewport.Height,
 		Offset:    m.article.viewport.YOffset,
 	}
-	return render.RenderArticleBorder(m.width, m.height, m.sess.Config().Display.PaddingX,
+	return render.RenderArticleBorder(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY,
 		g, m.palette, date, title, sc, lines)
 }
 

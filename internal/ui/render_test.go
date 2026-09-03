@@ -58,7 +58,7 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-1], "o: open article in browser") {
 		t.Errorf("bottom border missing help hint: %q", lines[len(lines)-1])
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% · 6/6") {
+	if !strings.Contains(lines[len(lines)-1], "100% · 5/5") {
 		t.Errorf("bottom border missing line indicator: %q", lines[len(lines)-1])
 	}
 }
@@ -88,7 +88,7 @@ func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 		Content: "<p>a short paragraph</p>",
 	})
 	lines := strings.Split(m.renderArticle(), "\n")
-	first := ansi.Strip(lines[1])
+	first := ansi.Strip(lines[2])
 	// padX contributes two leading spaces; glamour's document margin is removed
 	// so it does not stack on top.
 	if !strings.HasPrefix(first, ":  Hello world article title") {
@@ -123,8 +123,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.ascii = true
 	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
-	// 70 content lines vs viewport height 22 (height 24, no vertical padding):
-	// scrollable range 48, track height 22, thumb height 22*22/70 = 6.
+	// 70 content lines vs viewport height 20 (height 24, padY 1 above and
+	// below): scrollable range 50, track height 22, thumb height 22*20/70 = 6.
 	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 
 	cases := []struct {
@@ -133,8 +133,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 		wantTrack string
 		wantLabel string
 	}{
-		{"on open", 0, "||||||::::::::::::::::", "0% . 22/70"},
-		{"mid", 21, ":::::::||||||:::::::::", "44% . 43/70"},
+		{"on open", 0, "||||||::::::::::::::::", "0% . 20/70"},
+		{"42%", 21, "::::::||||||::::::::::", "42% . 41/70"},
 		{"100%", 50, "::::::::::::::::||||||", "100% . 70/70"},
 	}
 	for _, c := range cases {
@@ -159,7 +159,7 @@ func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 	if got := trackGlyphs(t, s); got != strings.Repeat(":", 22) {
 		t.Errorf("fitting article track = %q, want all %q", got, strings.Repeat(":", 22))
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% . 4/4") {
+	if !strings.Contains(lines[len(lines)-1], "100% . 3/3") {
 		t.Errorf("bottom border missing 100%%: %q", lines[len(lines)-1])
 	}
 }

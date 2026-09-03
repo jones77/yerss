@@ -61,8 +61,8 @@ func selectionRange(lo, hi cell, row, lineWidth int) (from, to int) {
 
 func (m *Model) contentRect() (x0, y0, w, h int) {
 	padX := m.sess.Config().Display.PaddingX
-	w, h = render.ContentGeom(m.width, m.height, padX)
-	return 1 + padX, 1, w, h
+	w, h, effPadY := render.ContentGeom(m.width, m.height, padX, m.sess.Config().Display.PaddingY)
+	return 1 + padX, 1 + effPadY, w, h
 }
 
 // contentCell maps a screen cell to a content-area cell, reporting ok=false

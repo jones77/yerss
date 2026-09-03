@@ -133,5 +133,5 @@ func (m *Model) backToList() {
 
 // contentRect returns the screen-space rectangle of the article content area
 // (origin column/row plus width/height in cells), matching renderArticleBorder:
-// content begins at column padX+1 and row 1, directly beneath the top border
-// with no padding above it.
+// content begins at column padX+1 and row 1+effPadY, beneath the top border and
+// its vertical margin.

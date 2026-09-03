@@ -240,20 +240,15 @@ article in browser` and, on the right, a position indicator led by a literal
 `?: help · <percent>% · <bottomLine>/<totalLines>`, where `<percent>` is the
 scroll percentage, `<bottomLine>` is the line number of the last visible
 viewport line clamped to the total, and `<totalLines>` is the article's total
-line count (including the trailing vertical-padding rows); horizontal dashes
-fill the space between the hint and the indicator
+line count; horizontal dashes fill the space between the hint and the indicator
 (for example at the very bottom:
 `o: open article in browser ───── ?: help · 100% · 120/120`). The bullets used
 between the help affordance and the percent and between the percent and the
 line ratio SHALL be the same middle-dot bullet used in the top border (`·`,
 ASCII `.`). The content area SHALL have two spaces of
-horizontal padding on each side and no fixed vertical padding: the content
-viewport SHALL fill the interior between the top and bottom borders, so the
-first content line (the article URL) sits directly beneath the top border and
-the content reaches the bottom border. The article's scrollable content SHALL
-end with the configured number of vertical-padding blank rows (1 by default),
-so at the article's end the final text line sits above those blank rows before
-the bottom border. When the entire article fits within the viewport
+horizontal padding on each side and one space of vertical padding above and
+below the content, so a permanent one-row margin separates the content
+viewport from both the top and the bottom borders. When the entire article fits within the viewport
 and no scrolling is
 possible, the right border SHALL be fully filled with the bright single-line
 glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
@@ -304,16 +299,6 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 
 - **WHEN** the article view is rendered
 - **THEN** the bottom border shows `o: open article in browser` left-aligned and `<percent>% · <bottomLine>/<totalLines>` right-aligned, with fill dashes between them
-
-#### Scenario: Content fills the interior to the bottom border
-
-- **WHEN** the article view is rendered with the viewport scrolled to the article's last screen
-- **THEN** the last content line occupies the last interior row directly above the bottom border, with no fixed blank row between them
-
-#### Scenario: Article ends with the vertical-padding rows
-
-- **WHEN** the article is scrolled to its very end (GotoBottom) with the default vertical padding
-- **THEN** the final text line sits one row above the bottom border with one trailing blank padding row between them
 
 #### Scenario: ASCII fallback border
 
@@ -1229,10 +1214,7 @@ so paging never skips the text between images.
 Each image block SHALL define two snap boundaries. The top boundary is the
 offset at which the image's first line sits at the viewport's first row; the
 bottom boundary is the offset at which the block's last line — the last line of
-the wrapped caption — sits at the viewport's last row. The viewport's last row
-is the last visible row of the content area, which fills the interior down to
-the bottom border, so a bottom-aligned caption's last line reaches the bottom
-border. Snapping is defined by
+the wrapped caption — sits at the viewport's last row. Snapping is defined by
 these boundaries and the transitions between them. A block whose bottom
 boundary equals its top boundary (it fills the viewport exactly) has a single
 snap position.

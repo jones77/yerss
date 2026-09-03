@@ -113,15 +113,16 @@ func TestRenderArticleBorderHeightClamp(t *testing.T) {
 	g := render.GlyphsFor(true)
 	p := render.DarkPalette()
 	cases := []struct {
-		name string
-		h    int
+		name    string
+		h, padY int
 	}{
-		{"h3", 3},
-		{"h2", 2},
-		{"h1", 1},
+		{"h3 padY2", 3, 2},
+		{"h2 padY2", 2, 2},
+		{"h1 padY2", 1, 2},
+		{"h3 padY5", 3, 5},
 	}
 	for _, c := range cases {
-		got := render.RenderArticleBorder(80, c.h, 2, g, p, "", "t", render.ScrollState{TotalH: 100, ViewportH: 10, Offset: 0}, []string{"x"})
+		got := render.RenderArticleBorder(80, c.h, 2, c.padY, g, p, "", "t", render.ScrollState{TotalH: 100, ViewportH: 10, Offset: 0}, []string{"x"})
 		if n := len(strings.Split(got, "\n")); n > c.h {
 			t.Errorf("%s: emitted %d lines, want <= %d", c.name, n, c.h)
 		}

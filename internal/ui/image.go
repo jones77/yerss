@@ -299,7 +299,7 @@ func (m *Model) fireImageLoad(a store.Article) tea.Cmd {
 // marking the URL in flight so duplicate loads are not started (for example on
 // resize).
 func (m *Model) loadImageCmd(a store.Article, url string, position int) tea.Cmd {
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	m.imgLoading[url] = true
 	if m.nativeImages() {
 		return tea.Batch(
@@ -318,7 +318,7 @@ func (m *Model) ensureImageSource(a store.Article) tea.Cmd {
 	if !m.imagesEnabled() {
 		return nil
 	}
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	var cmds []tea.Cmd
 	for pos, url := range m.article.imageURLs {
 		if url == "" || m.imgLoading[url] {
@@ -450,7 +450,7 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 	} else {
 		attr = compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	}
-	width, vpH := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX)
+	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	return image.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width))
 }
 
