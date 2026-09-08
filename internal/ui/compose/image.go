@@ -72,12 +72,12 @@ func ResolveImageAttribution(a store.Article, url, alt, linkText string, isLead 
 // SnapPos is the set of canonical snap offsets for one image block at a given
 // viewport height: bottom (the last line of the wrapped caption at the
 // viewport's last row), top (the image's first line at the viewport's first
-// row), exit (the block scrolled out — for the lead the caption at the
-// viewport top, for an inline block the line immediately after the wrapped
-// caption, so the image and its caption leave as one unit — the down-exit),
-// and off (the image's top at the fold, the block fully below the viewport —
-// the up-exit). The two boundaries, bottom and top, are the snap stages; exit
-// and off are where a block leaves the viewport in each direction.
+// row), exit (the first line of the next image or paragraph — the line past
+// the block's blank separator, so the image, its caption, and the space below
+// it all leave as one unit — the down-exit), and off (the image's top at the
+// fold, the block fully below the viewport — the up-exit). The two boundaries,
+// bottom and top, are the snap stages; exit and off are where a block leaves
+// the viewport in each direction.
 type snapPos struct {
 	bottom int
 	top    int
@@ -85,15 +85,11 @@ type snapPos struct {
 	off    int
 }
 
-func snapPositions(i int, b ImageBlock, vpH int) snapPos {
-	exit := b.CapStart
-	if i > 0 {
-		exit = b.ImgEnd + 1
-	}
+func snapPositions(b ImageBlock, vpH int) snapPos {
 	return snapPos{
 		bottom: b.ImgEnd - vpH + 1,
 		top:    b.ImgStart,
-		exit:   exit,
+		exit:   b.ImgEnd + 2,
 		off:    b.ImgStart - vpH,
 	}
 }
@@ -128,18 +124,30 @@ func offRevealTop(t, i, vpH int, blocks []ImageBlock) (int, bool) {
 // order). Each block defines two snap boundaries — TOP (its first line at the
 // viewport's first row) and BOTTOM (the last line of its wrapped caption at
 // the viewport's last row) — and the snap steps between them. The lead block
-// skips onto its caption in a single downward press — it was shown on open,
-// so its boundaries are pre-consumed — and a fully visible lead photo (window
-// top at or above ImgStart and window bottom reaching ImgEnd) likewise skips
-// onto its caption. Inline blocks snap in two stages so an image is never
-// skipped without first being shown: a downward move that leaves an inline
-// image partially visible in the window — its top inside the window, its last
-// line below the fold, whether it entered from below or a skip of the
-// preceding image left it there — snaps its BOTTOM boundary so the wrapped
-// caption is fully visible, the next downward move snaps its TOP boundary, and
-// a move landing in its photo range then skips the whole image-and-caption
-// block onto the line after its caption (EXIT), so the caption leaves with the
-// image as one unit rather than being left at the viewport top.
+// was shown on open, so its entry stages are pre-consumed: a fully visible
+// lead photo (window top at or above ImgStart and window bottom reaching
+// ImgEnd) rises flush to the viewport top on the next downward press, and the
+// downward press after that skips the whole image-and-caption block onto the
+// first line of the next image or paragraph (EXIT), leaving the blank
+// separator below the block behind as part of the unit. Inline blocks snap in
+// two stages so an image is never skipped without first being shown: a
+// downward move that leaves an inline image partially visible in the window —
+// its top inside the window, its last line below the fold, whether it entered
+// from below or a skip of the preceding image left it there — snaps its BOTTOM
+// boundary so the wrapped caption is fully visible, the next downward move
+// snaps its TOP boundary, and a move landing in its photo range then skips the
+// whole image-and-caption block onto the first line of the next image or
+// paragraph (EXIT), so the caption leaves with the image as one unit rather
+// than being left at the viewport top. For two adjacent images (one blank line
+// apart), EXIT is the next image's TOP, so the block scrolls off straight onto
+// the next photo's flush position with no extra press on the separator line —
+// but when the next image is short (shorter than the viewport), the skip lands
+// on its BOTTOM boundary instead, presenting that photo with its caption at
+// the viewport bottom so the caption snapping works on the way down exactly as
+// it does on the way up; the next press rises it to its TOP. The rise from a
+// BOTTOM boundary takes precedence over the photo-range skip, so an adjacent
+// photo's bottom stage — which can sit inside the preceding image's photo
+// range — rises rather than re-skipping the preceding block and looping.
 // Upward moves mirror it: an image entering from above snaps its TOP boundary —
 // firing as soon as the block's last line enters the window from above, even
 // at its first row, so the whole image and caption appear at once — the next
@@ -172,7 +180,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 	}
 	pos := make([]snapPos, len(blocks))
 	for i, b := range blocks {
-		pos[i] = snapPositions(i, b, vpH)
+		pos[i] = snapPositions(b, vpH)
 	}
 	if direction > 0 {
 		// A snap must not return the offset before the move: that target would
@@ -186,43 +194,62 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 			}
 			return yOffset
 		}
-		// Down landing in a photo range. The lead block (index 0) skips onto
-		// its caption in one press (it was shown on open; its boundaries are
-		// pre-consumed). Inline blocks: a move entering the photo from above
-		// snaps to its TOP (second stage), a move starting at or inside it
-		// skips it onto its caption (EXIT).
+		// Rise stage: an inline image sitting fully visible at its BOTTOM
+		// boundary (the bottom snap landed here) moves to its TOP boundary on
+		// the next down move. It runs before the photo-range skip so a rise
+		// from a bottom boundary — whose offset can sit inside a preceding
+		// image's photo range when photos are adjacent — rises the image
+		// rather than re-skipping the preceding block and looping.
+		for i, b := range blocks {
+			if i > 0 && before == pos[i].bottom && yOffset <= b.ImgStart {
+				return snap(pos[i].top)
+			}
+		}
+		// Down landing in a photo range. The lead block (index 0) rises flush
+		// to the viewport top when the move entered its photo from above (its
+		// entry stages are pre-consumed, so the first press presents it at the
+		// top, the next skips the whole block past its caption); a move
+		// starting at or inside it skips the whole block onto the first line
+		// of the next image or paragraph. Inline blocks: a move entering
+		// the photo from above snaps to its TOP (second stage), a move
+		// starting at or inside it skips it onto the first line of the next
+		// image or paragraph (EXIT). EXIT is one line past the block's blank
+		// separator, so a block followed by body text lands on the next
+		// paragraph's first line. For two adjacent images (one blank line
+		// apart), EXIT is the next image's TOP — reached directly, never one
+		// line down needing an extra scroll — unless the next image is short
+		// enough to have a distinct bottom stage, in which case the skip lands
+		// on that BOTTOM boundary instead (its caption at the viewport
+		// bottom), mirroring the upward sink so scrolling down shows each
+		// photo's caption the same way scrolling up does; the next press then
+		// rises it to its TOP.
 		for i, b := range blocks {
 			if yOffset >= b.ImgStart && yOffset < b.CapStart {
-				if i > 0 && before < b.ImgStart {
+				if before < b.ImgStart {
 					return snap(pos[i].top)
 				}
-				// A caption-less image (a photo-grid's first photo) followed
-				// immediately by an adjacent inline image: its EXIT (one past
-				// its last photo row, the separator gap) would leave the next
-				// image resting one line below the viewport top, needing an
-				// extra scroll to snap flush. Skip straight to the next
-				// image's TOP instead.
-				if b.CapStart == b.ImgEnd+1 && i+1 < len(blocks) && blocks[i+1].ImgStart == b.ImgEnd+2 {
-					return snap(pos[i+1].top)
+				if i+1 < len(blocks) {
+					nb := blocks[i+1]
+					if nb.ImgStart == b.ImgEnd+2 &&
+						nb.ImgEnd-nb.ImgStart+1 < vpH &&
+						pos[i+1].bottom > before {
+						return snap(pos[i+1].bottom)
+					}
 				}
 				return snap(pos[i].exit)
 			}
 		}
-		// A fully visible lead photo (index 0) is skipped in one press: it was
-		// shown on open. Inline blocks are excluded — the fully-visible skip
-		// there would preempt the two-stage snap and skip an image that was
-		// never shown.
+		// A fully visible lead photo (index 0) rises flush to the viewport
+		// top on the next down move — it was shown on open, so its entry
+		// stages are pre-consumed, but it is never skipped straight past in
+		// one press: the following down move (landing in its photo range)
+		// then skips the whole block onto the first line of the next image or
+		// paragraph. Inline
+		// blocks are excluded — the fully-visible skip there would preempt
+		// the two-stage snap and skip an image that was never shown.
 		if len(blocks) > 0 {
 			if yOffset <= blocks[0].ImgStart && yOffset+vpH >= blocks[0].ImgEnd {
-				return snap(pos[0].exit)
-			}
-		}
-		// Rise stage: an inline image sitting fully visible at its BOTTOM
-		// boundary (the bottom snap landed here) moves to its TOP boundary on
-		// the next down move.
-		for i, b := range blocks {
-			if i > 0 && before == pos[i].bottom && yOffset <= b.ImgStart {
-				return snap(pos[i].top)
+				return snap(pos[0].top)
 			}
 		}
 		// Down entry snap for a short inline image: a single-line down move
@@ -233,7 +260,8 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// the image is never skipped past without first being shown, and a
 		// short photo entered from below is aligned flush rather than scrolled
 		// into view line-by-line. The next downward move rises it to its TOP
-		// boundary, the following move skips it onto its caption. The
+		// boundary, the following move skips it onto the first line of the
+		// next image or paragraph. The
 		// partial-visibility bottom snap below still handles blocks taller
 		// than the viewport (which the top entering at the fold leaves
 		// genuinely clipped) and images whose top was already inside the
@@ -268,12 +296,12 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		if best >= 0 {
 			// A lower inline image whose top is inside the window is skipped
 			// only when every inline image above it has been shown and passed
-			// (scrolled onto its caption). When a higher inline image is still
+			// (scrolled past its caption). When a higher inline image is still
 			// fully visible — the first of a double photo, both near viewport
 			// height and adjacent — the snap must not jump to the lower one's
 			// bottom, or the higher image's own flush positions are never
 			// reached. Fall through so the higher image's natural progression
-			// (entry snap onto its top, then its caption) continues.
+			// (entry snap onto its top, then past its caption) continues.
 			skip := false
 			for j, nb := range blocks {
 				if j > 0 && j < best && nb.ImgStart >= yOffset && nb.ImgEnd <= yOffset+vpH {
@@ -393,6 +421,33 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		}
 		if best >= 0 {
 			return snap(pos[best].top)
+		}
+		// Settle-to-bottom: a non-snap move (goto-bottom, page, recompose)
+		// can leave a short inline block fully visible mid-window — or poking
+		// in with its top above the fold — instead of on a boundary the entry
+		// or sink snap would have landed it on. The next single-line up scroll
+		// snaps it to its BOTTOM boundary, presenting the image and its
+		// wrapped caption flush at the viewport bottom, so scrolling up from
+		// the article's end never walks the last photo past the fold line by
+		// line; the following up scroll then scrolls it off. Blocks already on
+		// a boundary are handled by the sink and bottom-boundary rules above,
+		// blocks whose bottom is below the fold by the bottom scroll-off
+		// below, and blocks that fill the viewport have no distinct bottom
+		// stage.
+		best = -1
+		for i, b := range blocks {
+			if i > 0 &&
+				b.ImgEnd-b.ImgStart+1 < vpH &&
+				b.ImgEnd >= yOffset && b.ImgEnd < yOffset+vpH {
+				if best < 0 || b.ImgStart > blocks[best].ImgStart {
+					best = i
+				}
+			}
+		}
+		if best >= 0 {
+			if t := pos[best].bottom; t < yOffset {
+				return snap(t)
+			}
 		}
 		// Bottom scroll-off: an inline image partially visible with its top
 		// inside the window and its last line below the fold (an up move
