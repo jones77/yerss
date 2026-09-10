@@ -51,6 +51,13 @@ func (m *Model) nativeImages() bool {
 // fully contained images (that frame re-transmits the image with its stable
 // placement id, which replaces the placement).
 func (m *Model) recomputeNativeClear() {
+	// Snapshot the transmitted-id tracking before this frame's computeNativeClear
+	// advances it, so the render path can tell a placement reference re-show (the
+	// image was transmitted on an earlier frame) from this frame's fresh transmit.
+	m.nativeSentPrev = make(map[string]uint32, len(m.nativeSent))
+	for url, id := range m.nativeSent {
+		m.nativeSentPrev[url] = id
+	}
 	m.nativeClearPrefix = m.computeNativeClear()
 }
 
@@ -100,8 +107,11 @@ func (m *Model) computeNativeClear() string {
 			continue
 		}
 		// The block is scrolled out or clipped: delete its placement by the id
-		// it was rendered under.
+		// it was rendered under, freeing the terminal's cached image data, and
+		// forget the transmitted id so the frame that scrolls it back in
+		// transmits the payload once before referencing again.
 		sb.WriteString(image.DeleteByID(b.NativeID))
+		delete(m.nativeSent, b.URL)
 	}
 	if seen == 0 {
 		m.nativeSent = make(map[string]uint32)
@@ -113,6 +123,42 @@ func (m *Model) computeNativeClear() string {
 	}
 	m.nativeClearArticleID = 0
 	return sb.String()
+}
+
+// rewriteNativeReShows rewrites the first line of every fully visible native
+// image whose payload was transmitted on an earlier frame (its id is recorded
+// in nativeSentPrev, the state before this frame's transmits) from the full
+// transmit escape the cached block carries into a placement reference (`a=p`
+// naming the same image id), so later frames re-show the cached photo instead
+// of re-transmitting its base64 payload. It is a pure per-frame transform of
+// the visible viewport lines: the cached block keeps its full transmit, so a
+// recompose or a scroll-out/scroll-back cycle restores it, and render stays a
+// pure function of state (the snapshot is set by recomputeNativeClear in the
+// update path). A full transmit stays on the first frame, after a scroll-out
+// delete cleared the id, and after a re-render at a new size (the prior id was
+// deleted and the new id is not yet recorded).
+func (m *Model) rewriteNativeReShows(lines []string) {
+	if m.sess.ImgNative.Protocol != image.ProtocolKitty {
+		return
+	}
+	vp := m.article.viewport
+	for _, b := range m.article.imageBlocks {
+		if !b.NativeImg {
+			continue
+		}
+		if b.ImgStart < vp.YOffset || b.CapStart > vp.YOffset+vp.Height {
+			continue
+		}
+		// The image was already transmitted before this frame under exactly
+		// this render id, so the terminal holds its payload; re-show it by
+		// placement reference.
+		if held, ok := m.nativeSentPrev[b.URL]; !ok || held == 0 || held != b.NativeID {
+			continue
+		}
+		if idx := b.ImgStart - vp.YOffset; idx >= 0 && idx < len(lines) {
+			lines[idx] = image.KittyPlacementReference(lines[idx])
+		}
+	}
 }
 
 // suppressClippedNativeTransmits blanks the native-image transmit escape on the

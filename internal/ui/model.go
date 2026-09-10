@@ -86,6 +86,13 @@ type Model struct {
 	// frame can delete the prior size's image before a re-render at a new
 	// size, and leaving the article can free every image the terminal holds.
 	nativeSent map[string]uint32
+	// nativeSentPrev snapshots nativeSent as it stood at the start of the
+	// current frame's recomputeNativeClear, before computeNativeClear advanced
+	// it with this frame's transmits. The render path uses it to tell a
+	// placement-reference re-show (the image was transmitted on an earlier
+	// frame) from this frame's fresh transmit, so the first frame after a
+	// transmit (or a scroll-back or resize) always carries the full payload.
+	nativeSentPrev map[string]uint32
 	// nativeClearPrefix holds the precomputed kitty image clear sequence for
 	// the current frame, computed in the update path so View() stays pure.
 	nativeClearPrefix string
@@ -176,6 +183,7 @@ func New(sess *app.Session) *Model {
 		styles:     buildModelStyles(palette),
 		imgLoading: make(map[string]bool),
 		nativeSent: make(map[string]uint32),
+		nativeSentPrev: make(map[string]uint32),
 		// -1 means no delete-all has been emitted for a no-native article yet,
 		// so the first entry into one fires it. Reset to -1 when leaving the
 		// article view so re-entering re-clears.

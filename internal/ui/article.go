@@ -448,6 +448,7 @@ func (m *Model) renderArticle() string {
 	g := m.glyphs()
 	content := m.article.viewport.View()
 	lines := strings.Split(content, "\n")
+	m.rewriteNativeReShows(lines)
 	m.suppressClippedNativeTransmits(lines)
 	lines = highlightSelection(lines, m.article.sel)
 	sc := render.ScrollState{

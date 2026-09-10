@@ -879,13 +879,48 @@ func TestPixelDimsUsesCellSize(t *testing.T) {
 	if pxW, pxH := r.pixelDims(50, 20); pxW != 500 || pxH != 400 {
 		t.Errorf("10x20 cell: pixelDims = %d,%d, want 500,400", pxW, pxH)
 	}
-	// An oversized cell box is capped to bound the payload.
+	// An oversized cell box is capped at maxNativeEdge to bound the payload.
 	pxW, pxH := r.pixelDims(1000, 20)
-	if pxW > 4096 || pxH > 4096 {
+	if pxW > maxNativeEdge || pxH > maxNativeEdge {
 		t.Errorf("pixelDims not capped: %d,%d", pxW, pxH)
 	}
-	if pxW != 4096 {
-		t.Errorf("capped width = %d, want 4096", pxW)
+	if pxW != maxNativeEdge {
+		t.Errorf("capped width = %d, want %d", pxW, maxNativeEdge)
+	}
+}
+
+func TestPixelDimsCapPreservesAspectRatio(t *testing.T) {
+	// The cap scales the shorter edge to preserve the cell box's aspect ratio,
+	// so the displayed photo is unchanged in shape at typical widths.
+	withCellPx(t, 8, 16)
+	r := NativeRenderer{}
+	cases := []struct {
+		w, h int
+	}{
+		// Below the cap the cell-pixel box is used unchanged.
+		{50, 20},
+		// Wide box clamped on the width, height scaled to the same ratio.
+		{1000, 20},
+		// Tall box clamped on the height, width scaled to the same ratio.
+		{50, 1000},
+		// Square box clamped on both.
+		{2000, 1000},
+	}
+	for _, c := range cases {
+		pxW, pxH := r.pixelDims(c.w, c.h)
+		if pxW > maxNativeEdge || pxH > maxNativeEdge {
+			t.Errorf("pixelDims(%d,%d) = %d,%d exceeds maxNativeEdge %d", c.w, c.h, pxW, pxH, maxNativeEdge)
+		}
+		// The encoded pixel box keeps the cell box's aspect ratio (the 8x16
+		// cell makes the pixel ratio 1:2 of the cell ratio), within the
+		// rounding of integer pixel dimensions.
+		want := float64(pxH) * float64(8*c.w) / float64(16*c.h)
+		if pxW < 0 {
+			t.Fatal("negative width")
+		}
+		if got := float64(pxW); got < want*0.985 || got > want*1.015 {
+			t.Errorf("pixelDims(%d,%d) = %d,%d breaks the aspect ratio (want ~%.1f)", c.w, c.h, pxW, pxH, want)
+		}
 	}
 }
 
@@ -1017,6 +1052,80 @@ func TestRenderIDDistinctPerSizeAndReused(t *testing.T) {
 	for _, id := range []uint32{a, b, renderID(url, 0, 0), renderID("", 10, 10)} {
 		if id == 0 {
 			t.Error("renderID must never return zero (the protocol reserves image id 0)")
+		}
+	}
+}
+
+func TestNativeRenderDimsNeverExceedMaxEdge(t *testing.T) {
+	// A native render's encoded pixel dimensions stay at or below the cap for
+	// any terminal cell pixel size and any on-screen cell box, so a full-width
+	// photo's payload is bounded on any terminal.
+	for _, cell := range [][2]int{{8, 16}, {10, 20}, {2, 4}, {1, 1}, {20, 40}} {
+		withCellPx(t, cell[0], cell[1])
+		for _, box := range [][2]int{{50, 20}, {1000, 1000}, {200, 500}, {100, 400}, {1, 1}} {
+			r := NativeRenderer{}
+			pxW, pxH := r.pixelDims(box[0], box[1])
+			if pxW > maxNativeEdge || pxH > maxNativeEdge {
+				t.Errorf("cell %dx%d box %dx%d: pixelDims = %d,%d exceeds maxNativeEdge %d",
+					cell[0], cell[1], box[0], box[1], pxW, pxH, maxNativeEdge)
+			}
+			if pxW < 1 || pxH < 1 {
+				t.Errorf("cell %dx%d box %dx%d: pixelDims = %d,%d, want positive",
+					cell[0], cell[1], box[0], box[1], pxW, pxH)
+			}
+		}
+	}
+}
+
+func TestKittyPlacementReference(t *testing.T) {
+	// A full transmit's payload is replaced by a placement reference carrying
+	// the same image id and display box, with no payload; the reference keeps
+	// parsing back the same id so delete-by-id cleanup is unchanged.
+	tx := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=50,r=20,C=1;QUJD\x1b\\" + strings.Repeat(" ", 50)
+	got := KittyPlacementReference(tx)
+	want := "\x1b_Ga=p,i=7,p=7,c=50,r=20,C=1,q=1\x1b\\" + strings.Repeat(" ", 50)
+	if got != want {
+		t.Errorf("KittyPlacementReference = %q, want %q", got, want)
+	}
+	if strings.Contains(got, ";") || strings.Contains(got, "QUJD") {
+		t.Error("placement reference must not carry the base64 payload")
+	}
+	if id := NativeRenderID([]string{got}); id != 7 {
+		t.Errorf("reference id = %d, want 7 (identity tracking preserved)", id)
+	}
+	// A chunked transmit (the payload spills past one kitty chunk) is also
+	// rewritten: every continuation chunk is dropped, not just the first.
+	chunked := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=50,r=20,C=1,m=1;QUJD\x1b\\\x1b_Gm=1;REVG\x1b\\\x1b_Gm=0;R0hJ\x1b\\" + strings.Repeat(" ", 50)
+	got = KittyPlacementReference(chunked)
+	if got != want {
+		t.Errorf("chunked KittyPlacementReference = %q, want %q", got, want)
+	}
+	// A line without a kitty transmit (iTerm OSC 1337 or halfblock) is left
+	// untouched.
+	iterm := "\x1b]1337;File=name=AA;size=1;inline=1;width=50;height=20:QUJD\x07" + strings.Repeat(" ", 50)
+	if got := KittyPlacementReference(iterm); got != iterm {
+		t.Errorf("non-kitty line changed: %q", got)
+	}
+	if got := KittyPlacementReference("  plain  "); got != "  plain  " {
+		t.Errorf("plain line changed: %q", got)
+	}
+}
+
+func TestKittyTransmitBox(t *testing.T) {
+	cases := []struct {
+		line string
+		w, h int
+	}{
+		{"\x1b_Ga=T,f=100,q=1,i=7,p=7,c=50,r=20,C=1;AAAA\x1b\\", 50, 20},
+		{"\x1b_Ga=p,i=7,p=7,c=30,r=10,C=1,q=1\x1b\\", 30, 10},
+		{"\x1b]1337;File=name=AA;size=1;inline=1;width=2;height=2:AAAA\x07", 0, 0},
+		{"plain", 0, 0},
+		{"", 0, 0},
+	}
+	for _, c := range cases {
+		w, h := kittyTransmitBox([]string{c.line})
+		if w != c.w || h != c.h {
+			t.Errorf("kittyTransmitBox(%q) = %d,%d, want %d,%d", c.line, w, h, c.w, c.h)
 		}
 	}
 }
