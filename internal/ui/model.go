@@ -96,6 +96,11 @@ type Model struct {
 	// operations (block, photo, and native commands) to imgConcurrency,
 	// regardless of how many image commands are fired.
 	imgSem chan struct{}
+	// previewCache memoizes the halfblock preview rendered for each partially
+	// visible native image (keyed by URL, content width, and preview row
+	// count), so the clipped-preview path renders each image at most once
+	// instead of once per frame while it is partially visible.
+	previewCache map[string][]string
 	// nativeSent tracks the kitty image id last transmitted per URL, so a
 	// frame can delete the prior size's image before a re-render at a new
 	// size, and leaving the article can free every image the terminal holds.
@@ -199,6 +204,7 @@ func New(sess *app.Session) *Model {
 		imgFrontier: -1,
 		nativePending: make(map[string]bool),
 		imgSem: make(chan struct{}, imgConcurrency),
+		previewCache: make(map[string][]string),
 		nativeSent: make(map[string]uint32),
 		nativeSentPrev: make(map[string]uint32),
 		// -1 means no delete-all has been emitted for a no-native article yet,

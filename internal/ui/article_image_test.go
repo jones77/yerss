@@ -2752,6 +2752,49 @@ func TestClippedNativeImageShowsHalfblockPreview(t *testing.T) {
 	}
 }
 
+func TestClippedNativePreviewRendersOnce(t *testing.T) {
+	// The halfblock preview of a partially visible native image is memoized:
+	// rendering frames at a static offset must not re-render the preview on
+	// the UI thread each frame. Before the memoization, every frame a native
+	// image sat partially visible re-rendered its full-width halfblock
+	// preview, so scrolling through photos saturated the UI goroutine and
+	// queued input for seconds.
+	a := imageArticle()
+	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 60)
+	m, _ := newImageModel(t, []string{"PREVIEW1", "PREVIEW2"})
+	cr := &countingRenderer{inner: imgpkg.Halfblocks{}}
+	m.sess.ImgRenderer = cr
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}
+	m.sess.ImgCache = imgpkg.NewCache()
+	m.sess.ImgCache.Set(imageArticle().ImageURL, testImg())
+	m.sess.ImgCache.Set("inline.jpg", testImg())
+	m.view = viewArticle
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	tall := make([]string, vpH+40)
+	esc := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=2,r=2;AAAA\x1b\\"
+	tall[0] = esc + "  "
+	for i := 1; i < len(tall); i++ {
+		tall[i] = "  "
+	}
+	m.sess.ImgNatives.Set(imgpkg.NativeKey("inline.jpg", contentW, vpH), tall)
+	m.article = m.newArticleState(a)
+	inline := m.article.imageBlocks[1]
+	if !inline.NativeImg {
+		t.Fatal("inline block should be flagged native")
+	}
+
+	m.article.viewport.SetYOffset(inline.ImgStart)
+	frameView(m)
+	cr.calls = 0
+	for i := 0; i < 5; i++ {
+		frameView(m)
+	}
+	if cr.calls != 0 {
+		t.Errorf("UI-thread renders across 5 static frames = %d, want 0 (preview must be memoized)", cr.calls)
+	}
+}
+
 func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	m, _ := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}

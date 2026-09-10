@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -200,7 +201,11 @@ func (m *Model) suppressClippedNativeTransmits(lines []string) {
 // is deleted for a partially visible image because it would draw over the
 // article border). The preview renders the cached decoded image at the native
 // block's row count, so it aligns with the native's cell box and centers the
-// same way. When the decoded image is not cached the rows stay blank.
+// same way. It is memoized per (URL, content width, preview row count), so a
+// partially visible image is rendered at most once rather than once per frame
+// while the reader scrolls it through the fold — the synchronous UI-thread
+// render stays bounded by the image count, not by frame count. When the decoded
+// image is not cached the rows stay blank.
 func (m *Model) previewClippedImage(lines []string, b compose.ImageBlock) {
 	vp := m.article.viewport
 	img, ok := m.sess.ImgCache.Get(b.URL)
@@ -208,9 +213,15 @@ func (m *Model) previewClippedImage(lines []string, b compose.ImageBlock) {
 		return
 	}
 	rows := b.CapStart - b.ImgStart
-	pre, err := m.sess.ImgRenderer.Render(img, vp.Width, rows)
-	if err != nil {
-		return
+	key := fmt.Sprintf("%s|%d|%d", b.URL, vp.Width, rows)
+	pre, ok := m.previewCache[key]
+	if !ok {
+		var err error
+		pre, err = m.sess.ImgRenderer.Render(img, vp.Width, rows)
+		if err != nil {
+			return
+		}
+		m.previewCache[key] = pre
 	}
 	imgW := image.BlockWidth(pre)
 	pad := max(0, (vp.Width-imgW)/2)

@@ -169,6 +169,7 @@ func (m *Model) newArticleState(a store.Article) articleState {
 	if m.article.article == nil || a.ID != m.article.id {
 		m.imgFrontier = -1
 		m.nativePending = make(map[string]bool)
+		m.previewCache = make(map[string][]string)
 	}
 	padX, padY := m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY
 	contentW, vpH, _ := render.ContentGeom(m.width, m.height, padX, padY)
