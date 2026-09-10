@@ -86,9 +86,9 @@ func TestArticleImageBlockComposedBelowHeader(t *testing.T) {
 	}
 	// Header (URL, blank, title, author) is 4 lines; the block sits below it
 	// after one blank line and covers the two image lines plus the attribution
-	// (which wraps at the standard caption width — the 51-cell caption width for
-	// the 74-cell content area holds the whole 14-cell "photo: example" on one
-	// line).
+	// (which wraps at the standard caption width — at this 80-column terminal the
+	// caption is the full 74-cell content width, so the whole 14-cell
+	// "photo: example" holds on one line).
 	if m.article.imgStart != 5 || m.article.imgEnd != 7 {
 		t.Errorf("img range = %d..%d, want 5..7", m.article.imgStart, m.article.imgEnd)
 	}
@@ -530,7 +530,7 @@ func TestAttributionWrapsAtCaptionWidth(t *testing.T) {
 	m.article = m.newArticleState(a)
 
 	contentW := m.article.viewport.Width
-	captionW := compose.CaptionWidth(contentW)
+	captionW := compose.CaptionWidth(m.width, contentW)
 	if captionW <= 4 {
 		t.Fatalf("caption width %d should exceed the 4-cell photo", captionW)
 	}
@@ -666,7 +666,7 @@ func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
 	}
-		msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), headerLines, compose.CaptionWidth(width))()
+		msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), headerLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -2692,7 +2692,7 @@ func TestInlineLinkTextCaptionFitsNativeBlock(t *testing.T) {
 
 	// Render the inline photo natively with that caption and re-compose.
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, compose.CaptionWidth(width))()
+	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -2856,7 +2856,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	m.article = m.newArticleState(a)
 	m.view = viewArticle
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, compose.CaptionWidth(width))()
+	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg for the inline image, got %T", msg)

@@ -26,12 +26,17 @@ type ImageBlock struct {
 	NativeID  uint32
 }
 
-// CaptionWidth returns the standard caption width for the article content area:
-// a fixed fraction of the content width, independent of any photo's own width,
-// so a long caption wraps predictably and does not inflate a narrow photo's
-// block. The fit and the composition both derive the caption width from the
-// content width, so they always agree.
-func CaptionWidth(contentW int) int {
+// CaptionWidth returns the standard caption width for the article content area.
+// On a narrow terminal (fewer than 100 columns) it is the full content width, so
+// a caption can use every column available; on a wider terminal it is a fixed
+// fraction of the content width, independent of any photo's own width, so a
+// long caption wraps predictably and does not inflate a narrow photo's block.
+// The fit and the composition both derive the caption width from the same
+// inputs, so they always agree.
+func CaptionWidth(screenW, contentW int) int {
+	if screenW < 100 {
+		return max(1, contentW)
+	}
 	return max(1, contentW*7/10)
 }
 

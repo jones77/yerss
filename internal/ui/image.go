@@ -299,7 +299,7 @@ func (m *Model) fitBlock(renderFn func(maxH int) []string, attr string, contentW
 	if attr == "" {
 		maxH = max(1, base)
 	}
-	captionW := compose.CaptionWidth(contentW)
+	captionW := compose.CaptionWidth(m.width, contentW)
 	var rendered []string
 	for i := 0; ; i++ {
 		rendered = renderFn(maxH)
@@ -331,7 +331,7 @@ func (m *Model) composeBlock(rendered []string, attr string, contentW int) []str
 	}
 	if attr != "" {
 		style := lipgloss.NewStyle().Foreground(m.palette.Dim)
-		captionW := compose.CaptionWidth(contentW)
+		captionW := compose.CaptionWidth(m.width, contentW)
 		left := photoPad + (imgW-captionW)/2
 		if left < 0 {
 			left = 0
@@ -618,7 +618,7 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 		attr = compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	}
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	return m.gateCmd(image.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width)))
+	return m.gateCmd(image.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(m.width, width)))
 }
 
 // onPhotoLoaded fires the off-thread native render for the photo at msg's URL
