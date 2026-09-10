@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/convert"
+	"yerss/internal/image"
 	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
@@ -506,9 +507,11 @@ func stripURLScheme(url string) string {
 // line, a blank line, the bold title, and the author line directly beneath it
 // with no blank between them. The URL is shown with its scheme stripped but is
 // wrapped in an OSC 8 hyperlink whose target keeps the full URL, so it stays
-// clickable. Title and author are rendered as separate documents and joined
-// because the markdown renderer folds line breaks inside a paragraph into
-// spaces.
+// clickable. A long URL wraps at the content width onto subsequent lines so the
+// whole display string is visible, each wrapped line carrying its own OSC 8
+// hyperlink (some terminals drop hyperlinks across a line break). Title and
+// author are rendered as separate documents and joined because the markdown
+// renderer folds line breaks inside a paragraph into spaces.
 func (m *Model) renderHeader(a store.Article, contentW int) string {
 	var meta []string
 	if a.Title != "" {
@@ -521,11 +524,22 @@ func (m *Model) renderHeader(a store.Article, contentW int) string {
 	if a.Link == "" {
 		return metaBlock
 	}
-	urlPart := ansi.SetHyperlink(a.Link) + stripURLScheme(a.Link) + ansi.ResetHyperlink()
+	urlPart := m.renderHeaderLink(a.Link, contentW)
 	if metaBlock == "" {
 		return urlPart
 	}
 	return urlPart + "\n\n" + metaBlock
+}
+
+// renderHeaderLink wraps the stripped article URL at the content width and
+// emits each line as an OSC 8 hyperlink carrying the full URL, rendered in the
+// status-bar blue role.
+func (m *Model) renderHeaderLink(url string, contentW int) string {
+	var parts []string
+	for _, l := range image.LayoutWrapLines(stripURLScheme(url), contentW) {
+		parts = append(parts, m.styles.status.Render(ansi.SetHyperlink(url)+l+ansi.ResetHyperlink()))
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (m *Model) renderArticle() string {

@@ -78,6 +78,49 @@ func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
 	}
 }
 
+func TestReaderHeaderURLWraps(t *testing.T) {
+	// A URL longer than the content width wraps onto subsequent lines so the
+	// whole display string is visible, each wrapped line an OSC 8 hyperlink
+	// carrying the full URL.
+	m, _ := newTestModel(t)
+	m.width = 40
+	url := "https://example.com/a/very/long/path/that/extends/beyond/the/available/width/and/must/wrap"
+	m.article = m.newArticleState(store.Article{
+		Title:   "t",
+		Link:    url,
+		Content: "<p>x</p>",
+	})
+	contentW := m.article.viewport.Width
+
+	lines := strippedLines(m.article.lines)
+	var urlLines []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" {
+			break
+		}
+		urlLines = append(urlLines, strings.TrimRight(l, " "))
+	}
+	if len(urlLines) < 2 {
+		t.Fatalf("expected the URL to wrap to multiple lines, got %d: %q", len(urlLines), urlLines)
+	}
+	if got := strings.Join(urlLines, ""); got != stripURLScheme(url) {
+		t.Errorf("wrapped header URL = %q, want the whole stripped URL %q", got, stripURLScheme(url))
+	}
+	for i, l := range urlLines {
+		if w := ansi.StringWidth(l); w > contentW {
+			t.Errorf("URL line %d width %d exceeds content width %d: %q", i, w, contentW, l)
+		}
+	}
+	// Each wrapped line stays clickable: exactly one OSC 8 span per line,
+	// targeting the full URL.
+	for i := 0; i < len(urlLines); i++ {
+		spans := parseLinkSpans(m.article.lines[i])
+		if len(spans) != 1 || spans[0].url != url {
+			t.Errorf("URL line %d spans = %+v, want one span for %q", i, spans, url)
+		}
+	}
+}
+
 func TestReaderHeaderWithoutLinkStartsWithTitle(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.article = m.newArticleState(store.Article{Title: "Only title", Content: "<p>x</p>"})
