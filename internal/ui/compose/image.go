@@ -173,8 +173,14 @@ func offRevealTop(t, i, vpH int, blocks []ImageBlock) (int, bool) {
 // cannot re-fire and loop. Multi-line moves (page, half-page, goto-bottom) do
 // not call this function at all: they land wherever they land, even mid-photo.
 // An empty block list means no image; offsets outside the ranges (or moves
-// that never enter them) are unchanged.
-func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, native bool) int {
+// that never enter them) are unchanged. leadShown reports whether blocks[0] is
+// a genuine lead block composed at the top of the article and shown on open.
+// When the article's lead URL is suppressed because it also appears inline (a
+// promo banner reusing the featured photo), blocks[0] is a regular inline
+// image that was not shown on open, and the snap treats it like any other
+// inline image — with entry and bottom snaps — instead of assuming its entry
+// stages were pre-consumed.
+func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, native bool, leadShown bool) int {
 	if len(blocks) == 0 {
 		return yOffset
 	}
@@ -182,6 +188,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 	for i, b := range blocks {
 		pos[i] = snapPositions(b, vpH)
 	}
+	lead := len(blocks) > 0 && leadShown
 	if direction > 0 {
 		// A snap must not return the offset before the move: that target would
 		// re-fire identically on the next move and loop (a block that fills the
@@ -201,7 +208,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// image's photo range when photos are adjacent — rises the image
 		// rather than re-skipping the preceding block and looping.
 		for i, b := range blocks {
-			if i > 0 && before == pos[i].bottom && yOffset <= b.ImgStart {
+			if (i > 0 || !lead) && before == pos[i].bottom && yOffset <= b.ImgStart {
 				return snap(pos[i].top)
 			}
 		}
@@ -239,6 +246,16 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 				return snap(pos[i].exit)
 			}
 		}
+		// A one-row image (CapStart == ImgStart+1) whose top was just shown:
+		// the next down move lands on its first caption line, which is past the
+		// photo range, so the photo-range skip above cannot catch it and the
+		// caption would scroll line by line. Skip the whole block past its
+		// caption so the image and its caption leave as one unit.
+		for i, b := range blocks {
+			if before == b.ImgStart && yOffset >= b.CapStart && yOffset <= b.ImgEnd {
+				return snap(pos[i].exit)
+			}
+		}
 		// A fully visible lead photo (index 0) rises flush to the viewport
 		// top on the next down move — it was shown on open, so its entry
 		// stages are pre-consumed, but it is never skipped straight past in
@@ -247,7 +264,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// paragraph. Inline
 		// blocks are excluded — the fully-visible skip there would preempt
 		// the two-stage snap and skip an image that was never shown.
-		if len(blocks) > 0 {
+		if lead {
 			if yOffset <= blocks[0].ImgStart && yOffset+vpH >= blocks[0].ImgEnd {
 				return snap(pos[0].top)
 			}
@@ -268,7 +285,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// window (a skip of the preceding image). before gates the entry so
 		// the snap cannot re-fire and loop.
 		for i, b := range blocks {
-			if i > 0 &&
+			if (i > 0 || !lead) &&
 				b.ImgEnd-b.ImgStart+1 < vpH &&
 				b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH &&
 				b.ImgStart >= before+vpH {
@@ -287,7 +304,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// not fire it.
 		best := -1
 		for i, b := range blocks {
-			if i > 0 && b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH && b.ImgEnd > yOffset+vpH {
+			if (i > 0 || !lead) && b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH && b.ImgEnd > yOffset+vpH {
 				if best < 0 || b.ImgStart > blocks[best].ImgStart {
 					best = i
 				}
@@ -342,7 +359,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// skips straight to the top, because re-transmitting a native photo
 		// per header step is expensive. This applies only to the lead image:
 		// the article top is above it, and inline images must scroll normally.
-		if native && len(blocks) > 0 {
+		if native && lead {
 			b := blocks[0]
 			if yOffset > 0 && yOffset <= b.ImgStart && yOffset+vpH >= b.ImgEnd {
 				return snap(0)
@@ -357,7 +374,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// The target puts the image's top at the fold, clamped to the article
 		// top.
 		for i := range blocks {
-			if i > 0 && before == pos[i].bottom {
+			if (i > 0 || !lead) && before == pos[i].bottom {
 				t := pos[i].off
 				// With images spaced closer than the viewport height, the
 				// scroll-off target can land inside a previous inline image's
@@ -387,7 +404,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// the next up move scrolls the image fully off (revealing a previous
 		// image whose range the target would land in).
 		for i, b := range blocks {
-			if i > 0 && before == b.ImgStart && yOffset >= b.ImgEnd-vpH {
+			if (i > 0 || !lead) && before == b.ImgStart && yOffset >= b.ImgEnd-vpH {
 				target := pos[i].bottom
 				if target < yOffset {
 					return snap(target)
@@ -413,7 +430,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// so the snap cannot re-fire and loop.
 		best := -1
 		for i, b := range blocks {
-			if i > 0 && b.ImgEnd >= yOffset && b.ImgEnd <= before {
+			if (i > 0 || !lead) && b.ImgEnd >= yOffset && b.ImgEnd <= before {
 				if best < 0 || b.ImgEnd < blocks[best].ImgEnd {
 					best = i
 				}
@@ -436,7 +453,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// stage.
 		best = -1
 		for i, b := range blocks {
-			if i > 0 &&
+			if (i > 0 || !lead) &&
 				b.ImgEnd-b.ImgStart+1 < vpH &&
 				b.ImgEnd >= yOffset && b.ImgEnd < yOffset+vpH {
 				if best < 0 || b.ImgStart > blocks[best].ImgStart {
@@ -457,7 +474,7 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 		// puts the image's top at the fold, so it cannot re-fire and loop.
 		best = -1
 		for i, b := range blocks {
-			if i > 0 && b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH && b.ImgEnd > yOffset+vpH {
+			if (i > 0 || !lead) && b.ImgStart >= yOffset && b.ImgStart < yOffset+vpH && b.ImgEnd > yOffset+vpH {
 				if best < 0 || b.ImgStart > blocks[best].ImgStart {
 					best = i
 				}
@@ -488,11 +505,14 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 // open); an offset inside an inline photo, or below an inline image whose top
 // sits within the window, snaps forward to the inline image's top (motion 1),
 // matching the two-motion scroll contract so the image is shown rather than
-// left partially clipped.
-func SnapAfterRecompose(offset, vpH int, blocks []ImageBlock) int {
+// left partially clipped. leadShown reports whether blocks[0] is a genuine lead
+// block composed at the top; when the lead is suppressed (its URL also appears
+// inline) blocks[0] is a regular inline image and snaps like one.
+func SnapAfterRecompose(offset, vpH int, blocks []ImageBlock, leadShown bool) int {
+	lead := len(blocks) > 0 && leadShown
 	for i, b := range blocks {
 		if offset >= b.ImgStart && offset < b.CapStart {
-			if i == 0 {
+			if i == 0 && lead {
 				return b.CapStart
 			}
 			return b.ImgStart
@@ -505,7 +525,7 @@ func SnapAfterRecompose(offset, vpH int, blocks []ImageBlock) int {
 	// stay visible.
 	best := -1
 	for i, b := range blocks {
-		if i > 0 && b.ImgStart > offset && b.ImgStart < offset+vpH {
+		if (i > 0 || !lead) && b.ImgStart > offset && b.ImgStart < offset+vpH {
 			if best < 0 || b.ImgStart < blocks[best].ImgStart {
 				best = i
 			}

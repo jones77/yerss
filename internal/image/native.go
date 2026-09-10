@@ -75,7 +75,7 @@ func (r NativeRenderer) RenderImage(src image.Image, url string, width, maxHeigh
 	if b.Dx() < 1 || b.Dy() < 1 {
 		return nil, fmt.Errorf("image has no pixels")
 	}
-	w, h := fitDims(b.Dx(), b.Dy(), renderWidth(b.Dx(), b.Dy(), width), maxHeight)
+	w, h := fitDims(b.Dx(), b.Dy(), RenderWidth(b.Dx(), b.Dy(), width), maxHeight)
 	pxW, pxH := r.pixelDims(w, h)
 	scaled := scaleTo(src, pxW, pxH)
 	var buf bytes.Buffer

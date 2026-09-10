@@ -15,15 +15,16 @@ import (
 // NativeCmd returns a tea.Cmd that renders an article's lead photo to a native
 // inline-image block off the UI goroutine, at the given content width and
 // viewport-height cap. It reads the raw photo bytes from the Photos cache (the
-// PhotoCmd fetch must precede it), runs the height-fit iteration to keep the
-// block, its wrapped attribution, and one line of body text within the viewport
-// budget, and caches the rendered lines in the Natives cache keyed by render
-// size. On a cache hit it short-circuits to a NativeMsg immediately rather than
+// PhotoCmd fetch must precede it) unless the decoded image is already cached in
+// cache (keyed by URL), runs the height-fit iteration to keep the block, its
+// wrapped attribution, and one line of body text within the viewport budget,
+// and caches the rendered lines in the Natives cache keyed by render size. On a
+// cache hit it short-circuits to a NativeMsg immediately rather than
 // re-rendering. On any failure it emits a FailedMsg so the halfblock block
 // remains the final render. captionW is the standard caption width the
 // attribution wraps at (independent of the photo's own width), so the fit
 // reserves the same line count the UI composes with.
-func NativeCmd(native NativeRenderer, photos *Photos, natives *Natives, url string, width, maxHeight int, attr string, headerLines, captionW int) tea.Cmd {
+func NativeCmd(cache *Cache, native NativeRenderer, photos *Photos, natives *Natives, url string, width, maxHeight int, attr string, headerLines, captionW int) tea.Cmd {
 	return func() tea.Msg {
 		key := NativeKey(url, width, maxHeight)
 		if lines, ok := natives.Get(key); ok {
@@ -33,7 +34,7 @@ func NativeCmd(native NativeRenderer, photos *Photos, natives *Natives, url stri
 		if !ok {
 			return FailedMsg{Key: url}
 		}
-		lines, err := renderNativeFitted(native, data, url, width, maxHeight, headerLines, attr, captionW)
+		lines, err := renderNativeFitted(native, cache, data, url, width, maxHeight, headerLines, attr, captionW)
 		if err != nil {
 			return FailedMsg{Key: url}
 		}
@@ -48,14 +49,21 @@ func NativeCmd(native NativeRenderer, photos *Photos, natives *Natives, url stri
 // converge on the fitted height (an attribution that wraps wider than the
 // reserved line shrinks the photo one more notch). The photo is decoded once
 // and the decoded image is scaled and re-encoded for each candidate height, so
-// the source bytes are never re-decoded per candidate. The attribution wraps at
-// captionW, the standard caption width. It returns the fitted native lines
-// (image rows only; the UI centers them and appends the attribution). Any
-// render error propagates to the caller.
-func renderNativeFitted(native NativeRenderer, data []byte, url string, width, maxHeight, headerLines int, attr string, captionW int) ([]string, error) {
-	src, err := decodeCapped(data)
-	if err != nil {
-		return nil, err
+// the source bytes are never re-decoded per candidate. When the halfblock path
+// already decoded the photo into cache the cached decoded image is reused and
+// the source bytes are not decoded again; only on a cache miss are they
+// decoded (via the same width cap the halfblock path applies). The attribution
+// wraps at captionW, the standard caption width. It returns the fitted native
+// lines (image rows only; the UI centers them and appends the attribution).
+// Any render error propagates to the caller.
+func renderNativeFitted(native NativeRenderer, cache *Cache, data []byte, url string, width, maxHeight, headerLines int, attr string, captionW int) ([]string, error) {
+	src, ok := cache.Get(url)
+	if !ok {
+		var err error
+		src, err = decodeCapped(data)
+		if err != nil {
+			return nil, err
+		}
 	}
 	base := maxHeight - headerLines - 3
 	maxH := max(1, base-1)

@@ -1090,6 +1090,13 @@ article text without markdown formatting markers (no literal `**` or
 
 - **WHEN** the markdown renderer fails to render the article content
 - **THEN** the reader displays the article text without literal markdown formatting markers such as `**` or `[text](url)`
+
+The system SHALL remove U+00AD soft hyphens from the article content before
+rendering: the app counts them as zero-width but the terminal renders each as a
+visible cell, so a line padded to the content width would overflow the frame by
+one column per soft hyphen and wrap the right border (scrollbar) onto the next
+line's left.
+
 ### Requirement: Article lead image rendering
 
 When image rendering is enabled and an article has a publisher-attached image
@@ -1238,7 +1245,12 @@ likewise
 snap the photo's first line to the viewport top. The lead image's
 boundaries are pre-consumed — it was shown on open — so it has no entry stages
 and never rests at its bottom boundary first, but it is never skipped past
-unseen in a single keystroke.
+unseen in a single keystroke. When the article's lead image URL is suppressed
+because it also appears as an inline image (a promo banner reusing the featured
+photo), the first composed block is a regular inline image that was not shown
+on open, and it SHALL follow the inline-image boundary transitions — the
+entry snap to its bottom boundary, then the rise to its top boundary, then the
+skip — rather than the pre-consumed lead transitions.
 
 For an inline image, a downward single-line scroll follows the boundary
 transitions: a scroll that leaves the image partially visible in the window —
@@ -1252,7 +1264,10 @@ including the top-boundary position, where the whole image and caption are on
 screen — skips the entire block, landing on the first line of the next image or
 paragraph (past the block's blank separator), so the caption is never left as a
 standalone position at the
-viewport top: the image and its caption are one snap unit. A
+viewport top: the image and its caption are one snap unit. A photo collapsed
+to a single image row with a multi-line caption SHALL skip the whole block past
+its caption when the move starts at the image's top and lands on the caption's
+first line, so the one-row image does not scroll its caption line by line. A
 downward scroll that would move the offset into the photo's range from above
 SHALL snap to the photo's first line (the top boundary); one starting at or
 inside it skips the block past its caption onto the first line of the next

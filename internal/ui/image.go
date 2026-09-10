@@ -13,6 +13,12 @@ import (
 	"yerss/internal/ui/render"
 )
 
+// imgConcurrency bounds the number of concurrent image fetch, decode, and
+// render operations (the block, photo, and native commands) via the shared
+// imgSem semaphore. It is a small constant independent of the article's image
+// count, so a photo-heavy article cannot spawn one operation per image at once.
+const imgConcurrency = 3
+
 // imagesEnabled reports whether lead image rendering is active: the config mode
 // is not off and ASCII fallback is not forcing images off (the -a flag and
 // terminal detection both set m.ascii).
@@ -224,9 +230,10 @@ func (m *Model) previewClippedImage(lines []string, b compose.ImageBlock) {
 // attribute centered directly beneath, for both the lead image and inline
 // images. On a native-capable terminal it serves a previously-rendered native
 // photo block (keyed by the current content width and viewport height) once
-// the off-thread NativeCmd has finished; otherwise it renders the halfblock
-// block from the in-memory decoded image, or serves the stored text block when
-// its width matches the content width. It returns nil when images are
+// the off-thread NativeCmd has finished; otherwise it serves the width-matched
+// stored text block, and only when neither a native render nor a stored block
+// matches the current width does it re-render the halfblock from the in-memory
+// decoded image (a resize or a first load). It returns nil when images are
 // disabled, no URL is set, or no image source is available yet; the int
 // reports how many of the returned lines are image rows (the attribution lines
 // follow them), the bool reports whether the lines carry a native
@@ -244,6 +251,25 @@ func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines i
 			return m.composeBlock(lines, attr, contentW), len(lines), true, id
 		}
 	}
+	// A width-matched rendered block is served before re-rendering from the
+	// decoded image, so a recompose after an image-load message never re-runs
+	// the halfblock render on the UI thread for an image whose block is already
+	// composed at this width. The width guard keeps a stale-width block (a
+	// resize re-renders it) out of the serve path: a full-width block must
+	// match the content width exactly, while a small image's block — rendered
+	// at its content-width-independent capped width — is served when the cached
+	// decoded image confirms its width is what a render at the current content
+	// width would produce.
+	if lines, ok := m.sess.ImgBlocks.Get(url); ok {
+		if w := image.BlockWidth(lines); w == contentW {
+			return m.composeBlock(lines, attr, contentW), len(lines), false, 0
+		} else if img, ok := m.sess.ImgCache.Get(url); ok {
+			b := img.Bounds()
+			if w == image.RenderWidth(b.Dx(), b.Dy(), contentW) {
+				return m.composeBlock(lines, attr, contentW), len(lines), false, 0
+			}
+		}
+	}
 	if img, ok := m.sess.ImgCache.Get(url); ok {
 		block, rows := m.fitBlock(func(maxH int) []string {
 			lines, err := m.sess.ImgRenderer.Render(img, contentW, maxH)
@@ -253,9 +279,6 @@ func (m *Model) composeImageBlock(url, attr string, contentW, vpH, headerLines i
 			return lines
 		}, attr, contentW, vpH, headerLines)
 		return block, rows, false, 0
-	}
-	if lines, ok := m.sess.ImgBlocks.Get(url); ok && image.BlockWidth(lines) == contentW {
-		return m.composeBlock(lines, attr, contentW), len(lines), false, 0
 	}
 	return nil, 0, false, 0
 }
@@ -321,56 +344,118 @@ func (m *Model) composeBlock(rendered []string, attr string, contentW int) []str
 	return out
 }
 
-// fireImageLoad returns a tea.Cmd that loads every image the open article
-// renders (the lead and each inline image, in order) through the cache
-// hierarchy when image rendering is enabled, with one in-flight guard per URL.
+// fireImageLoad returns a tea.Cmd that loads the images the open article
+// renders at or before the load frontier (the lead and the inline images in or
+// near the visible viewport, in document order) through the cache hierarchy
+// when image rendering is enabled, with one in-flight guard per URL. Images
+// beyond the frontier are not fetched, decoded, or rendered until the reader
+// scrolls toward them.
 func (m *Model) fireImageLoad(a store.Article) tea.Cmd {
 	if !m.imagesEnabled() {
 		return nil
 	}
-	var cmds []tea.Cmd
-	for pos, url := range m.article.imageURLs {
-		if url == "" || m.imgLoading[url] {
-			continue
-		}
-		cmds = append(cmds, m.loadImageCmd(a, url, pos))
-	}
-	if len(cmds) == 0 {
-		return nil
-	}
-	return tea.Batch(cmds...)
+	m.advanceFrontier()
+	return m.fireImagesTo(a, m.imgFrontier, true)
 }
 
 // loadImageCmd starts the image load for the article image at url and position,
 // marking the URL in flight so duplicate loads are not started (for example on
-// resize).
+// resize), and gating the fetch/decode/render work with the shared concurrency
+// bound.
 func (m *Model) loadImageCmd(a store.Article, url string, position int) tea.Cmd {
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	m.imgLoading[url] = true
 	if m.nativeImages() {
 		return tea.Batch(
-			image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, false, position),
-			image.PhotoCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.ImgPhotos, m.sess.Store(), a.ID, url, width, vpH, position),
+			m.gateCmd(image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, false, position)),
+			m.gateCmd(image.PhotoCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.ImgPhotos, m.sess.Store(), a.ID, url, width, vpH, position)),
 		)
 	}
-	return image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, true, position)
+	return m.gateCmd(image.BlockCmd(m.sess.ImgCache, m.sess.ImgBlocks, m.sess.Store(), a.ID, url, width, vpH, true, position))
 }
 
 // ensureImageSource fires the image load on resize for every image the open
-// article renders (the lead and each inline image) that has no cached source
-// at the current content geometry (for example a stored block rendered at a
+// article renders at or before the load frontier that has no cached source at
+// the current content geometry (for example a stored block rendered at a
 // different width, or a native render keyed to an earlier viewport size).
 func (m *Model) ensureImageSource(a store.Article) tea.Cmd {
 	if !m.imagesEnabled() {
 		return nil
 	}
+	m.advanceFrontier()
+	return m.fireImagesTo(a, m.imgFrontier, false)
+}
+
+// advanceFrontier recomputes the load frontier from the open article's anchor
+// rows and current viewport: the frontier is the largest image index whose
+// anchor row is within the viewport plus one viewport height of lookahead
+// below the fold. It only grows within an article open, so a recompose that
+// shifts rows (or a scroll that returns toward the top) can never retract a
+// load an earlier position already brought in range.
+func (m *Model) advanceFrontier() {
+	if m.article.article == nil {
+		return
+	}
+	vp := m.article.viewport
+	limit := vp.YOffset + 2*vp.Height
+	k := -1
+	for i, row := range m.article.anchorRows {
+		if row >= limit {
+			break
+		}
+		k = i
+	}
+	if k > m.imgFrontier {
+		m.imgFrontier = k
+	}
+}
+
+// advanceFrontierLoads advances the load frontier to the current viewport and
+// returns a tea.Cmd firing the newly in-range image loads and the deferred
+// native renders now in view, or nil when nothing is newly in range. It is the
+// scroll hook: every viewport move runs it, and the recompose after a load
+// landing runs it too so a deferred native render fires the moment its photo's
+// block is within reach.
+func (m *Model) advanceFrontierLoads() tea.Cmd {
+	if !m.imagesEnabled() {
+		return nil
+	}
+	m.advanceFrontier()
+	a := m.article.article
+	if a == nil {
+		return nil
+	}
+	return m.fireImagesTo(*a, m.imgFrontier, false)
+}
+
+// fireImagesTo returns a tea.Cmd firing the image work for the article's image
+// URLs at indices 0..k: deferred native renders now in view, and image loads
+// through the cache hierarchy. open selects the open-path policy — fire a load
+// for every in-range URL so the native render path runs even when a source is
+// already available — versus the scroll/resize policy that skips URLs already
+// served at the current geometry (their blocks are already composed). imgLoading
+// remains the per-URL in-flight guard, so a frontier advance never double-fires
+// a URL whose load or render is still running.
+func (m *Model) fireImagesTo(a store.Article, k int, open bool) tea.Cmd {
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	var cmds []tea.Cmd
 	for pos, url := range m.article.imageURLs {
-		if url == "" || m.imgLoading[url] {
+		if pos > k || url == "" {
 			continue
 		}
-		if m.hasImageSource(url, width, vpH) {
+		if m.nativePending[url] {
+			if m.photoBlockInView(url) && !m.imgLoading[url] {
+				if nc := m.nativeRenderCmd(url); nc != nil {
+					cmds = append(cmds, nc)
+					delete(m.nativePending, url)
+				}
+			}
+			continue
+		}
+		if m.imgLoading[url] {
+			continue
+		}
+		if !open && m.hasImageSource(url, width, vpH) {
 			continue
 		}
 		cmds = append(cmds, m.loadImageCmd(a, url, pos))
@@ -379,6 +464,34 @@ func (m *Model) ensureImageSource(a store.Article) tea.Cmd {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+// photoBlockInView reports whether the open article's photo at url has its
+// block within the viewport plus the lookahead margin (the same condition the
+// load frontier uses), so its native render is worth starting.
+func (m *Model) photoBlockInView(url string) bool {
+	idx := m.article.urlIndex(url)
+	if idx < 0 || idx >= len(m.article.anchorRows) {
+		return false
+	}
+	vp := m.article.viewport
+	return m.article.anchorRows[idx] < vp.YOffset+2*vp.Height
+}
+
+// gateCmd wraps an image command so it acquires the shared in-flight slot
+// before running its fetch/decode/render work and releases it after, bounding
+// the number of concurrent operations across the block, photo, and native
+// command types. Firing more commands than the bound just queues them; the
+// semaphore, not the batch structure, enforces the limit.
+func (m *Model) gateCmd(cmd tea.Cmd) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		m.imgSem <- struct{}{}
+		defer func() { <-m.imgSem }()
+		return cmd()
+	}
 }
 
 // hasImageSource reports whether a cached source renders the image at the given
@@ -426,25 +539,30 @@ func (m *Model) recomposeArticle() {
 	}
 	inserted := len(m.article.lines) - oldLen
 	if oldOffset > 0 {
-		m.article.viewport.SetYOffset(compose.SnapAfterRecompose(oldOffset+inserted, vpH, m.article.imageBlocks))
+		m.article.viewport.SetYOffset(compose.SnapAfterRecompose(oldOffset+inserted, vpH, m.article.imageBlocks, m.article.leadShown))
 	} else {
 		m.article.viewport.SetYOffset(0)
 	}
 }
 
 // flushRecompose runs the pending article recompose, at most once, when the
-// flag is set and the article view is still active. Image-load message handlers
-// set recomposePending; Update calls flushRecompose after the message switch so
-// the per-message work stays bounded to cache updates and the recompose — which
-// reuses the cached derivation — runs once per image message.
-func (m *Model) flushRecompose() {
+// flag is set and the article view is still active, then fires the deferred
+// native renders (and newly in-range loads) the recompose's fresh anchors
+// brought into view. Image-load message handlers set recomposePending; Update
+// calls flushRecompose after the message switch so the per-message work stays
+// bounded to cache updates and the recompose — which reuses the cached
+// derivation — runs once per image message. It returns the tea.Cmd firing that
+// deferred work, or nil.
+func (m *Model) flushRecompose() tea.Cmd {
 	if !m.recomposePending {
-		return
+		return nil
 	}
 	m.recomposePending = false
 	if m.view == viewArticle {
 		m.recomposeArticle()
+		return m.advanceFrontierLoads()
 	}
+	return nil
 }
 
 // onBlockLoaded marks the article for recomposition when the message's URL is
@@ -483,12 +601,15 @@ func (m *Model) inlineAttrFor(url string) string {
 // nativeRenderCmd returns a tea.Cmd that renders the open article's photo at
 // url to a native block for the current content geometry, off the UI goroutine.
 // It reuses the article state's header line count so the height fit is
-// consistent with the composition. It returns nil when no article or native
+// consistent with the composition. The URL is marked in flight so a scroll or
+// recompose does not start a duplicate render, and the render work is gated by
+// the shared concurrency bound. It returns nil when no article or native
 // renderer is active, or the URL is empty.
 func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 	if m.view != viewArticle || m.article.article == nil || !m.nativeImages() || url == "" {
 		return nil
 	}
+	m.imgLoading[url] = true
 	a := *m.article.article
 	attr := ""
 	if cap := m.inlineAttrFor(url); cap != "" {
@@ -497,13 +618,15 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 		attr = compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	}
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	return image.NativeCmd(m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width))
+	return m.gateCmd(image.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(width)))
 }
 
 // onPhotoLoaded fires the off-thread native render for the photo at msg's URL
-// when it belongs to the open article, replacing the on-thread render the UI
-// used to perform. The resulting NativeMsg re-composes the article with the
-// cached native block.
+// when it belongs to the open article and its block is in or near view,
+// replacing the on-thread render the UI used to perform. A photo whose block is
+// out of view keeps its halfblock placeholder: the URL is recorded in
+// nativePending and the render starts when the reader scrolls it into view. The
+// resulting NativeMsg re-composes the article with the cached native block.
 func (m *Model) onPhotoLoaded(msg image.PhotoMsg) tea.Cmd {
 	m.imgLoading[msg.Key] = false
 	if m.view != viewArticle {
@@ -513,7 +636,11 @@ func (m *Model) onPhotoLoaded(msg image.PhotoMsg) tea.Cmd {
 		return nil
 	}
 	m.recomposePending = true
-	return m.nativeRenderCmd(msg.Key)
+	if m.photoBlockInView(msg.Key) {
+		return m.nativeRenderCmd(msg.Key)
+	}
+	m.nativePending[msg.Key] = true
+	return nil
 }
 
 // onNativeLoaded marks the article for recomposition with its freshly rendered
@@ -555,22 +682,23 @@ func (m *Model) onImageFailed(msg image.FailedMsg) {
 // that lands inside a photo range skips it onto its caption (or reveals it).
 // Multi-line moves (page, half-page, goto-bottom) pass snap false and land
 // wherever they land, even mid-photo, so paging never skips the text between
-// images.
-func (m *Model) scrollArticle(fn func(), snap bool) {
+// images. Every move then advances the load frontier and returns the command
+// firing the newly in-range image loads and deferred native renders, or nil.
+func (m *Model) scrollArticle(fn func(), snap bool) tea.Cmd {
 	before := m.article.viewport.YOffset
 	fn()
 	after := m.article.viewport.YOffset
-	if !snap {
-		return
+	if snap {
+		dir := 0
+		if after > before {
+			dir = 1
+		} else if after < before {
+			dir = -1
+		}
+		snapped := compose.SnapYOffset(after, m.article.viewport.Height, before, m.article.imageBlocks, dir, m.article.nativeImg, m.article.leadShown)
+		if snapped != after {
+			m.article.viewport.SetYOffset(snapped)
+		}
 	}
-	dir := 0
-	if after > before {
-		dir = 1
-	} else if after < before {
-		dir = -1
-	}
-	snapped := compose.SnapYOffset(after, m.article.viewport.Height, before, m.article.imageBlocks, dir, m.article.nativeImg)
-	if snapped != after {
-		m.article.viewport.SetYOffset(snapped)
-	}
+	return m.advanceFrontierLoads()
 }

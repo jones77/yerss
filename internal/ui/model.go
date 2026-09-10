@@ -82,6 +82,20 @@ type Model struct {
 	recomposeCount int
 
 	imgLoading map[string]bool
+	// imgFrontier is the load frontier index into the open article's imageURLs:
+	// the largest index whose image's anchor row is within the viewport plus
+	// the lookahead margin. Images at or before it are eligible to load; images
+	// past it are not fetched, decoded, or rendered until the reader scrolls
+	// toward them. It only grows within an article open.
+	imgFrontier int
+	// nativePending holds the URLs of the open article's photos whose bytes
+	// are fetched but whose native render is deferred because the block is out
+	// of view; the render fires when the reader scrolls the block into view.
+	nativePending map[string]bool
+	// imgSem bounds the number of concurrent image fetch/decode/render
+	// operations (block, photo, and native commands) to imgConcurrency,
+	// regardless of how many image commands are fired.
+	imgSem chan struct{}
 	// nativeSent tracks the kitty image id last transmitted per URL, so a
 	// frame can delete the prior size's image before a re-render at a new
 	// size, and leaving the article can free every image the terminal holds.
@@ -182,6 +196,9 @@ func New(sess *app.Session) *Model {
 		ascii:      cfg.Display.Ascii || render.DetectAsciiNeeded(),
 		styles:     buildModelStyles(palette),
 		imgLoading: make(map[string]bool),
+		imgFrontier: -1,
+		nativePending: make(map[string]bool),
+		imgSem: make(chan struct{}, imgConcurrency),
 		nativeSent: make(map[string]uint32),
 		nativeSentPrev: make(map[string]uint32),
 		// -1 means no delete-all has been emitted for a no-native article yet,
@@ -301,20 +318,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case image.BlockMsg:
 		m.onBlockLoaded(msg)
-		m.flushRecompose()
-		return m, nil
+		return m, m.flushRecompose()
 	case image.PhotoMsg:
 		cmd := m.onPhotoLoaded(msg)
-		m.flushRecompose()
-		return m, cmd
+		return m, tea.Batch(cmd, m.flushRecompose())
 	case image.NativeMsg:
 		m.onNativeLoaded(msg)
-		m.flushRecompose()
-		return m, nil
+		return m, m.flushRecompose()
 	case image.FailedMsg:
 		m.onImageFailed(msg)
-		m.flushRecompose()
-		return m, nil
+		return m, m.flushRecompose()
 	case refreshFinishedMsg:
 		m.refreshing = false
 		if msg.err != nil {

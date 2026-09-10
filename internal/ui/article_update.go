@@ -24,24 +24,24 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.LinkPopup:
 		m.openLinksPopup()
 	case config.MoveDown:
-		m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+		cmd = m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 		m.article.markRead(m.sess.Store())
 	case config.MoveUp:
-		m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+		cmd = m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 	case config.PageDown:
-		m.scrollArticle(func() { m.article.viewport.PageDown() }, false)
+		cmd = m.scrollArticle(func() { m.article.viewport.PageDown() }, false)
 		m.article.markRead(m.sess.Store())
 	case config.PageUp:
-		m.scrollArticle(func() { m.article.viewport.PageUp() }, false)
+		cmd = m.scrollArticle(func() { m.article.viewport.PageUp() }, false)
 	case config.HalfPageDown:
-		m.scrollArticle(func() { m.article.viewport.HalfPageDown() }, false)
+		cmd = m.scrollArticle(func() { m.article.viewport.HalfPageDown() }, false)
 		m.article.markRead(m.sess.Store())
 	case config.HalfPageUp:
-		m.scrollArticle(func() { m.article.viewport.HalfPageUp() }, false)
+		cmd = m.scrollArticle(func() { m.article.viewport.HalfPageUp() }, false)
 	case config.Top:
-		m.article.viewport.GotoTop()
+		cmd = m.scrollArticle(func() { m.article.viewport.GotoTop() }, false)
 	case config.Bottom:
-		m.scrollArticle(func() { m.article.viewport.GotoBottom() }, false)
+		cmd = m.scrollArticle(func() { m.article.viewport.GotoBottom() }, false)
 	case config.OpenURL:
 		if m.article.article.Link != "" {
 			cmd = openURLCmd(m.article.article.Link)
@@ -72,10 +72,11 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 	if tea.MouseEvent(msg).IsWheel() && msg.Action == tea.MouseActionPress {
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+			return m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
 		case tea.MouseButtonWheelDown:
-			m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+			cmd := m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 			m.article.markRead(m.sess.Store())
+			return cmd
 		}
 		return nil
 	}
@@ -124,10 +125,13 @@ func (m *Model) updateArticleMouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 // backToList returns from the article view to the list view: the previously
-// viewed article stays selected and any active mouse selection is cleared.
+// viewed article stays selected, any active mouse selection is cleared, and the
+// deferred native-render set is dropped so a reopen starts fresh (the photos
+// remain cached, so in-view renders re-fire through the open path).
 func (m *Model) backToList() {
 	m.view = viewList
 	m.article.sel = textSelection{}
+	m.nativePending = make(map[string]bool)
 	m.loadList()
 }
 

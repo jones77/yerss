@@ -28,9 +28,22 @@ type articleState struct {
 	nativeImg    bool
 	imageBlocks  []compose.ImageBlock
 	imageURLs    []string
+	// anchorRows records, parallel to imageURLs, the content row where each
+	// image's block starts in the current composition (the block's ImgStart
+	// when composed, the reserved placeholder row while uncomposed). It is
+	// recomputed on every recompose like imageBlocks, so the load frontier can
+	// compare it against the viewport without walking the body markdown.
+	anchorRows   []int
 	inlineImages []convert.InlineImage
 	inlineCaps   map[string]string
 	links        []articleLink
+	// leadShown reports whether the article composed a genuine lead block at
+	// the top of the content on open. When the article's lead URL also appears
+	// as an inline image (a promo banner reusing the featured photo), the lead
+	// is suppressed and the first block is a regular inline image that was NOT
+	// shown on open; the scroll snap must then treat it like any other inline
+	// image instead of assuming its entry stages were pre-consumed.
+	leadShown bool
 }
 
 // rendersImage reports whether the given URL is one of the article's images
@@ -42,6 +55,18 @@ func (s *articleState) rendersImage(url string) bool {
 		}
 	}
 	return false
+}
+
+// urlIndex returns the position of url in the article's image list (document
+// order: the lead at 0, then inline images), or -1 when the article does not
+// render it.
+func (s *articleState) urlIndex(url string) int {
+	for i, u := range s.imageURLs {
+		if u == url {
+			return i
+		}
+	}
+	return -1
 }
 
 // articleLink is one hyperlink harvested from the article's markdown source.
@@ -134,6 +159,13 @@ func (m *Model) openArticle() tea.Cmd {
 }
 
 func (m *Model) newArticleState(a store.Article) articleState {
+	// A different article (or the first) opens a fresh load frontier and
+	// deferred-native-render set; recomposes and resizes of the same article
+	// keep them so the frontier stays monotonic within the article open.
+	if m.article.article == nil || a.ID != m.article.id {
+		m.imgFrontier = -1
+		m.nativePending = make(map[string]bool)
+	}
 	padX, padY := m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY
 	contentW, vpH, _ := render.ContentGeom(m.width, m.height, padX, padY)
 	return m.composeArticle(a, m.deriveArticle(a, contentW, vpH), contentW, vpH)
@@ -194,11 +226,24 @@ func (m *Model) deriveArticle(a store.Article, contentW, vpH int) articleDerivat
 	return der
 }
 
+// stripSoftHyphens removes U+00AD soft hyphens from s. The source HTML uses
+// them as invisible line-break hints; the terminal renders each as a visible
+// cell where the app counts it as zero-width, so a line padded to the content
+// width overflows the frame by one column per soft hyphen and wraps the right
+// border (scrollbar) onto the next line's left.
+func stripSoftHyphens(s string) string {
+	return strings.ReplaceAll(s, "\u00ad", "")
+}
+
 // computeDerivation converts the article's HTML content to marked markdown,
 // discovers and dedupes the inline images, harvests the links, renders the
 // header and each body text segment through the markdown renderer, and records
 // the per-image captions — the work an image-load recompose must not repeat.
 func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivation {
+	a.Title = stripSoftHyphens(a.Title)
+	a.Author = stripSoftHyphens(a.Author)
+	a.Link = stripSoftHyphens(a.Link)
+	a.Content = stripSoftHyphens(a.Content)
 	header := m.renderHeader(a, contentW)
 	headerLines := 0
 	if header != "" {
@@ -282,12 +327,13 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 	var parts []string
 	var blocks []compose.ImageBlock
 	var captions map[string]string
+	var anchors []int
 	lineCount := 0
 	addPart := func(s string) {
 		parts = append(parts, s)
 		lineCount += len(strings.Split(s, "\n"))
 	}
-	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) {
+	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) int {
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
 			parts = append(parts, "")
 			lineCount++
@@ -300,6 +346,7 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		blocks = append(blocks, compose.ImageBlock{URL: url, ImgStart: start, CapStart: start + rows, ImgEnd: start + len(block) - 1, NativeImg: native, NativeID: id})
 		parts = append(parts, "")
 		lineCount++
+		return start
 	}
 
 	if der.header != "" {
@@ -307,19 +354,31 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		parts = append(parts, "")
 		lineCount++
 	}
-	if der.leadURL != "" && m.imagesEnabled() {
-		if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.headerLines); len(block) > 0 {
-			addImageBlock(a.ImageURL, block, rows, native, id)
+	leadShown := false
+	if der.leadURL != "" {
+		leadAnchor := der.headerLines + 1
+		if m.imagesEnabled() {
+			if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.headerLines); len(block) > 0 {
+				leadAnchor = addImageBlock(a.ImageURL, block, rows, native, id)
+				leadShown = true
+			} else {
+				// The lead is uncomposed: its block will land on the blank
+				// line below the header (or the top of the content when the
+				// header is empty), so that row is its anchor.
+				leadAnchor = der.headerLines + 1
+			}
 		}
+		anchors = append(anchors, leadAnchor)
 	}
 
 	if len(der.inline) == 0 {
 		addPart(der.segments[0])
 	} else {
-		bodyParts, bodyBlocks, inlineCaps := m.spliceBody(der, contentW, vpH, der.headerLines, lineCount)
+		bodyParts, bodyBlocks, bodyAnchors, inlineCaps := m.spliceBody(der, contentW, vpH, der.headerLines, lineCount)
 		parts = append(parts, bodyParts...)
 		lineCount += compose.LineCountOf(bodyParts)
 		blocks = append(blocks, bodyBlocks...)
+		anchors = append(anchors, bodyAnchors...)
 		captions = inlineCaps
 	}
 
@@ -343,9 +402,11 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		nativeImg:    nativeImg,
 		imageBlocks:  blocks,
 		imageURLs:    der.imageURLs,
+		anchorRows:   anchors,
 		inlineImages: der.inline,
 		inlineCaps:   captions,
 		links:        der.links,
+		leadShown:    leadShown,
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.sess.Store())
@@ -359,17 +420,21 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 // source is not yet composed renders a blank placeholder line in its place so
 // the text flow stays stable until its load lands and re-composes the block. A
 // sentinel wrapped in a markdown link (`<a><img></a>`) is already consumed by
-// the sentinel walk, so no stray `[`/`](...)` renders around the image.
-func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, base int) ([]string, []compose.ImageBlock, map[string]string) {
+// the sentinel walk, so no stray `[`/`](...)` renders around the image. The
+// returned int slice holds each inline image's anchor row (the block's start
+// row when composed, the reserved placeholder row while uncomposed), parallel
+// to the inline images in document order.
+func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, base int) ([]string, []compose.ImageBlock, []int, map[string]string) {
 	var parts []string
 	var blocks []compose.ImageBlock
+	var anchors []int
 	lineCount := base
 	segIdx := 0
 	addPart := func(s string) {
 		parts = append(parts, s)
 		lineCount += len(strings.Split(s, "\n"))
 	}
-	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) {
+	addImageBlock := func(url string, block []string, rows int, native bool, id uint32) int {
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
 			parts = append(parts, "")
 			lineCount++
@@ -379,6 +444,7 @@ func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, ba
 		blocks = append(blocks, compose.ImageBlock{URL: url, ImgStart: start, CapStart: start + rows, ImgEnd: start + len(block) - 1, NativeImg: native, NativeID: id})
 		parts = append(parts, "")
 		lineCount++
+		return start
 	}
 	pos := 0
 	for {
@@ -391,22 +457,24 @@ func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, ba
 			segIdx++
 		}
 		if block, rows, native, id := m.composeImageBlock(url, der.captions[url], contentW, vpH, headerLines); len(block) > 0 {
-			addImageBlock(url, block, rows, native, id)
+			anchors = append(anchors, addImageBlock(url, block, rows, native, id))
 		} else {
 			// Placeholder: keep the paragraph break so the body text stays
 			// stable and the block inserts at the right offset when the load
-			// lands and the article re-composes.
+			// lands and the article re-composes. The placeholder blank is the
+			// row the block will start at.
 			if len(parts) == 0 || parts[len(parts)-1] != "" {
 				parts = append(parts, "")
 				lineCount++
 			}
+			anchors = append(anchors, lineCount)
 		}
 		pos = end
 	}
 	if rest := strings.TrimSpace(der.bodyMD[pos:]); rest != "" {
 		addPart(der.segments[segIdx])
 	}
-	return parts, blocks, der.captions
+	return parts, blocks, anchors, der.captions
 }
 
 // renderHeader renders the reader header: the article URL as the very first

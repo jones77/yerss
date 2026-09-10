@@ -8,6 +8,47 @@ Guidelines for AI agents working in this repository.
 for storage, and gofeed for feed parsing. Behavioral requirements live in
 `openspec/specs/`.
 
+### Async model and the UI-thread boundary
+
+bubbletea runs the model on a single UI goroutine (`Update` then `View` per
+message); the only async mechanism is `tea.Cmd` — a function run off the UI
+goroutine whose returned `tea.Msg` is fed back into `Update`. Everything
+expensive — image fetches, JPEG decodes, mosaic/halfblock renders, native
+re-encodes (scale + PNG + base64) — belongs in a command. Work done
+synchronously in `Update`, `View`, or the article (re)composition the image
+message handlers run blocks input; the Helene-article profile measured ~5s of
+CPU and 349 synchronous UI-goroutine halfblock renders for 11 photos from
+exactly this mistake.
+
+Principles that follow:
+
+- Firing work is not bounding it. `tea.Batch` starts every command at once;
+  image work must stay proportional to what is visible (loads and native
+  renders for in-view images, a bounded in-flight count), never to the
+  article's length.
+- Decode once per image per session. The halfblock and native paths share the
+  decoded image through the decoded-image cache; neither re-decodes bytes the
+  other already decoded.
+- A recompose after an image-load message inserts cached blocks and nothing
+  else. A block already rendered at the current width is served from the
+  rendered-block cache; re-rendering happens only on a width change or a first
+  load.
+- On kitty-family terminals a fully-visible native photo is re-shown by
+  placement reference after its first transmit; frames do not re-send the
+  base64 payload. (OSC 1337 images are cell-bound and re-emit per frame by
+  necessity.)
+
+When investigating image performance, reproduce the user's case from the local
+SQLite DB (the article row plus its `article_images` photos) — never the
+network — and drive the whole message loop the way the app does: run each
+`tea.Cmd`, feed the returned messages back through `Update`, and repeat until
+nothing is pending (`tea.Batch` results arrive as `tea.BatchMsg`, a slice of
+further commands). Wrap the session `ImgRenderer` with a counting shim — it is
+only invoked on the UI goroutine (block composition and clipped-image
+previews), so its call count is exactly the synchronous render count. Assert
+complexity bounds — O(N) in the image count, e.g. at most 3N renders — never
+exact counts, so tests are not brittle.
+
 ### Unicode/ASCII glyph pairs
 
 When you add a Unicode glyph (box-drawing, `…`, fold markers, etc.), add its

@@ -333,7 +333,7 @@ func (Halfblocks) Render(img image.Image, width, maxHeight int) ([]string, error
 	if srcW < 1 || srcH < 1 {
 		return nil, fmt.Errorf("image has no pixels")
 	}
-	w, h := fitDims(srcW, srcH, renderWidth(srcW, srcH, width), maxHeight)
+	w, h := fitDims(srcW, srcH, RenderWidth(srcW, srcH, width), maxHeight)
 	m := mosaic.New()
 	m = m.Width(w * 2).Height(h * 2)
 	art := m.Render(img)
@@ -352,12 +352,12 @@ const smallImageWidth = 240
 // of a full-column one.
 const smallImageMaxCells = 20
 
-// renderWidth returns the cell width an image of srcW×srcH source pixels is
+// RenderWidth returns the cell width an image of srcW×srcH source pixels is
 // rendered at: when its shorter side is below smallImageWidth it renders at
 // its natural cell width (halfblock: two source pixels per cell) capped to
 // smallImageMaxCells and the content width; otherwise it fills contentW. This
 // keeps a tiny logo from ballooning into a full-column block.
-func renderWidth(srcW, srcH, contentW int) int {
+func RenderWidth(srcW, srcH, contentW int) int {
 	if contentW < 1 {
 		return 1
 	}
@@ -377,7 +377,7 @@ func renderWidth(srcW, srcH, contentW int) int {
 func blockWidthMatches(img store.ArticleImage, contentW int) bool {
 	if len(img.Photo) > 0 {
 		if cfg, _, err := image.DecodeConfig(bytes.NewReader(img.Photo)); err == nil {
-			return img.Width == renderWidth(cfg.Width, cfg.Height, contentW)
+			return img.Width == RenderWidth(cfg.Width, cfg.Height, contentW)
 		}
 	}
 	return img.Width == contentW

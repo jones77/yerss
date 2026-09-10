@@ -401,7 +401,7 @@ func TestNativeCmdCacheHitShortCircuits(t *testing.T) {
 
 	// The photos cache is empty: any render attempt would fail, so a
 	// NativeMsg proves the command short-circuited on the cache hit.
-	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, NewPhotos(), natives, url, 50, 24, "", 3, 35)()
+	msg := NativeCmd(NewCache(), NativeRenderer{Protocol: ProtocolITerm}, NewPhotos(), natives, url, 50, 24, "", 3, 35)()
 	nm, ok := msg.(NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg on cache hit, got %T", msg)
@@ -425,7 +425,7 @@ func TestNativeCmdRendersAndCaches(t *testing.T) {
 	photos.Set(url, pngBytes(t, 400, 320))
 	key := NativeKey(url, 50, 24)
 
-	msg := NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, photos, natives, url, 50, 24, "", 3, 35)()
+	msg := NativeCmd(NewCache(), NativeRenderer{Protocol: ProtocolITerm}, photos, natives, url, 50, 24, "", 3, 35)()
 	nm, ok := msg.(NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -448,7 +448,7 @@ func TestNativeCmdFitLoopConverges(t *testing.T) {
 	// geometry: 24-row viewport, 3 header lines -> 18-row budget; the block
 	// plus its wrapped attribution and one body line must fit.
 	mk := func(url string, attr string) tea.Msg {
-		return NativeCmd(NativeRenderer{Protocol: ProtocolITerm}, func() *Photos {
+		return NativeCmd(NewCache(), NativeRenderer{Protocol: ProtocolITerm}, func() *Photos {
 			p := NewPhotos()
 			p.Set(url, pngBytes(t, 400, 320))
 			return p
@@ -490,15 +490,41 @@ func TestRenderNativeFittedDecodesOnce(t *testing.T) {
 	// A wrapped attribution that shrinks the photo forces a second fit
 	// iteration, so a decode-per-candidate bug would decode twice.
 	attr := "cccccc dddddd eeeeee ffffff gggggg hhhhhh iiiii jjjjjj kkkkkk llllll mmmmmm nnnnnn oooooo pppppp"
-	lines, err := renderNativeFitted(NativeRenderer{Protocol: ProtocolITerm}, []byte("FAKEDECODE"), "https://example.com/fake.png", 50, 24, 3, attr, 35)
+	const url = "https://example.com/fake.png"
+
+	// Empty cache: the native path decodes the source bytes itself, once.
+	lines, err := renderNativeFitted(NativeRenderer{Protocol: ProtocolITerm}, NewCache(), []byte("FAKEDECODE"), url, 50, 24, 3, attr, 35)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if decodes != 1 {
-		t.Fatalf("decode count = %d, want 1 (the fit loop reuses the decoded image)", decodes)
+		t.Fatalf("decode count on a cache miss = %d, want 1 (the fit loop reuses the decoded image)", decodes)
 	}
 	if len(lines) < 1 {
 		t.Error("render produced no lines")
+	}
+
+	// Cached decode: the halfblock path already decoded the photo into the
+	// cache, so the native render must reuse it and not decode the bytes again.
+	decodes = 0
+	cache := NewCache()
+	if img, err := decodeCapped([]byte("FAKEDECODE")); err != nil {
+		t.Fatal(err)
+	} else {
+		cache.Set(url, img)
+	}
+	if decodes != 1 {
+		t.Fatalf("cache populate should decode once, got %d", decodes)
+	}
+	lines, err = renderNativeFitted(NativeRenderer{Protocol: ProtocolITerm}, cache, []byte("FAKEDECODE"), url, 50, 24, 3, attr, 35)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decodes != 1 {
+		t.Fatalf("decode count with a cached decoded image = %d, want 1 (the cached decode is reused)", decodes)
+	}
+	if len(lines) < 1 {
+		t.Error("reused-decode render produced no lines")
 	}
 }
 
