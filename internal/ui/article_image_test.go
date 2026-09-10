@@ -93,7 +93,7 @@ func TestArticleImageBlockComposedBelowHeader(t *testing.T) {
 		t.Errorf("img range = %d..%d, want 5..7", m.article.imgStart, m.article.imgEnd)
 	}
 	lines := strippedLines(m.article.lines)
-	if !strings.HasPrefix(lines[0], "https://example.com/a") {
+	if !strings.HasPrefix(lines[0], "example.com/a") {
 		t.Errorf("first content line = %q, want the URL", lines[0])
 	}
 	if !strings.HasSuffix(lines[5], "IMG1") || !strings.HasSuffix(lines[6], "IMG2") {

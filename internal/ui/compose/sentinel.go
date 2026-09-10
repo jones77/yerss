@@ -170,14 +170,3 @@ func LineCountOf(parts []string) int {
 	}
 	return n
 }
-
-// HeaderLink renders a URL the markdown renderer prints exactly once. The
-// glamour renderer emits `[text](url)` as "text url", so the URL is emitted
-// bare and left to autolink detection; the angle-bracket form is used only
-// when the URL contains characters that would break plain autolink parsing.
-func HeaderLink(url string) string {
-	if strings.ContainsAny(url, " <>") || strings.Contains(url, ")") {
-		return "<" + url + ">"
-	}
-	return url
-}

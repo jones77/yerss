@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/convert"
 	"yerss/internal/store"
@@ -487,12 +488,27 @@ func (m *Model) spliceBody(der articleDerivation, contentW, vpH, headerLines, ba
 	return parts, blocks, anchors, der.captions
 }
 
+// stripURLScheme removes a leading "https://" or "http://" from a displayed
+// URL so the header line shows the domain and path without the scheme prefix.
+// The scheme adds no information for a reader-facing link line and wastes
+// columns on a narrow terminal.
+func stripURLScheme(url string) string {
+	if strings.HasPrefix(url, "https://") {
+		return url[len("https://"):]
+	}
+	if strings.HasPrefix(url, "http://") {
+		return url[len("http://"):]
+	}
+	return url
+}
+
 // renderHeader renders the reader header: the article URL as the very first
-// line (rendered exactly once by the markdown renderer's autolink handling),
-// a blank line, the bold title, and the author line directly beneath it with
-// no blank between them. Title and author are rendered as separate documents
-// and joined because the markdown renderer folds line breaks inside a
-// paragraph into spaces.
+// line, a blank line, the bold title, and the author line directly beneath it
+// with no blank between them. The URL is shown with its scheme stripped but is
+// wrapped in an OSC 8 hyperlink whose target keeps the full URL, so it stays
+// clickable. Title and author are rendered as separate documents and joined
+// because the markdown renderer folds line breaks inside a paragraph into
+// spaces.
 func (m *Model) renderHeader(a store.Article, contentW int) string {
 	var meta []string
 	if a.Title != "" {
@@ -505,7 +521,7 @@ func (m *Model) renderHeader(a store.Article, contentW int) string {
 	if a.Link == "" {
 		return metaBlock
 	}
-	urlPart := m.renderMarkdown(compose.HeaderLink(a.Link), contentW)
+	urlPart := ansi.SetHyperlink(a.Link) + stripURLScheme(a.Link) + ansi.ResetHyperlink()
 	if metaBlock == "" {
 		return urlPart
 	}

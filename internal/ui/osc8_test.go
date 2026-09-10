@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
-	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
 
@@ -22,10 +21,11 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 		t.Errorf("header URL not wrapped in OSC 8: %q", rendered)
 	}
 	visible := ansi.Strip(rendered)
-	if !strings.Contains(visible, url) {
+	stripped := strings.TrimPrefix(strings.TrimPrefix(url, "https://"), "http://")
+	if !strings.Contains(visible, stripped) {
 		t.Errorf("visible header URL text missing: %q", visible)
 	}
-	if n := strings.Count(visible, url); n != 1 {
+	if n := strings.Count(visible, stripped); n != 1 {
 		t.Errorf("header URL should be rendered exactly once, got %d: %q", n, visible)
 	}
 }
@@ -44,7 +44,7 @@ func TestReaderHeaderOrder(t *testing.T) {
 	// then a blank line before the body. Title and author are joined
 	// adjacent because the user asked for no space between them.
 	lines := strippedLines(m.article.lines)
-	if strings.TrimRight(lines[0], " ") != url {
+	if strings.TrimRight(lines[0], " ") != "example.com/post" {
 		t.Errorf("first content line = %q, want the URL", lines[0])
 	}
 	if strings.TrimSpace(lines[1]) != "" {
@@ -70,7 +70,7 @@ func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
 	})
 
 	lines := strippedLines(m.article.lines)
-	if strings.TrimRight(lines[0], " ") != "https://example.com/post" || strings.TrimSpace(lines[1]) != "" {
+	if strings.TrimRight(lines[0], " ") != "example.com/post" || strings.TrimSpace(lines[1]) != "" {
 		t.Errorf("header should start with the URL and a blank line: %q", lines[:3])
 	}
 	if !strings.Contains(lines[2], "Headline") || strings.HasPrefix(strings.TrimRight(lines[3], " "), "by ") {
@@ -95,20 +95,6 @@ func strippedLines(lines []string) []string {
 		out[i] = ansi.Strip(l)
 	}
 	return out
-}
-
-func TestHeaderLinkWrapsSpecialURLs(t *testing.T) {
-	cases := map[string]string{
-		"https://example.com/a":     "https://example.com/a",
-		"https://example.com/a_(b)": "<https://example.com/a_(b)>",
-		"https://example.com/a b":   "<https://example.com/a b>",
-		"https://example.com/<id>":  "<https://example.com/<id>>",
-	}
-	for in, want := range cases {
-		if got := compose.HeaderLink(in); got != want {
-			t.Errorf("compose.HeaderLink(%q) = %q, want %q", in, got, want)
-		}
-	}
 }
 
 func TestTruncateWidthWithOSC8(t *testing.T) {
