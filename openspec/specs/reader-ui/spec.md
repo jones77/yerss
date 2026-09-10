@@ -1246,11 +1246,15 @@ snap the photo's first line to the viewport top. The lead image's
 boundaries are pre-consumed — it was shown on open — so it has no entry stages
 and never rests at its bottom boundary first, but it is never skipped past
 unseen in a single keystroke. When the article's lead image URL is suppressed
-because it also appears as an inline image (a promo banner reusing the featured
-photo), the first composed block is a regular inline image that was not shown
-on open, and it SHALL follow the inline-image boundary transitions — the
-entry snap to its bottom boundary, then the rise to its top boundary, then the
-skip — rather than the pre-consumed lead transitions.
+because it also appears as an inline image, the first composed block follows
+the pre-consumed lead transitions only when it is composed at the top of the
+content, directly below the header, and shown on open — a top-of-article photo
+reused in the body (as ProPublica's features do). When the first content
+element is text (a promo banner reusing the featured photo), the first composed
+block is a regular inline image that was not shown on open, and it SHALL follow
+the inline-image boundary transitions — the entry snap to its bottom boundary,
+then the rise to its top boundary, then the skip — rather than the pre-consumed
+lead transitions.
 
 For an inline image, a downward single-line scroll follows the boundary
 transitions: a scroll that leaves the image partially visible in the window —
@@ -1298,7 +1302,9 @@ being shown. Upward single-line scrolls mirror the transitions: an image
 entering from above snaps its top to the viewport top (the top boundary) — the
 entry snap fires as soon as the block's last line enters the window from above,
 even when it appears at the window's first row, so the whole image and its
-caption appear at once rather than a caption-only frame — the
+caption appear at once rather than a caption-only frame, and it applies to the
+shown-on-open top image too, so scrolling up to it never walks its caption past
+the fold line by line — the
 next upward scroll snaps its bottom boundary so the caption's last line is at
 the viewport bottom, a scroll landing in its photo range reveals it (snaps to
 the photo's first line), and an upward scroll that cuts the block's last line
@@ -1342,6 +1348,11 @@ suppressed so the image never paints over the article border.
 - **WHEN** the lead image block occupies content lines 4 through 10 (photo lines 4 through 7 plus attribution lines 8 through 10), the viewport offset is 3, and the user scrolls down one line
 - **THEN** the viewport offset snaps to 4 (the photo's first line at the viewport top), and the next downward scroll snaps to 12 (the first line of the next paragraph, past the blank line below the block): the photo is presented flush at the top, then the whole photo-and-caption block and the space below it scroll out as one unit
 
+#### Scenario: Downward scroll rises a shown-on-open suppressed-lead top photo flush to the viewport top
+
+- **WHEN** the article's lead image URL also opens the body as its first inline image, so the lead is suppressed and the first composed block (directly below the header, shown on open) is that top-of-article photo, the block occupies content lines 5 through 30, and the user scrolls down one line from near the article top
+- **THEN** the viewport offset snaps to 5 (the photo's first line at the viewport top) on the first press and to the first line past the block on the next press, rather than scrolling the header line by line until the photo's top reaches the viewport top and only then skipping it
+
 #### Scenario: Inline image snaps to the viewport bottom when its top enters from below
 
 - **WHEN** an inline image block occupies content lines 20 through 24 (photo lines 20 through 22 plus attribution lines 23 through 24), the viewport height is 15, and a downward scroll brings the image's top into view from below
@@ -1379,8 +1390,13 @@ suppressed so the image never paints over the article border.
 
 #### Scenario: Upward scroll reveals the whole block at once, never a caption-only frame
 
-- **WHEN** an upward single-line scroll brings an inline image block's last line into the window from above at the window's first row (an image with a caption whose last line would otherwise appear alone at the top of the screen)
+- **WHEN** an upward single-line scroll brings an image block's last line into the window from above at the window's first row (an image with a caption whose last line would otherwise appear alone at the top of the screen)
 - **THEN** the viewport offset snaps to the image's first line so the whole image and its full caption are visible with the image at the top of the screen, rather than showing only the caption's last line
+
+#### Scenario: Upward scroll reveals the shown-on-open top image at the viewport top
+
+- **WHEN** the article's top image (a genuine lead, or a suppressed lead whose URL opens the body as its first inline image) is composed at the top of the content and the user scrolls up one line while the block's last line is at the window's first row
+- **THEN** the viewport offset snaps to the image's first line so the whole photo and its caption appear at the top of the screen, rather than the caption scrolling up line by line
 
 #### Scenario: Upward scroll reveals full inline image
 
@@ -1431,11 +1447,6 @@ suppressed so the image never paints over the article border.
 
 - **WHEN** the lead image block occupies content lines 4 through 10, the viewport offset is 2 so the full block is on screen, and the user scrolls down one line
 - **THEN** the viewport offset snaps to 4 (the photo's first line at the viewport top), and the next downward scroll snaps to 12 (the first line past the block and its blank separator) so the whole photo-and-caption block is fully scrolled out
-
-#### Scenario: Upward scroll through the caption is normal
-
-- **WHEN** an image block occupies content lines 4 through 10, the viewport offset is 11 (just below the block), and the user scrolls up one line
-- **THEN** the viewport offset becomes 10 (the last caption line) rather than snapping to the photo; further upward scrolls advance through the caption before revealing the full image
 
 #### Scenario: Upward scroll from a fully visible lead photo skips to the top
 

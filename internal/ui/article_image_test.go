@@ -334,7 +334,7 @@ func TestSnapYOffset(t *testing.T) {
 		{"down at last photo line", 7, 20, 4, 9, 8, 1, false, 11},
 		{"down onto caption unchanged", 8, 20, 4, 9, 8, 1, false, 8},
 		{"down within caption unchanged", 9, 20, 4, 9, 8, 1, false, 9},
-		{"up from caption last line", 9, 20, 4, 9, 8, -1, false, 9},
+		{"up from caption last line", 9, 20, 4, 9, 8, -1, false, 4},
 		{"up from caption first line", 8, 20, 4, 9, 8, -1, false, 8},
 		{"up from photo interior", 6, 20, 4, 9, 8, -1, false, 4},
 		{"up onto first line", 4, 20, 4, 9, 8, -1, false, 4},
@@ -461,13 +461,14 @@ func TestScrollSkipsFullyVisiblePhoto(t *testing.T) {
 		t.Errorf("page-down offset = %d, want it past the block end %d", got, m.article.imgEnd)
 	}
 
-	// Up from just below the block lands on the caption line (the block's
-	// last line), scrolling the caption up line by line rather than snapping
-	// to the photo, per the narrowed upward reveal rule.
+	// Up from just below the block: the block's last line entering the window
+	// from above snaps the photo flush to the viewport top, so the whole image
+	// and caption appear at once rather than the caption scrolling up line by
+	// line.
 	m.article.viewport.SetYOffset(m.article.imgEnd + 1)
 	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
-	if got := m.article.viewport.YOffset; got != m.article.imgEnd {
-		t.Errorf("offset up from below the block = %d, want %d (the caption)", got, m.article.imgEnd)
+	if got := m.article.viewport.YOffset; got != m.article.imgStart {
+		t.Errorf("offset up from below the block = %d, want %d (the photo flush at the viewport top)", got, m.article.imgStart)
 	}
 
 	// Up from a photo row reveals the full image.
@@ -1505,9 +1506,10 @@ func TestSnapYOffsetWrappedCaptionBottomBoundary(t *testing.T) {
 		{"down with wrapped caption tail below fold snaps to its bottom", 9, 8, 15, 1, 11},
 		// The next down move rises to the top boundary.
 		{"down from bottom boundary rises to its top", 12, 11, 15, 1, 20},
-		// Up mirror: an up move cutting the wrapped caption's last line below
-		// the fold scrolls the block off rather than leaving the caption cut.
-		{"up cutting wrapped caption tail below fold scrolls it off", 9, 10, 15, -1, 5},
+		// Up mirror: an up move that brings the lead's last line into the
+		// window from above snaps it flush to its top boundary, which also
+		// carries the cut inline caption fully below the fold.
+		{"up cutting wrapped caption tail below fold snaps lead flush to its top", 9, 10, 15, -1, 4},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -2200,6 +2202,64 @@ func TestSuppressedLeadFirstInlineSnapsLikeInlineImage(t *testing.T) {
 	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
 	if got := m.article.viewport.YOffset; got != inline.ImgEnd+2 {
 		t.Errorf("down third = %d, want %d (first line past its caption)", got, inline.ImgEnd+2)
+	}
+}
+
+func TestSuppressedLeadOpeningBodyShownOnOpenSnapsLikeLead(t *testing.T) {
+	// A suppressed lead whose URL opens the body as its first inline image is
+	// composed at the top of the content, directly below the header, and shown
+	// on open — a top-of-article photo reused in the body, as ProPublica's
+	// features do. Its entry stages are pre-consumed like a genuine lead's: a
+	// down move while it is fully visible rises it flush to the viewport top,
+	// and the next down move skips the whole photo-and-caption block past its
+	// caption, never scrolling the photo past line by line.
+	wide := strings.Repeat("I", 40)
+	a := imageArticle() // ImageURL = https://example.com/lead.jpg
+	a.Content = `<p><img src="https://example.com/lead.jpg" alt="Top photo"></p>` +
+		strings.Repeat("<p>body text</p>", 60)
+	m, _ := newImageModel(t, []string{wide, wide})
+	m.article = m.newArticleState(a)
+	if !m.article.leadShown {
+		t.Fatal("suppressed lead opening the body as the first inline image should be shown on open")
+	}
+	block := m.article.imageBlocks[0]
+	if block.ImgStart != m.article.headerLines+1 {
+		t.Fatalf("first block start = %d, want %d (directly below the header)", block.ImgStart, m.article.headerLines+1)
+	}
+	if block.ImgEnd-block.ImgStart+1 >= m.article.viewport.Height {
+		t.Fatalf("test needs the block shorter than the viewport")
+	}
+
+	// A down move from near the top rises the photo flush to the viewport top.
+	m.article.viewport.SetYOffset(0)
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != block.ImgStart {
+		t.Errorf("down from the top = %d, want %d (photo flush at the viewport top)", got, block.ImgStart)
+	}
+	// The next down move skips the whole photo-and-caption block onto the
+	// first line of the next paragraph (past the blank separator below it).
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != block.ImgEnd+2 {
+		t.Errorf("down again = %d, want %d (first line past the block)", got, block.ImgEnd+2)
+	}
+	// The following move continues into the body line by line (no loop).
+	m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true)
+	if got := m.article.viewport.YOffset; got != block.ImgEnd+3 {
+		t.Errorf("down third = %d, want %d", got, block.ImgEnd+3)
+	}
+
+	// Up from just below the block: the block's last line entering the window
+	// from above snaps the whole photo and caption flush to the viewport top,
+	// rather than the caption scrolling up line by line.
+	m.article.viewport.SetYOffset(block.ImgEnd + 1)
+	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+	if got := m.article.viewport.YOffset; got != block.ImgStart {
+		t.Errorf("up from below the block = %d, want %d (whole block flush at the viewport top)", got, block.ImgStart)
+	}
+	// Up again leaves the header scrolling line by line toward the article top.
+	m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+	if got := m.article.viewport.YOffset; got != block.ImgStart-1 {
+		t.Errorf("up again = %d, want %d (one line into the header)", got, block.ImgStart-1)
 	}
 }
 

@@ -150,7 +150,9 @@ func offRevealTop(t, i, vpH int, blocks []ImageBlock) (int, bool) {
 // range — rises rather than re-skipping the preceding block and looping.
 // Upward moves mirror it: an image entering from above snaps its TOP boundary —
 // firing as soon as the block's last line enters the window from above, even
-// at its first row, so the whole image and caption appear at once — the next
+// at its first row, so the whole image and caption appear at once (the
+// shown-on-open top image included, so scrolling up to it never walks its
+// caption past the fold line by line) — the next
 // upward move snaps its BOTTOM boundary, an up move that cuts its
 // last line below the fold snaps it fully below the fold (OFF) so it scrolls
 // off cleanly, and a move landing in its photo range reveals it (TOP). A
@@ -174,12 +176,14 @@ func offRevealTop(t, i, vpH int, blocks []ImageBlock) (int, bool) {
 // not call this function at all: they land wherever they land, even mid-photo.
 // An empty block list means no image; offsets outside the ranges (or moves
 // that never enter them) are unchanged. leadShown reports whether blocks[0] is
-// a genuine lead block composed at the top of the article and shown on open.
-// When the article's lead URL is suppressed because it also appears inline (a
-// promo banner reusing the featured photo), blocks[0] is a regular inline
-// image that was not shown on open, and the snap treats it like any other
-// inline image — with entry and bottom snaps — instead of assuming its entry
-// stages were pre-consumed.
+// composed at the top of the content and shown on open: a genuine lead block,
+// or a suppressed lead whose URL also opens the body as its first inline image
+// (a top-of-article photo reused in the body, as ProPublica's features do). In
+// those cases the snap pre-consumes the block's entry stages. When the first
+// content element is text, blocks[0] is a mid-article inline image that was
+// not shown on open (a promo banner reusing the featured photo), and the snap
+// treats it like any other inline image — with entry and bottom snaps —
+// instead of assuming its entry stages were pre-consumed.
 func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, native bool, leadShown bool) int {
 	if len(blocks) == 0 {
 		return yOffset
@@ -421,16 +425,18 @@ func SnapYOffset(yOffset, vpH, before int, blocks []ImageBlock, direction int, n
 				return snap(off)
 			}
 		}
-		// Top snap (up): the inline image whose bottom just entered the
-		// viewport from above (it was entirely above the window before the
-		// move) aligns its TOP boundary to the viewport top, so the whole
-		// image and its caption appear at once. The bottom entering at the
-		// window's first row counts, so a caption-only frame (only the wrapped
-		// caption's last line visible) is never shown. before gates the entry
-		// so the snap cannot re-fire and loop.
+		// Top snap (up): the image whose bottom just entered the viewport from
+		// above (it was entirely above the window before the move) aligns its
+		// TOP boundary to the viewport top, so the whole image and its caption
+		// appear at once. This applies to every block — the shown-on-open top
+		// image included — so scrolling up to a photo never walks its caption
+		// past the fold line by line. The bottom entering at the window's first
+		// row counts, so a caption-only frame (only the wrapped caption's last
+		// line visible) is never shown. before gates the entry so the snap
+		// cannot re-fire and loop.
 		best := -1
 		for i, b := range blocks {
-			if (i > 0 || !lead) && b.ImgEnd >= yOffset && b.ImgEnd <= before {
+			if b.ImgEnd >= yOffset && b.ImgEnd <= before {
 				if best < 0 || b.ImgEnd < blocks[best].ImgEnd {
 					best = i
 				}

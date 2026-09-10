@@ -37,12 +37,13 @@ type articleState struct {
 	inlineImages []convert.InlineImage
 	inlineCaps   map[string]string
 	links        []articleLink
-	// leadShown reports whether the article composed a genuine lead block at
-	// the top of the content on open. When the article's lead URL also appears
-	// as an inline image (a promo banner reusing the featured photo), the lead
-	// is suppressed and the first block is a regular inline image that was NOT
-	// shown on open; the scroll snap must then treat it like any other inline
-	// image instead of assuming its entry stages were pre-consumed.
+	// leadShown reports whether blocks[0] was composed at the top of the
+	// content, directly below the header, and shown on open: a genuine lead
+	// block, or a suppressed lead whose URL also opens the body as its first
+	// inline image (a top-of-article photo reused in the body). When the first
+	// content element is text, blocks[0] is a mid-article inline image that
+	// was NOT shown on open and the scroll snap must treat it like any other
+	// inline image instead of assuming its entry stages were pre-consumed.
 	leadShown bool
 }
 
@@ -354,13 +355,11 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		parts = append(parts, "")
 		lineCount++
 	}
-	leadShown := false
 	if der.leadURL != "" {
 		leadAnchor := der.headerLines + 1
 		if m.imagesEnabled() {
 			if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.headerLines); len(block) > 0 {
 				leadAnchor = addImageBlock(a.ImageURL, block, rows, native, id)
-				leadShown = true
 			} else {
 				// The lead is uncomposed: its block will land on the blank
 				// line below the header (or the top of the content when the
@@ -385,6 +384,17 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 	rendered := strings.Join(parts, "\n")
 	vp := viewport.New(contentW, vpH)
 	vp.SetContent(rendered)
+	// leadShown reports whether blocks[0] is composed at the top of the
+	// content, directly below the header (one row past its blank line), and
+	// shown on open: a genuine lead block, or a suppressed lead whose URL also
+	// opens the body as its first inline image — a top-of-article photo reused
+	// in the body, as ProPublica's features do. The scroll snap treats such a
+	// block's entry stages as pre-consumed (rise flush to the viewport top,
+	// then skip past its caption) instead of snapping it like a mid-article
+	// inline image that entered from below. When the first content element is
+	// text, blocks[0] is a mid-article inline image that was never shown on
+	// open and the snap must treat it as a regular inline image.
+	leadShown := len(blocks) > 0 && blocks[0].ImgStart == der.headerLines+1
 	imgStart, imgEnd, capStart, nativeImg := -1, -1, -1, false
 	if len(blocks) > 0 {
 		imgStart, imgEnd, capStart = blocks[0].ImgStart, blocks[0].ImgEnd, blocks[0].CapStart
