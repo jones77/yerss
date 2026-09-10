@@ -12,6 +12,9 @@ const (
 	LayoutTime = "15:04"
 	// LayoutDateTime is the full local timestamp format used in article meta.
 	LayoutDateTime = "2006-01-02 15:04:05"
+	// LayoutDateTimeMinute is the date-plus-minute format used in the article
+	// reader chrome, showing HH:MM without seconds.
+	LayoutDateTimeMinute = "2006-01-02 15:04"
 	// LayoutDayKey is the calendar-day grouping key format.
 	LayoutDayKey = "20060102"
 )

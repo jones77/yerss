@@ -12,6 +12,7 @@ import (
 	"yerss/internal/convert"
 	"yerss/internal/image"
 	"yerss/internal/store"
+	"yerss/internal/timeutil"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
@@ -547,7 +548,7 @@ func (m *Model) renderArticle() string {
 	a := st.article
 	date := ""
 	if !a.PublishedAt.IsZero() {
-		date = a.PublishedAt.Local().Format("2006-01-02 15:04:05")
+		date = a.PublishedAt.Local().Format(timeutil.LayoutDateTimeMinute)
 	}
 	title := a.Title
 	if title == "" {

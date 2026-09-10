@@ -51,7 +51,7 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[0], "Hello world article title") {
 		t.Errorf("top border missing title: %q", lines[0])
 	}
-	wantDate := mustParseTime(t, "2026-01-02T15:04:05Z").Local().Format("2006-01-02 15:04:05")
+	wantDate := mustParseTime(t, "2026-01-02T15:04:05Z").Local().Format("2006-01-02 15:04")
 	if !strings.Contains(lines[0], wantDate) {
 		t.Errorf("top border missing date+time %q: %q", wantDate, lines[0])
 	}
