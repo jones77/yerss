@@ -3186,6 +3186,48 @@ func TestScrollAdvancesFrontierLoadsNextImages(t *testing.T) {
 	}
 }
 
+func TestBoundaryScrollIsNoop(t *testing.T) {
+	// A scroll at the article's start or end cannot move the viewport, so it
+	// must not fire image loads (which would recompose an unchanged article and
+	// keep the UI busy) or change the offset.
+	a := frontierArticle()
+	m, _ := newTestModel(t)
+	m.sess.ImgCache = imgpkg.NewCache()
+	m.article = m.newArticleState(a)
+	m.view = viewArticle
+	_ = m.fireImageLoad(a)
+
+	// At the very top, pressing up again moves nothing and fires nothing.
+	if got := m.article.viewport.YOffset; got != 0 {
+		t.Fatalf("expected the article to start at offset 0, got %d", got)
+	}
+	if cmd := m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true); cmd != nil {
+		t.Errorf("up scroll at the article top should be a no-op, got %T", cmd)
+	}
+	if got := m.article.viewport.YOffset; got != 0 {
+		t.Errorf("offset after top no-op = %d, want 0", got)
+	}
+
+	// At the very end, pressing down again moves nothing and fires nothing.
+	m.article.viewport.GotoBottom()
+	bottom := m.article.viewport.YOffset
+	if cmd := m.scrollArticle(func() { m.article.viewport.ScrollDown(1) }, true); cmd != nil {
+		t.Errorf("down scroll at the article end should be a no-op, got %T", cmd)
+	}
+	if got := m.article.viewport.YOffset; got != bottom {
+		t.Errorf("offset after bottom no-op = %d, want %d", got, bottom)
+	}
+
+	// A real move in the opposite direction still works and still fires loads.
+	cmd := m.scrollArticle(func() { m.article.viewport.ScrollUp(1) }, true)
+	if cmd == nil {
+		t.Error("up scroll from the end should return a command (frontier loads)")
+	}
+	if got := m.article.viewport.YOffset; got != bottom-1 {
+		t.Errorf("offset after leaving the end = %d, want %d", got, bottom-1)
+	}
+}
+
 func TestDeferredNativeRenderFiresWhenScrolledIntoView(t *testing.T) {
 	a := frontierArticle()
 	m, _ := newTestModel(t)

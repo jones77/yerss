@@ -688,6 +688,14 @@ func (m *Model) scrollArticle(fn func(), snap bool) tea.Cmd {
 	before := m.article.viewport.YOffset
 	fn()
 	after := m.article.viewport.YOffset
+	// A scroll that cannot move — the article is already at its start or end —
+	// is a no-op: no content is newly revealed, so snapping and advancing the
+	// load frontier would only fire image work that recomposes an unchanged
+	// article, keeping the UI busy after the user has stopped scrolling at the
+	// boundary.
+	if after == before {
+		return nil
+	}
 	if snap {
 		dir := 0
 		if after > before {
