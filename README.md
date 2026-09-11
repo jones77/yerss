@@ -1,6 +1,6 @@
 # `yerss`
 
-A Go terminal RSS reader written using gofeed, bubbletea/lipgloss and SQLite.
+A Go terminal RSS reader written with image support using gofeed, bubbletea/lipgloss and SQLite.
 
 ## Initial Configuration
 
