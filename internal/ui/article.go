@@ -197,15 +197,17 @@ type articleDerivation struct {
 
 // derivationKey identifies a cached articleDerivation: the article (id and
 // source content), the content geometry, and the renderer inputs that change
-// the derived output (ascii mode, palette, and the glamour theme style).
+// the derived output (ascii mode, palette, the glamour theme style, and the
+// link display mode).
 type derivationKey struct {
-	id       int64
-	contentW int
-	vpH      int
-	ascii    bool
-	palette  render.Palette
-	style    string
-	content  string
+	id         int64
+	contentW   int
+	vpH        int
+	ascii      bool
+	palette    render.Palette
+	style      string
+	linkExpand bool
+	content    string
 }
 
 // deriveArticle returns the article's derived display content, reusing the
@@ -213,13 +215,14 @@ type derivationKey struct {
 // stale entry (different article, geometry, or renderer inputs) is replaced.
 func (m *Model) deriveArticle(a store.Article, contentW, vpH int) articleDerivation {
 	key := derivationKey{
-		id:       a.ID,
-		contentW: contentW,
-		vpH:      vpH,
-		ascii:    m.ascii,
-		palette:  m.palette,
-		style:    compose.GlamourStandardStyle(m.sess.Config().Display.Theme),
-		content:  a.Content,
+		id:         a.ID,
+		contentW:   contentW,
+		vpH:        vpH,
+		ascii:      m.ascii,
+		palette:    m.palette,
+		style:      compose.GlamourStandardStyle(m.sess.Config().Display.Theme),
+		linkExpand: m.linkExpand,
+		content:    a.Content,
 	}
 	if m.derivValid && m.derivKey == key {
 		return m.derivCache
@@ -308,6 +311,15 @@ func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivati
 	}
 	for _, im := range inline {
 		imageURLs = append(imageURLs, im.URL)
+	}
+	// Compact link mode (the default) drops each body link's visible href span
+	// so only the clickable blue name renders. This runs on the rendered body
+	// segments only — renderMarkdown stays untouched for the header title,
+	// author, and popup text.
+	if !m.linkExpand {
+		for i, seg := range segments {
+			segments[i] = compose.StripLinkHrefs(seg)
+		}
 	}
 	return articleDerivation{
 		content:     a.Content,

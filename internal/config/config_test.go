@@ -241,28 +241,29 @@ open_article = ["q"]
 
 func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 	want := Keymap{
-		Quit:            {"q", "ctrl+c"},
-		Refresh:         {"R", "r", "ctrl+r", "f5"},
-		OpenArticle:     {"enter", "l", "o"},
-		Back:            {"esc", "h", "b"},
-		CloseArticle:    {"enter"},
-		LinkPopup:       {"l", "right"},
-		MoveUp:          {"up", "k"},
-		MoveDown:        {"down", "j"},
-		MoveLeft:        {"left", "h"},
-		MoveRight:       {"right", "l"},
-		PageUp:          {"pgup", "ctrl+b"},
-		PageDown:        {"pgdn", "ctrl+f", "space"},
-		HalfPageUp:      {"ctrl+u"},
-		HalfPageDown:    {"ctrl+d"},
-		Top:             {"1", "g", "ctrl+up"},
-		Bottom:          {"G", "ctrl+down"},
-		TagPopup:        {"T", "t"},
-		ExpandToggle:    {"x"},
-		OpenURL:         {"o"},
-		CopyURL:         {"c"},
-		CopyArticleText: {"C"},
-		Help:            {"?"},
+		Quit:             {"q", "ctrl+c"},
+		Refresh:          {"R", "r", "ctrl+r", "f5"},
+		OpenArticle:      {"enter", "l", "o"},
+		Back:             {"esc", "h", "b"},
+		CloseArticle:     {"enter"},
+		LinkPopup:        {"l", "right"},
+		MoveUp:           {"up", "k"},
+		MoveDown:         {"down", "j"},
+		MoveLeft:         {"left", "h"},
+		MoveRight:        {"right", "l"},
+		PageUp:           {"pgup", "ctrl+b"},
+		PageDown:         {"pgdn", "ctrl+f", "space"},
+		HalfPageUp:       {"ctrl+u"},
+		HalfPageDown:     {"ctrl+d"},
+		Top:              {"1", "g", "ctrl+up"},
+		Bottom:           {"G", "ctrl+down"},
+		TagPopup:         {"T", "t"},
+		ExpandToggle:     {"x"},
+		LinkExpandToggle: {"x"},
+		OpenURL:          {"o"},
+		CopyURL:          {"c"},
+		CopyArticleText:  {"C"},
+		Help:             {"?"},
 	}
 	got := DefaultKeybindings()
 	if !reflect.DeepEqual(got, want) {
@@ -329,7 +330,7 @@ func TestHelpActionGroups(t *testing.T) {
 	want := map[string][]Action{
 		"Global":       {Quit, Back, MoveUp, MoveDown, MoveLeft, MoveRight, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
 		"List view":    {Refresh, OpenArticle, ExpandToggle},
-		"Article view": {CloseArticle, LinkPopup, OpenURL, CopyURL, CopyArticleText},
+		"Article view": {CloseArticle, LinkPopup, LinkExpandToggle, OpenURL, CopyURL, CopyArticleText},
 	}
 	for label, expected := range want {
 		if !reflect.DeepEqual(groups[label], expected) {

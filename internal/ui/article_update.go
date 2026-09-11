@@ -54,6 +54,9 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd = copyTextCmd(ansi.Strip(strings.Join(m.article.lines, "\n")), "copied article text")
 	case config.TagPopup:
 		m.openTagPopup(popupTagsArticle)
+	case config.LinkExpandToggle:
+		m.linkExpand = !m.linkExpand
+		m.recomposeArticle()
 	case config.Help:
 		m.popup = popupHelp
 	}

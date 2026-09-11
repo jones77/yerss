@@ -60,6 +60,12 @@ type Model struct {
 	mdRendererW     int
 	mdRendererStyle string
 
+	// linkExpand toggles the article reader's link display mode: false (the
+	// default) renders body hyperlinks compact (name only), true renders them
+	// expanded (name + URL). It is session-scoped, persisting across article
+	// switches, and keys the derivation cache so toggling recomposes.
+	linkExpand bool
+
 	// derivCache holds the open article's derived display content (converted
 	// markdown, rendered body segments, harvested links, inline images) so an
 	// image-load recompose at the same geometry reuses the expensive

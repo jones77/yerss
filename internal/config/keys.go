@@ -10,28 +10,29 @@ import (
 type Action string
 
 const (
-	Quit            Action = "quit"
-	Refresh         Action = "refresh"
-	OpenArticle     Action = "open_article"
-	Back            Action = "back"
-	CloseArticle    Action = "close_article"
-	LinkPopup       Action = "link_popup"
-	MoveUp          Action = "move_up"
-	MoveDown        Action = "move_down"
-	MoveLeft        Action = "move_left"
-	MoveRight       Action = "move_right"
-	PageUp          Action = "page_up"
-	PageDown        Action = "page_down"
-	HalfPageUp      Action = "half_page_up"
-	HalfPageDown    Action = "half_page_down"
-	Top             Action = "top"
-	Bottom          Action = "bottom"
-	TagPopup        Action = "tag_popup"
-	ExpandToggle    Action = "expand_toggle"
-	OpenURL         Action = "open_url"
-	CopyURL         Action = "copy_url"
-	CopyArticleText Action = "copy_article_text"
-	Help            Action = "help"
+	Quit             Action = "quit"
+	Refresh          Action = "refresh"
+	OpenArticle      Action = "open_article"
+	Back             Action = "back"
+	CloseArticle     Action = "close_article"
+	LinkPopup        Action = "link_popup"
+	MoveUp           Action = "move_up"
+	MoveDown         Action = "move_down"
+	MoveLeft         Action = "move_left"
+	MoveRight        Action = "move_right"
+	PageUp           Action = "page_up"
+	PageDown         Action = "page_down"
+	HalfPageUp       Action = "half_page_up"
+	HalfPageDown     Action = "half_page_down"
+	Top              Action = "top"
+	Bottom           Action = "bottom"
+	TagPopup         Action = "tag_popup"
+	ExpandToggle     Action = "expand_toggle"
+	LinkExpandToggle Action = "link_expand_toggle"
+	OpenURL          Action = "open_url"
+	CopyURL          Action = "copy_url"
+	CopyArticleText  Action = "copy_article_text"
+	Help             Action = "help"
 )
 
 // View identifies a TUI view context for key dispatch and conflict
@@ -76,6 +77,7 @@ var catalog = []actionSpec{
 	{Bottom, []string{"G", "ctrl+down"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{TagPopup, []string{"T", "t"}, []View{ViewList, ViewArticle}},
 	{ExpandToggle, []string{"x"}, []View{ViewList}},
+	{LinkExpandToggle, []string{"x"}, []View{ViewArticle}},
 	{OpenURL, []string{"o"}, []View{ViewArticle, ViewPopup}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
 	{CopyArticleText, []string{"C"}, []View{ViewArticle}},

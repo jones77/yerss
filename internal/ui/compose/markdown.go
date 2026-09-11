@@ -56,6 +56,15 @@ func GlamourStyleConfig(style string) ansi.StyleConfig {
 	truePtr := true
 	falsePtr := false
 	cfg.Link.Underline = &falsePtr
+	// Pin link text and the visible href to the status-bar blue role (ANSI 12
+	// bright blue in dark mode, ANSI 4 blue in light mode), so body links read
+	// as one colored unit matching the status bar and the reader header URL.
+	linkColor := "12"
+	if style == "light" {
+		linkColor = "4"
+	}
+	cfg.Link.Color = &linkColor
+	cfg.LinkText.Color = &linkColor
 	// Drop the visible "#"/"##"/"###" markers that glamour's built-in heading
 	// styles prepend to each level, so article subtitles render as clean
 	// highlighted lines instead of raw markdown. The heading text keeps its
