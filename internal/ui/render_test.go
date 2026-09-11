@@ -63,6 +63,31 @@ func TestRenderArticleBorder(t *testing.T) {
 	}
 }
 
+func TestRenderArticleBorderShowSeconds(t *testing.T) {
+	m, st := newTestModel(t)
+	m.sess.Config().Display.ShowSeconds = true
+	a := store.Article{
+		FeedURL:     "https://example.com/feed.xml",
+		GUID:        "g-seconds",
+		Title:       "Seconds title",
+		PublishedAt: mustParseTime(t, "2026-01-02T15:04:05Z"),
+		Content:     "<p>a short paragraph</p>",
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.newArticleState(a)
+
+	s := m.renderArticle()
+	lines := strings.Split(s, "\n")
+	wantDate := mustParseTime(t, "2026-01-02T15:04:05Z").Local().Format("2006-01-02 15:04:05")
+	if !strings.Contains(lines[0], wantDate) {
+		t.Errorf("top border missing seconds date+time %q: %q", wantDate, lines[0])
+	}
+}
+
 func TestRenderArticleBorderASCII(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.ascii = true

@@ -301,7 +301,7 @@ func (m *Model) renderArticleRow(item *articleItem, selected bool) string {
 	}
 	ts := "--:--"
 	if !item.PublishedAt.IsZero() {
-		ts = item.PublishedAt.Local().Format(timeutil.LayoutTime)
+		ts = item.PublishedAt.Local().Format(timeutil.TimeLayout(m.sess.Config().Display.ShowSeconds))
 	}
 
 	// The row starts with the local publication time, the title filling the
@@ -357,7 +357,7 @@ func (m *Model) renderStatusBar() string {
 		left = base.Render("never refreshed")
 	} else {
 		t := m.lastRefreshedAt
-		left = base.Render(t.Format(timeutil.LayoutTime)+" "+timeutil.LongDate(t)) + " " + dim.Render("last refresh")
+		left = base.Render(t.Format(timeutil.TimeLayout(m.sess.Config().Display.ShowSeconds))+" "+timeutil.LongDate(t)) + " " + dim.Render("last refresh")
 	}
 	if m.list.filter != "" && (m.statusMsg == "" || !time.Now().Before(m.statusExpires)) {
 		left += " " + dim.Render(bullet) + " " + base.Render("filter "+m.list.filter)
@@ -375,7 +375,7 @@ func (m *Model) renderStatusBar() string {
 	// element is `?: help`.
 	right := base.Render(fmt.Sprintf("%d/%d", n, total))
 	right = base.Render(fmt.Sprintf("%d%%", pct)) + " " + dim.Render(bullet) + " " + right
-	right = base.Render("DB " + formatMB(m.dbSize)) + " " + dim.Render(bullet) + " " + right
+	right = base.Render("DB "+formatMB(m.dbSize)) + " " + dim.Render(bullet) + " " + right
 	right = base.Render("?: help") + " " + dim.Render(bullet) + " " + right
 
 	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)

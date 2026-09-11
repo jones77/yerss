@@ -30,12 +30,13 @@ type RefreshOptions struct {
 
 // Display holds rendering preferences.
 type Display struct {
-	Theme     string
-	Ascii     bool
-	Images    string
-	PaddingX  int
-	PaddingY  int
-	Scrollbar string
+	Theme       string
+	Ascii       bool
+	Images      string
+	PaddingX    int
+	PaddingY    int
+	Scrollbar   string
+	ShowSeconds bool
 }
 
 // Config is the fully-resolved application configuration.
@@ -126,13 +127,21 @@ func normalizeScrollbar(v string) string {
 	return "single"
 }
 
+// normalizeShowSeconds coerces a raw show_seconds TOML value to a bool,
+// treating any non-boolean (unrecognized) value as false.
+func normalizeShowSeconds(v any) bool {
+	b, ok := v.(bool)
+	return ok && b
+}
+
 type displayOpts struct {
-	Theme     string `toml:"theme"`
-	Images    string `toml:"images"`
-	PaddingX  *int   `toml:"padding_x"`
-	PaddingY  *int   `toml:"padding_y"`
-	Ascii     *bool  `toml:"ascii"`
-	Scrollbar *string `toml:"scrollbar"`
+	Theme       string  `toml:"theme"`
+	Images      string  `toml:"images"`
+	PaddingX    *int    `toml:"padding_x"`
+	PaddingY    *int    `toml:"padding_y"`
+	Ascii       *bool   `toml:"ascii"`
+	Scrollbar   *string `toml:"scrollbar"`
+	ShowSeconds any     `toml:"show_seconds"`
 }
 
 // Load reads configuration from path, falling back to the default XDG
@@ -197,6 +206,9 @@ func Load(path string) (*Config, error) {
 	}
 	if raw.Display.Scrollbar != nil {
 		cfg.Display.Scrollbar = normalizeScrollbar(*raw.Display.Scrollbar)
+	}
+	if raw.Display.ShowSeconds != nil {
+		cfg.Display.ShowSeconds = normalizeShowSeconds(raw.Display.ShowSeconds)
 	}
 
 	if len(raw.Keybindings) > 0 {

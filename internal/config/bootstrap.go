@@ -42,6 +42,7 @@ func seededConfig() string {
 # padding_x = 2
 # padding_y = 1
 # scrollbar = "single"
+# show_seconds = false
 
 %s
 `, ConfigSchemaVersion, BuildCommit, defaultFeedsFile, seededKeybindings())

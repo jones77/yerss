@@ -549,7 +549,7 @@ func (m *Model) renderArticle() string {
 	a := st.article
 	date := ""
 	if !a.PublishedAt.IsZero() {
-		date = a.PublishedAt.Local().Format(timeutil.LayoutDateTimeMinute)
+		date = a.PublishedAt.Local().Format(timeutil.DateTimeLayout(m.sess.Config().Display.ShowSeconds))
 	}
 	title := a.Title
 	if title == "" {

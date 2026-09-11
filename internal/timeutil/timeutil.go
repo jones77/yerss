@@ -10,6 +10,9 @@ import (
 const (
 	// LayoutTime is the clock-only format used for article rows.
 	LayoutTime = "15:04"
+	// LayoutTimeSeconds is the clock-only format with seconds, used when the
+	// show_seconds display option is enabled.
+	LayoutTimeSeconds = "15:04:05"
 	// LayoutDateTime is the full local timestamp format used in article meta.
 	LayoutDateTime = "2006-01-02 15:04:05"
 	// LayoutDateTimeMinute is the date-plus-minute format used in the article
@@ -18,6 +21,26 @@ const (
 	// LayoutDayKey is the calendar-day grouping key format.
 	LayoutDayKey = "20060102"
 )
+
+// TimeLayout returns the clock-only layout to use for a displayed time:
+// minute precision (HH:MM) by default, or second precision (HH:MM:SS) when
+// showSeconds is true.
+func TimeLayout(showSeconds bool) string {
+	if showSeconds {
+		return LayoutTimeSeconds
+	}
+	return LayoutTime
+}
+
+// DateTimeLayout returns the date-and-time layout to use for a displayed
+// timestamp: minute precision (2006-01-02 15:04) by default, or second
+// precision (2006-01-02 15:04:05) when showSeconds is true.
+func DateTimeLayout(showSeconds bool) string {
+	if showSeconds {
+		return LayoutDateTime
+	}
+	return LayoutDateTimeMinute
+}
 
 // DayStart returns t truncated to local midnight.
 func DayStart(t time.Time) time.Time {

@@ -427,6 +427,37 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	}
 }
 
+func TestArticleRowShowsSecondsWhenEnabled(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	m, st := newTestModel(t)
+	m.sess.Config().Display.ShowSeconds = true
+	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
+	m.loadList()
+
+	item := &m.list.groups[0].articles[0]
+	line := ansi.Strip(m.renderArticleRow(item, false))
+	if !strings.HasPrefix(line, "15:04:05 ") {
+		t.Errorf("row should start with the seconds publication time: %q", line)
+	}
+	if strings.HasPrefix(line, "15:04 ") {
+		t.Errorf("row should not use minute precision when seconds are enabled: %q", line)
+	}
+}
+
+func TestStatusBarShowsSecondsWhenEnabled(t *testing.T) {
+	m, st := newTestModel(t)
+	m.sess.Config().Display.ShowSeconds = true
+	insertArticle(t, st, "one", nil)
+	m.loadList()
+	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	m.list.cursor = 1
+
+	got := m.renderStatusBar()
+	if !strings.Contains(got, "15:04:05 Friday 28th August, 2026 last refresh") {
+		t.Errorf("status bar = %q, want seconds in the last refresh time", got)
+	}
+}
+
 func TestTreeRailBookendGlyphs(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)

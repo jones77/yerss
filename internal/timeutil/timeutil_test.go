@@ -93,3 +93,35 @@ func TestOrdinalModulo100(t *testing.T) {
 		}
 	}
 }
+
+func TestTimeLayout(t *testing.T) {
+	cases := []struct {
+		name        string
+		showSeconds bool
+		want        string
+	}{
+		{"minute precision", false, "15:04"},
+		{"second precision", true, "15:04:05"},
+	}
+	for _, c := range cases {
+		if got := TimeLayout(c.showSeconds); got != c.want {
+			t.Errorf("TimeLayout(%v) = %q, want %q", c.showSeconds, got, c.want)
+		}
+	}
+}
+
+func TestDateTimeLayout(t *testing.T) {
+	cases := []struct {
+		name        string
+		showSeconds bool
+		want        string
+	}{
+		{"minute precision", false, "2006-01-02 15:04"},
+		{"second precision", true, "2006-01-02 15:04:05"},
+	}
+	for _, c := range cases {
+		if got := DateTimeLayout(c.showSeconds); got != c.want {
+			t.Errorf("DateTimeLayout(%v) = %q, want %q", c.showSeconds, got, c.want)
+		}
+	}
+}

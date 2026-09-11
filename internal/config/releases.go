@@ -10,7 +10,7 @@ var BuildCommit = "dev"
 // whenever a configuration option is added. It drives the config self-update:
 // files recording an older schema version in their header have the newer
 // options appended as comments on the next load.
-const ConfigSchemaVersion = 2
+const ConfigSchemaVersion = 3
 
 // ConfigOption records a single configuration option and the schema version
 // that introduced it.
@@ -43,6 +43,8 @@ func allConfigOptions() []ConfigOption {
 		{Version: 1, Section: "display", Key: "padding_y", Default: `1`, Doc: "vertical article padding"},
 		// v2 additions.
 		{Version: 2, Section: "display", Key: "scrollbar", Default: `"single"`, Doc: "scrollbar thumb: single or double line"},
+		// v3 additions.
+		{Version: 3, Section: "display", Key: "show_seconds", Default: `false`, Doc: "show seconds in list and article times"},
 	}
 	return append(opts, keybindingOptions()...)
 }

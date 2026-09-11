@@ -154,6 +154,55 @@ scrollbar = "fancy"
 	}
 }
 
+func TestShowSecondsDefaultsFalse(t *testing.T) {
+	withXDG(t)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.ShowSeconds {
+		t.Error("default show_seconds should be false")
+	}
+}
+
+func TestShowSecondsOptionParsed(t *testing.T) {
+	withXDG(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+show_seconds = true
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Display.ShowSeconds {
+		t.Error("show_seconds = true should be honored")
+	}
+}
+
+func TestInvalidShowSecondsFallsBackToFalse(t *testing.T) {
+	withXDG(t)
+	path := filepath.Join(t.TempDir(), "config.toml")
+	writeFile(t, path, `
+[display]
+show_seconds = "sometimes"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Display.ShowSeconds {
+		t.Error("unrecognized show_seconds value should fall back to false")
+	}
+}
+
+func TestSeededTemplateContainsShowSeconds(t *testing.T) {
+	if !strings.Contains(seededConfig(), "# show_seconds = false") {
+		t.Error("seeded template missing show_seconds key")
+	}
+}
+
 func TestCustomKeybinding(t *testing.T) {
 	withXDG(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -256,8 +305,8 @@ func TestKeybindingCatalogConsistency(t *testing.T) {
 
 func TestHelpActionGroups(t *testing.T) {
 	groups := map[string][]Action{
-		"Global":    GlobalActions(),
-		"List view": ListActions(),
+		"Global":       GlobalActions(),
+		"List view":    ListActions(),
 		"Article view": ArticleActions(),
 	}
 	seen := map[Action]bool{}

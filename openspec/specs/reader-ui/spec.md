@@ -23,8 +23,9 @@ the header for the previous local calendar day SHALL be prefixed with
 `yesterday, `; older days and the `Undated` group SHALL be unprefixed. Day
 headers SHALL render entirely in the blue role: the rail corner, the dash
 connector, and the date label. Each
-article row SHALL show the publication time as `HH:MM` in the user's local
-timezone (`--:--` when undated) at the start of the row, followed by the
+article row SHALL show the publication time at the start of the row in the
+user's local timezone (`--:--` when undated), as `HH:MM` by default and as
+`HH:MM:SS` when the `show_seconds` display option is enabled, followed by the
 article title; the title SHALL NOT be preceded or followed by bullet points. The
 source-domain identifier SHALL be right-aligned at the content edge and SHALL
 be the only field on the right; it SHALL be derived from the article's link
@@ -100,6 +101,11 @@ expanded articles).
 - **WHEN** an article row is rendered for a story published at 15:04 local time
 - **THEN** the row shows `HH:MM` at the start of the row followed by the title, with no bullet markers anywhere in the row
 
+#### Scenario: Article row shows seconds when enabled
+
+- **WHEN** the `show_seconds` display option is enabled and an article row is rendered for a story published at 15:04:05 local time
+- **THEN** the row shows `15:04:05` at the start of the row followed by the title
+
 #### Scenario: Source identifier right-aligned at the content edge
 
 - **WHEN** an article row is rendered for a story linked from `newrepublic.com`
@@ -160,7 +166,9 @@ expanded articles).
 The system SHALL display a status bar at the bottom of the list view. The
 left-most elements SHALL be the time and long-form date the feeds were last
 refreshed, formatted as `HH:MM Weekday Day-ordinal Month, Year last refresh`
-(for example `14:30 Saturday 29th August, 2026 last refresh`), with the
+(for example `14:30 Saturday 29th August, 2026 last refresh`), or
+`HH:MM:SS Weekday Day-ordinal Month, Year last refresh` when the `show_seconds`
+display option is enabled, with the
 `last refresh` label rendered in the dim role (#707070), or the text
 `never refreshed` when no refresh has occurred. The right-most elements SHALL
 be a literal `?: help` hint, followed by the bullet and the on-disk size of the
@@ -189,6 +197,11 @@ the active filter name.
   `HH:MM Weekday Day-ordinal Month, Year last refresh` and, on the right, the
   database size as `DB <n>MB`, the percentage, and the `<n>/<total>` position
   joined by ` · `
+
+#### Scenario: Status bar shows seconds when enabled
+
+- **WHEN** the `show_seconds` display option is enabled and the list view is displayed
+- **THEN** the status bar shows the last-refresh time on the left as `HH:MM:SS Weekday Day-ordinal Month, Year last refresh`
 
 #### Scenario: Status bar uses dim bullets and dim refresh label
 
@@ -317,8 +330,10 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 
 The system SHALL render the article's date and title inline with the top border
 with the date always fully visible and the title left-aligned after the date.
-The date prefix SHALL be `YYYY-MM-DD HH:MM:SS` showing the publication date and
-time in the user's local timezone, followed by the middle-dot bullet (`·`, ASCII
+The date prefix SHALL be `YYYY-MM-DD HH:MM` showing the publication date and
+time in the user's local timezone by default, or `YYYY-MM-DD HH:MM:SS` when the
+`show_seconds` display option is enabled, followed by the middle-dot bullet
+(`·`, ASCII
 `.`) and the title. When the title does not fit the available width, the system
 SHALL truncate the title and end it with an ellipsis glyph — `…` in Unicode mode
 and `...` in ASCII fallback mode — and SHALL place a single horizontal dash
@@ -335,7 +350,12 @@ append an ellipsis.
 #### Scenario: Long title is truncated with an ellipsis
 
 - **WHEN** the article title does not fit the top border
-- **THEN** the date-and-time prefix remains fully visible, the title is truncated and ends with `…`, and a single dash precedes the right corner (for example `┌─ 2026-01-02 15:04:05 · Hello world artic… ─╖`)
+- **THEN** the date-and-time prefix remains fully visible, the title is truncated and ends with `…`, and a single dash precedes the right corner (for example `┌─ 2026-01-02 15:04 · Hello world artic… ─╖`)
+
+#### Scenario: Top border shows seconds when enabled
+
+- **WHEN** the `show_seconds` display option is enabled and an article is displayed
+- **THEN** the top border date prefix renders as `YYYY-MM-DD HH:MM:SS` (for example `┌─ 2026-01-02 15:04:05 · Hello world artic… ─╖`)
 
 #### Scenario: ASCII fallback ellipsis
 
@@ -345,7 +365,7 @@ append an ellipsis.
 #### Scenario: Date and time stay visible for a very long title
 
 - **WHEN** the article title is longer than the entire top-border content width
-- **THEN** the `YYYY-MM-DD HH:MM:SS` date prefix is still rendered in full and only the title is truncated with an ellipsis
+- **THEN** the `YYYY-MM-DD HH:MM` (or `YYYY-MM-DD HH:MM:SS` when seconds are enabled) date prefix is still rendered in full and only the title is truncated with an ellipsis
 
 ### Requirement: Keyboard navigation
 
