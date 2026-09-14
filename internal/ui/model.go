@@ -124,48 +124,19 @@ func (m *Model) Init() tea.Cmd {
 	}
 	m.list.Status.LastRefreshedAt = last
 	var refresh tea.Cmd
-	if m.hasUnfetchedFeeds() {
+	if m.sess.NeedsStartupRefresh(last, time.Now()) {
 		refresh = m.refreshCmd()
-	} else {
-		gate := feed.Gate{MinInterval: m.sess.Config().MinInterval(), Cooldown: m.sess.Config().Cooldown()}
-		if gate.NeedsStartupRefresh(last, time.Now()) {
-			refresh = m.refreshCmd()
-		}
 	}
 	return tea.Batch(imgLoad, refresh)
-}
-
-// hasUnfetchedFeeds reports whether the configured feeds file contains a URL
-// that has never been successfully fetched (no feeds row with a non-NULL
-// last_fetched_at). It lets the startup refresh bypass the 15-minute gate so a
-// feed newly added to feeds.txt is fetched without a manual refresh. A feeds
-// file or store error is treated as "no new feeds" so startup falls through to
-// the time gate; refreshCmd surfaces the error if a refresh still runs.
-func (m *Model) hasUnfetchedFeeds() bool {
-	urls, err := feed.LoadFeeds(m.sess.Config().FeedsFile())
-	if err != nil {
-		return false
-	}
-	verified, err := m.sess.VerifiedFeedURLs()
-	if err != nil {
-		return false
-	}
-	for _, u := range urls {
-		if !verified[feed.CanonicalURL(u)] {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *Model) refreshCmd() tea.Cmd {
 	m.list.Status.Refreshing = true
 	return func() tea.Msg {
-		urls, err := feed.LoadFeeds(m.sess.Config().FeedsFile())
+		res, err := m.sess.Refresh()
 		if err != nil {
 			return refreshFinishedMsg{err: err}
 		}
-		res := m.sess.FetchFeeds(urls)
 		return refreshFinishedMsg{result: res, fetchedAt: time.Now()}
 	}
 }
@@ -263,8 +234,7 @@ func (m *Model) setStatus(msg string) {
 }
 
 func (m *Model) refreshManual() tea.Cmd {
-	gate := feed.Gate{MinInterval: m.sess.Config().MinInterval(), Cooldown: m.sess.Config().Cooldown()}
-	if ok, remaining := gate.ManualRefreshAllowed(m.list.Status.LastRefreshedAt, time.Now()); !ok {
+	if ok, remaining := m.sess.ManualRefreshAllowed(m.list.Status.LastRefreshedAt, time.Now()); !ok {
 		secs := int((remaining + time.Second - 1) / time.Second)
 		m.setStatus(fmt.Sprintf("next allowed in %ds", secs))
 		return nil

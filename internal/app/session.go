@@ -98,3 +98,41 @@ func (s *Session) FetchFeeds(urls []string) *feed.FetchResult {
 	res := feed.FetchFeeds(s.store, urls)
 	return &res
 }
+
+// Refresh loads the configured feeds file and runs a fetch pass, returning the
+// pass summary. A feeds-file load error is returned separately from the fetch
+// result, mirroring the refreshFinishedMsg{result, err} shape so the UI's
+// handler is unchanged.
+func (s *Session) Refresh() (*feed.FetchResult, error) {
+	urls, err := feed.LoadFeeds(s.cfg.FeedsFile())
+	if err != nil {
+		return nil, err
+	}
+	return s.FetchFeeds(urls), nil
+}
+
+// NeedsStartupRefresh reports whether startup should run a refresh: either a
+// configured feed has never been fetched (a feeds-file or store error is
+// treated as "no new feeds" so the decision falls through to the time gate)
+// or more than MinInterval has elapsed since the last refresh.
+func (s *Session) NeedsStartupRefresh(last, now time.Time) bool {
+	if urls, err := feed.LoadFeeds(s.cfg.FeedsFile()); err == nil {
+		if verified, err := s.VerifiedFeedURLs(); err == nil {
+			for _, u := range urls {
+				if !verified[feed.CanonicalURL(u)] {
+					return true
+				}
+			}
+		}
+	}
+	gate := feed.Gate{MinInterval: s.cfg.MinInterval(), Cooldown: s.cfg.Cooldown()}
+	return gate.NeedsStartupRefresh(last, now)
+}
+
+// ManualRefreshAllowed bypasses the startup interval and applies the cooldown.
+// When not allowed it returns the time remaining until the next refresh is
+// permitted.
+func (s *Session) ManualRefreshAllowed(last, now time.Time) (bool, time.Duration) {
+	gate := feed.Gate{MinInterval: s.cfg.MinInterval(), Cooldown: s.cfg.Cooldown()}
+	return gate.ManualRefreshAllowed(last, now)
+}
