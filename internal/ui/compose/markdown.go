@@ -115,6 +115,11 @@ func IndentListContinuations(rendered string) string {
 // ordered number (1. 2) followed by a space.
 var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]`)
 
+// trailingPunctRe matches a line whose visible text is only closing
+// punctuation: the character glamour strands alone when a blockquote's final
+// word wraps right before it (e.g. the "”" of "on.”").
+var trailingPunctRe = regexp.MustCompile(`^[”’»\]\)\},;:!?….-]+$`)
+
 // CellWidth returns the display width of a single rune, using the
 // grapheme-aware ANSI width primitive shared across the article rendering path so
 // visible-cell measurement is consistent everywhere it is needed.
@@ -210,11 +215,22 @@ func isBarLine(line string) bool {
 // orphans are folded too. The width threshold (smaller than the nearest
 // preceding bar line) keeps ordinary paragraph text from being swallowed.
 func isOrphanLine(lines []string, i int) bool {
-	if i == 0 || i+1 >= len(lines) {
+	if i == 0 {
 		return false
 	}
 	vis := strings.TrimSpace(xansi.Strip(lines[i]))
 	if vis == "" || strings.HasPrefix(vis, "│") {
+		return false
+	}
+	// A line holding only closing punctuation directly after a bar line is the
+	// tail of the blockquote's final word, stranded when the word wrapped right
+	// before the punctuation (glamour breaks "on.”" after the period). It must
+	// be folded back under the quote bar even when the next line is ordinary
+	// paragraph text, not another bar or orphan.
+	if trailingPunctRe.MatchString(vis) && isBarLine(lines[i-1]) {
+		return true
+	}
+	if i+1 >= len(lines) {
 		return false
 	}
 	if !isBarLine(lines[i+1]) && !isOrphanLine(lines, i+1) {

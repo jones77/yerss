@@ -215,7 +215,8 @@ func TestCompactWrapKeepsWrappedName(t *testing.T) {
 
 func TestCompactWrapAdjacentSameURL(t *testing.T) {
 	// Two links to the same URL must each keep their name and hide their href,
-	// even when the shared URL wraps across rendered lines.
+	// even when the shared URL wraps across rendered lines. Once the hrefs are
+	// stripped the paragraph re-flows, so the names flow back together.
 	m, _ := openTestArticle(t, "adjacent", `<p>before [one](`+wrapURL+`) and [two](`+wrapURL+`) after</p>`)
 	body := paragraphText(m)
 	if got := strings.Join(strings.Fields(body), " "); got != "before one and two after" {
@@ -224,8 +225,22 @@ func TestCompactWrapAdjacentSameURL(t *testing.T) {
 	if strings.Contains(body, "example.com") {
 		t.Errorf("compact body leaks the URL: %q", body)
 	}
-	if n := nonEmptyLines(body); n < 3 {
-		t.Fatalf("shared URL did not wrap (+ adjacent links; %d non-empty lines); test is vacuous", n)
+
+	// Non-vacuous guard: the shared URL genuinely wraps at this width in
+	// expanded mode, so "after" lands on a later line than "before".
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	bi, ai := -1, -1
+	for i, ln := range m.article.lines {
+		s := ansi.Strip(ln)
+		if bi < 0 && strings.Contains(s, "before") {
+			bi = i
+		}
+		if strings.Contains(s, "after") {
+			ai = i
+		}
+	}
+	if ai <= bi {
+		t.Fatalf("shared URL did not wrap ('after' on line %d, 'before' on line %d); test is vacuous", ai, bi)
 	}
 }
 

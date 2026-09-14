@@ -126,7 +126,10 @@ rendered lines. When a link's URL wraps, the compact rendering SHALL show only
 the link's name and SHALL NOT render any part of the URL text — neither the first
 line nor any wrapped continuation line. A link name that itself wraps across
 lines SHALL render in full. The link name SHALL remain wrapped in OSC 8 escape
-sequences carrying the full URL, so the link stays clickable.
+sequences carrying the full URL, so the link stays clickable. Hiding a wrapped
+URL SHALL NOT leave a short, unpadded line in the surrounding paragraph: the
+paragraph SHALL re-wrap to the content width so every line fills the full width
+and no visible gap appears where the URL text was removed.
 
 #### Scenario: Long URL wrapping across lines is fully hidden
 
@@ -142,3 +145,8 @@ sequences carrying the full URL, so the link stays clickable.
 
 - **WHEN** an article body contains two links to the same URL in compact mode
 - **THEN** both link names render and neither URL text is visible
+
+#### Scenario: Paragraph re-wraps after a wrapped URL is hidden
+
+- **WHEN** a compact-mode link's URL is long enough to wrap across lines, so hiding the URL would otherwise leave the surrounding paragraph line shorter than the content width
+- **THEN** the paragraph re-wraps to the full content width and no line is left visibly short with a trailing blank gap

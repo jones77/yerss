@@ -344,6 +344,12 @@ func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivati
 		for i, seg := range segments {
 			segments[i] = compose.StripLinkHrefs(seg)
 		}
+		// Stripping a wrapped URL's href spans swallows the line's fill padding
+		// and a wrap newline, leaving a short, unpadded glued line. Re-flow
+		// affected paragraphs so every line fills the content width again.
+		for i, seg := range segments {
+			segments[i] = compose.ReflowShortLines(seg, contentW)
+		}
 	}
 	return articleDerivation{
 		content:        a.Content,
