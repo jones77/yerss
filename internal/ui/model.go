@@ -77,6 +77,31 @@ type Model struct {
 	derivKey   derivationKey
 	derivValid bool
 
+	// contentGen counts article-state constructions (open, recompose, resize,
+	// selection rebuild — every path newArticleState runs), so the article-frame
+	// cache is invalidated exactly when the composed content could change.
+	// nativeGen counts the native transmit-state transitions the frame body also
+	// renders from (nativeSent / nativeClearArticleID changes, advanced in
+	// recomputeNativeClear). Both start at 0 (the zero value) and only grow
+	// within a session; they feed the comparable articleFrameKey below.
+	contentGen int
+	nativeGen  int
+
+	// frameKey/frameValid/frameStr memoize the article reader's rendered frame —
+	// the renderArticle body, without the nativeClearPrefix View() prepends —
+	// keyed on a cheap signature of the state the body draws from. A no-op
+	// boundary scroll (the offset and every render input unchanged) hits the
+	// cache instead of re-running the viewport composition, native transforms,
+	// selection highlight, and border render on the UI goroutine, so a burst of
+	// boundary wheel ticks cannot backlog the input queue.
+	frameKey   articleFrameKey
+	frameValid bool
+	frameStr   string
+	// frameRenderCount counts full article frame compositions (renderArticle
+	// cache misses: renderArticleUncached calls), so tests can assert that
+	// no-op boundary scrolls are served from the frame cache without re-render.
+	frameRenderCount int
+
 	// recomposePending is set by the image-load message handlers when the open
 	// article needs recomposing. Update flushes it once after the message switch
 	// (flushRecompose), so the per-message work is bounded to cache updates and

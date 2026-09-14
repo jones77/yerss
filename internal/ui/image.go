@@ -58,14 +58,43 @@ func (m *Model) nativeImages() bool {
 // fully contained images (that frame re-transmits the image with its stable
 // placement id, which replaces the placement).
 func (m *Model) recomputeNativeClear() {
-	// Snapshot the transmitted-id tracking before this frame's computeNativeClear
-	// advances it, so the render path can tell a placement reference re-show (the
-	// image was transmitted on an earlier frame) from this frame's fresh transmit.
-	m.nativeSentPrev = make(map[string]uint32, len(m.nativeSent))
+	// Keep the snapshot the previous frame rendered under, then snapshot the
+	// transmitted-id tracking before this frame's computeNativeClear advances
+	// it, so the render path can tell a placement reference re-show (the image
+	// was transmitted on an earlier frame) from this frame's fresh transmit.
+	prev := m.nativeSentPrev
+	sentPrev := make(map[string]uint32, len(m.nativeSent))
 	for url, id := range m.nativeSent {
-		m.nativeSentPrev[url] = id
+		sentPrev[url] = id
 	}
+	m.nativeSentPrev = sentPrev
+	clearPrev := m.nativeClearArticleID
 	m.nativeClearPrefix = m.computeNativeClear()
+	// The article frame body renders against nativeSentPrev, so the frame cache
+	// is valid only while that snapshot matches the one its body was rendered
+	// under. A snapshot change — the transition from a fresh transmit to a
+	// re-show by placement reference, a scroll-out delete, a re-render at a new
+	// size, or the re-entry into a no-native article — bumps nativeGen so the
+	// next View re-renders against the new snapshot instead of serving the stale
+	// body. In steady state (no-op boundary scrolls, block staying in or out of
+	// view) the snapshot is unchanged and the cached frame keeps serving.
+	if !nativeSentEqual(prev, sentPrev) || clearPrev != m.nativeClearArticleID {
+		m.nativeGen++
+	}
+}
+
+// nativeSentEqual reports whether two native transmitted-id maps hold the same
+// (url -> image id) entries.
+func nativeSentEqual(a, b map[string]uint32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for url, id := range a {
+		if b[url] != id {
+			return false
+		}
+	}
+	return true
 }
 
 // computeNativeClear returns the native-image clear sequence for the current

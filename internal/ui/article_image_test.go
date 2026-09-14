@@ -79,6 +79,7 @@ func newImageModel(t *testing.T, fixed []string) (*Model, *fakeRenderer) {
 
 func TestArticleImageBlockComposedBelowHeader(t *testing.T) {
 	m, fr := newImageModel(t, []string{"IMG1", "IMG2"})
+	m.linkExpand = true
 	m.article = m.newArticleState(imageArticle())
 
 	if len(fr.calls) == 0 {
@@ -151,7 +152,7 @@ func TestArticleImageBlockHeightCap(t *testing.T) {
 	if len(fr.calls) != 1 {
 		t.Fatalf("expected one render call, got %d", len(fr.calls))
 	}
-	header := m.renderHeader(imageArticle(), m.article.viewport.Width)
+	header := m.renderHeader(imageArticle(), m.article.viewport.Width, m.linkExpand)
 	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
@@ -661,7 +662,7 @@ const kittyDeleteEsc = "\x1b_Ga=d,d=a,q=1\x1b\\"
 func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	t.Helper()
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	header := m.renderHeader(a, width)
+	header := m.renderHeader(a, width, m.linkExpand)
 	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))

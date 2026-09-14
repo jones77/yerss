@@ -34,6 +34,13 @@ fallback `~/.local/share/yerss/yerss.sqlite`
 go run ./cmd/yerss
 ```
 
+## Dates and times
+
+Publication dates and times — the day headers, the article rows, and the
+article's top border — are displayed in your local timezone. The app follows
+the system/terminal local time (the `TZ` environment); there is no in-app
+timezone setting.
+
 ## Edit config and feeds
 
 Open `feeds.txt` or `config.toml` in your editor (`$EDITOR`, falling back to

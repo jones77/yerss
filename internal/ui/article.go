@@ -163,6 +163,9 @@ func (m *Model) openArticle() tea.Cmd {
 }
 
 func (m *Model) newArticleState(a store.Article) articleState {
+	// Every article-state construction invalidates the rendered-frame cache:
+	// the composed content (and thus the frame body) may have changed.
+	m.contentGen++
 	// A different article (or the first) opens a fresh load frontier and
 	// deferred-native-render set; recomposes and resizes of the same article
 	// keep them so the frontier stays monotonic within the article open.
@@ -252,7 +255,7 @@ func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivati
 	a.Author = stripSoftHyphens(a.Author)
 	a.Link = stripSoftHyphens(a.Link)
 	a.Content = stripSoftHyphens(a.Content)
-	header := m.renderHeader(a, contentW)
+	header := m.renderHeader(a, contentW, m.linkExpand)
 	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
@@ -517,16 +520,18 @@ func stripURLScheme(url string) string {
 	return url
 }
 
-// renderHeader renders the reader header: the article URL as the very first
-// line, a blank line, the bold title, and the author line directly beneath it
-// with no blank between them. The URL is shown with its scheme stripped but is
-// wrapped in an OSC 8 hyperlink whose target keeps the full URL, so it stays
-// clickable. A long URL wraps at the content width onto subsequent lines so the
-// whole display string is visible, each wrapped line carrying its own OSC 8
-// hyperlink (some terminals drop hyperlinks across a line break). Title and
-// author are rendered as separate documents and joined because the markdown
-// renderer folds line breaks inside a paragraph into spaces.
-func (m *Model) renderHeader(a store.Article, contentW int) string {
+// renderHeader renders the reader header: in expanded link mode the article URL
+// as the very first line, a blank line, the bold title, and the author line
+// directly beneath it with no blank between them; in compact link mode the URL
+// line is omitted so the title is the first content line. The URL is shown with
+// its scheme stripped but is wrapped in an OSC 8 hyperlink whose target keeps
+// the full URL, so it stays clickable. A long URL wraps at the content width
+// onto subsequent lines so the whole display string is visible, each wrapped
+// line carrying its own OSC 8 hyperlink (some terminals drop hyperlinks across
+// a line break). Title and author are rendered as separate documents and joined
+// because the markdown renderer folds line breaks inside a paragraph into
+// spaces.
+func (m *Model) renderHeader(a store.Article, contentW int, linkExpand bool) string {
 	var meta []string
 	if a.Title != "" {
 		meta = append(meta, m.renderMarkdown("**"+compose.EscapeMarkdownText(a.Title)+"**", contentW))
@@ -535,7 +540,7 @@ func (m *Model) renderHeader(a store.Article, contentW int) string {
 		meta = append(meta, m.renderMarkdown("by "+compose.EscapeMarkdownText(a.Author), contentW))
 	}
 	metaBlock := strings.Join(meta, "\n")
-	if a.Link == "" {
+	if a.Link == "" || !linkExpand {
 		return metaBlock
 	}
 	urlPart := m.renderHeaderLink(a.Link, contentW)
@@ -556,7 +561,66 @@ func (m *Model) renderHeaderLink(url string, contentW int) string {
 	return strings.Join(parts, "\n")
 }
 
+// articleFrameKey is a comparable signature of the render inputs the article
+// frame body draws from. It is a value-keyed signature rather than a manual
+// dirty flag, so the cache stays correct for the SetYOffset calls that bypass
+// scrollArticle (resize, recompose snap, selection rebuild): the signature
+// changes exactly when the rendered output would. The read set it covers: the
+// article content and viewport composition (contentGen), the native
+// re-show/suppress transforms' dependence on nativeSentPrev (nativeGen), the
+// viewport offset and terminal geometry (yOffset, width, height), the mouse
+// selection highlight (sel), and the glyph/link display modes (ascii,
+// linkExpand). palette and ShowSeconds are fixed for the session and the
+// padding is fixed config, so they are omitted.
+type articleFrameKey struct {
+	articleID  int64
+	contentGen int
+	nativeGen  int
+	yOffset    int
+	width      int
+	height     int
+	sel        textSelection
+	ascii      bool
+	linkExpand bool
+}
+
+// articleKeyFor builds the frame-cache key from the current model state.
+func (m *Model) articleKeyFor() articleFrameKey {
+	return articleFrameKey{
+		articleID:  m.article.id,
+		contentGen: m.contentGen,
+		nativeGen:  m.nativeGen,
+		yOffset:    m.article.viewport.YOffset,
+		width:      m.width,
+		height:     m.height,
+		sel:        m.article.sel,
+		ascii:      m.ascii,
+		linkExpand: m.linkExpand,
+	}
+}
+
+// renderArticle returns the article reader's frame, memoized: when the state
+// signature matches the frame already rendered, the cached frame string is
+// returned without re-running the viewport composition, native re-show and
+// clipped-transmit transforms, selection highlight, or border render. View()
+// keeps prepending nativeClearPrefix to the cached body, so the prefix's
+// per-frame transitions do not defeat the cache.
 func (m *Model) renderArticle() string {
+	if m.frameValid && m.frameKey == m.articleKeyFor() {
+		return m.frameStr
+	}
+	frame := m.renderArticleUncached()
+	m.frameStr = frame
+	m.frameKey = m.articleKeyFor()
+	m.frameValid = true
+	return frame
+}
+
+// renderArticleUncached runs the full article frame render pipeline with no
+// memoization: the viewport view, the native re-show and clipped-transmit
+// transforms, the selection highlight, and the article border.
+func (m *Model) renderArticleUncached() string {
+	m.frameRenderCount++
 	st := &m.article
 	a := st.article
 	date := ""

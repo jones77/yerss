@@ -135,8 +135,47 @@ func TestStripLinkHrefsWrappedHref(t *testing.T) {
 		t.Skip("width did not force a wrap")
 	}
 	out := StripLinkHrefs(in)
-	if got := visible(out); !strings.Contains(got, "word") {
+	if got := visible(out); got != "word" {
 		t.Errorf("stripped = %q, want the name %q", got, "word")
+	}
+	if strings.Contains(visible(out), url) {
+		t.Errorf("URL text leaked into visible output: %q", visible(out))
+	}
+	if n := strings.Count(out, url); n != 1 {
+		t.Errorf("URL occurrences = %d, want 1 (the OSC 8 name target only)", n)
+	}
+}
+
+func TestStripLinkHrefsWrappedNameKept(t *testing.T) {
+	// A name long enough to wrap becomes several same-target spans; the
+	// stripper must keep every one of them and still drop the href that
+	// follows, line for line.
+	name := "Richard Jebreal and the Democratic Party of Nothing is quite long"
+	url := "https://example.com/very/long/path/that/exceeds/the/content/width"
+	in := renderLink(t, "["+name+"]("+url+")", 35)
+	if !strings.Contains(in, "\n") {
+		t.Skip("width did not force a wrap")
+	}
+	out := StripLinkHrefs(in)
+	if got := strings.Join(strings.Fields(visible(out)), " "); got != name {
+		t.Errorf("stripped = %q, want the full wrapped name %q", got, name)
+	}
+	if strings.Contains(visible(out), url) {
+		t.Errorf("URL text leaked into visible output: %q", visible(out))
+	}
+}
+
+func TestStripLinkHrefsAdjacentSameURLWrapped(t *testing.T) {
+	// Adjacent links to the same URL in a wrapped paragraph must each keep
+	// their name and drop their (possibly multi-line) href.
+	url := "https://example.com/very/long/path/that/exceeds/the/content/width"
+	in := renderLink(t, "[one]("+url+") and [two]("+url+")", 30)
+	if !strings.Contains(in, "\n") {
+		t.Skip("width did not force a wrap")
+	}
+	out := StripLinkHrefs(in)
+	if got := strings.Join(strings.Fields(visible(out)), " "); got != "one and two" {
+		t.Errorf("stripped = %q, want %q", got, "one and two")
 	}
 	if strings.Contains(visible(out), url) {
 		t.Errorf("URL text leaked into visible output: %q", visible(out))

@@ -130,9 +130,120 @@ func TestCompactLinkSpanIsClickable(t *testing.T) {
 
 func TestReaderHeaderURLRendersBlue(t *testing.T) {
 	m, _ := newTestModel(t)
+	m.linkExpand = true
 	m.article = m.newArticleState(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
 	blue := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.StatusBar).Render("x"))
 	if !strings.Contains(m.article.lines[0], blue) {
 		t.Errorf("header URL line should render in the status-bar blue role: %q", m.article.lines[0])
+	}
+	if first := ansi.Strip(m.article.lines[0]); !strings.Contains(first, "example.com/post") {
+		t.Errorf("first content line should be the URL in expanded mode: %q", first)
+	}
+}
+
+// wrapURL is long enough to wrap inside the test model's content width (74
+// columns) but short enough that its last rendered chunk leaves room for
+// trailing paragraph text.
+const wrapURL = "https://example.com/very/long/path/that/exceeds/the/content/width/and/wraps/again/more/still"
+
+// paragraphText returns the article body stripped of ANSI, cut at the first
+// occurrence of "before" so the header (title) lines are left out.
+func paragraphText(m *Model) string {
+	body := bodyText(m)
+	if i := strings.Index(body, "before"); i >= 0 {
+		body = body[i:]
+	}
+	return body
+}
+
+func TestCompactWrapHidesWrappedURL(t *testing.T) {
+	// The URL spans multiple rendered lines in expanded mode; in compact mode
+	// no part of it may appear, not even a wrapped continuation line.
+	m, _ := openTestArticle(t, "longhref", `<p>before [link](`+wrapURL+`) after</p>`)
+	body := paragraphText(m)
+	if got := strings.Join(strings.Fields(body), " "); got != "before link after" {
+		t.Errorf("compact body = %q, want %q", got, "before link after")
+	}
+	if strings.Contains(body, "example.com") {
+		t.Errorf("compact body leaks the wrapped URL: %q", body)
+	}
+
+	// Non-vacuous guard: the URL genuinely wraps at this width in expanded
+	// mode, so the trailing "after" lands on a later line than "before".
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	bi, ai := -1, -1
+	for i, ln := range m.article.lines {
+		s := ansi.Strip(ln)
+		if bi < 0 && strings.Contains(s, "before") {
+			bi = i
+		}
+		if strings.Contains(s, "after") {
+			ai = i
+		}
+	}
+	if ai <= bi {
+		t.Fatalf("URL did not wrap ('after' on line %d, 'before' on line %d); test is vacuous", ai, bi)
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if body := paragraphText(m); strings.Contains(body, "example.com") {
+		t.Errorf("compact body leaks the wrapped URL after toggling back: %q", body)
+	}
+}
+
+func TestCompactWrapKeepsWrappedName(t *testing.T) {
+	// A name longer than the content width wraps across lines; the full name
+	// must render and the URL must stay hidden.
+	name := "Richard Jebreal and the Democratic Party of Nothing is quite long and keeps going"
+	m, _ := openTestArticle(t, "longname", `<p>before [`+name+`](`+wrapURL+`) after</p>`)
+	body := paragraphText(m)
+	got := strings.Join(strings.Fields(body), " ")
+	want := strings.Join(strings.Fields("before "+name+" after"), " ")
+	if got != want {
+		t.Errorf("compact body = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "example.com") {
+		t.Errorf("compact body leaks the URL: %q", got)
+	}
+	if n := nonEmptyLines(body); n < 2 {
+		t.Fatalf("name did not wrap (%d non-empty lines); test is vacuous", n)
+	}
+}
+
+func TestCompactWrapAdjacentSameURL(t *testing.T) {
+	// Two links to the same URL must each keep their name and hide their href,
+	// even when the shared URL wraps across rendered lines.
+	m, _ := openTestArticle(t, "adjacent", `<p>before [one](`+wrapURL+`) and [two](`+wrapURL+`) after</p>`)
+	body := paragraphText(m)
+	if got := strings.Join(strings.Fields(body), " "); got != "before one and two after" {
+		t.Errorf("compact body = %q, want %q", got, "before one and two after")
+	}
+	if strings.Contains(body, "example.com") {
+		t.Errorf("compact body leaks the URL: %q", body)
+	}
+	if n := nonEmptyLines(body); n < 3 {
+		t.Fatalf("shared URL did not wrap (+ adjacent links; %d non-empty lines); test is vacuous", n)
+	}
+}
+
+func nonEmptyLines(s string) int {
+	n := 0
+	for _, ln := range strings.Split(s, "\n") {
+		if strings.TrimSpace(ln) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestCompactHeaderHidesURL(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.article = m.newArticleState(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
+	lines := strippedLines(m.article.lines)
+	if first := strings.TrimRight(lines[0], " "); first != "t" {
+		t.Errorf("first content line = %q, want the title", first)
+	}
+	if joined := strings.Join(lines, "\n"); strings.Contains(joined, "example.com/post") {
+		t.Errorf("compact header should not render the URL line: %q", joined)
 	}
 }

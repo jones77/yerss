@@ -14,6 +14,7 @@ import (
 func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	m, _ := newTestModel(t)
 	url := "https://example.com/post"
+	m.linkExpand = true
 	m.article = m.newArticleState(store.Article{Title: "t", Link: url, Content: "<p>x</p>"})
 
 	rendered := strings.Join(m.article.lines, "\n")
@@ -33,6 +34,7 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 func TestReaderHeaderOrder(t *testing.T) {
 	m, _ := newTestModel(t)
 	url := "https://example.com/post"
+	m.linkExpand = true
 	m.article = m.newArticleState(store.Article{
 		Title:   "Headline",
 		Author:  "Jane",
@@ -63,6 +65,7 @@ func TestReaderHeaderOrder(t *testing.T) {
 
 func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
 	m, _ := newTestModel(t)
+	m.linkExpand = true
 	m.article = m.newArticleState(store.Article{
 		Title:   "Headline",
 		Link:    "https://example.com/post",
@@ -85,6 +88,7 @@ func TestReaderHeaderURLWraps(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.width = 40
 	url := "https://example.com/a/very/long/path/that/extends/beyond/the/available/width/and/must/wrap"
+	m.linkExpand = true
 	m.article = m.newArticleState(store.Article{
 		Title:   "t",
 		Link:    url,

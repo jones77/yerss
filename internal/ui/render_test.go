@@ -41,6 +41,7 @@ func TestRenderArticleBorder(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
+	m.linkExpand = true
 	m.article = m.newArticleState(a)
 
 	s := m.renderArticle()

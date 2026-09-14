@@ -544,47 +544,60 @@ Unicode glyph.
 
 ### Requirement: Clickable article URL in reader header
 
-The reader view SHALL open with the article's own URL as the very first content
-line, followed by a blank line, the article title rendered bold with the author
-line (`by <author>`) directly beneath it when the article has an author. The
-URL SHALL be rendered exactly once — the system SHALL NOT repeat it as trailing
-href text after the link — and SHALL be wrapped in an OSC 8 terminal hyperlink,
-so that Cmd/Ctrl-clicking it opens the URL in the system browser, mirroring the
-`o` key behavior. The URL line SHALL render in the status-bar blue role and
-SHALL wrap at the content width so a long URL folds onto subsequent lines
-rather than overflowing the viewport. This single-render rule applies only to
-the header URL; hyperlinks in the article body SHALL render according to the
-compact or expanded link mode.
+The reader view SHALL open, in expanded link mode, with the article's own URL as
+the very first content line, followed by a blank line, the article title rendered
+bold with the author line (`by <author>`) directly beneath it when the article
+has an author. In compact link mode the reader view SHALL NOT render the header
+URL line; the article title SHALL instead be the first content line, with the
+author line directly beneath it when the article has an author. In expanded mode
+the URL SHALL be rendered exactly once — the system SHALL NOT repeat it as
+trailing href text after the link — and SHALL be wrapped in an OSC 8 terminal
+hyperlink, so that Cmd/Ctrl-clicking it opens the URL in the system browser,
+mirroring the `o` key behavior. In expanded mode the URL line SHALL render in the
+status-bar blue role and SHALL wrap at the content width so a long URL folds onto
+subsequent lines rather than overflowing the viewport. This single-render rule
+applies only to the header URL; hyperlinks in the article body SHALL render
+according to the compact or expanded link mode.
 
-#### Scenario: Header URL is the first line and rendered once
+#### Scenario: Header URL is the first line and rendered once in expanded mode
 
-- **WHEN** an article with a link URL is displayed in the reader view
+- **WHEN** an article with a link URL is displayed in the reader view in expanded link mode
 - **THEN** the first content line is the article URL, and the URL text appears exactly once on that line
 
-#### Scenario: Header URL is clickable
+#### Scenario: Header URL is clickable in expanded mode
 
-- **WHEN** an article with a link URL is displayed in the reader view and the user Cmd/Ctrl-clicks the URL in the header
+- **WHEN** an article with a link URL is displayed in expanded mode and the user Cmd/Ctrl-clicks the URL in the header
 - **THEN** the terminal opens the article URL in the system browser
 
-#### Scenario: Header URL renders in the blue role
+#### Scenario: Header URL renders in the blue role in expanded mode
 
-- **WHEN** an article with a link URL is displayed in the reader view
+- **WHEN** an article with a link URL is displayed in expanded mode
 - **THEN** the URL line renders in the status-bar blue role, matching the status bar and title
 
-#### Scenario: Header URL wraps at the content width
+#### Scenario: Header URL wraps at the content width in expanded mode
 
-- **WHEN** an article URL is longer than the content width
+- **WHEN** an article URL is longer than the content width and is displayed in expanded mode
 - **THEN** the URL line folds onto subsequent lines within the content width instead of overflowing the viewport
 
-#### Scenario: Header order is URL, blank line, bold title, author
+#### Scenario: Header order is URL, blank line, bold title, author in expanded mode
 
-- **WHEN** an article with a title and author is displayed in the reader view
+- **WHEN** an article with a title and author is displayed in expanded mode
 - **THEN** the URL line is followed by a blank line, then the title rendered bold, then the `by <author>` line directly beneath the title with no blank line between them
 
-#### Scenario: Header order without author
+#### Scenario: Header order without author in expanded mode
 
-- **WHEN** an article has a title but no author
+- **WHEN** an article has a title but no author and is displayed in expanded mode
 - **THEN** the header shows the URL line, a blank line, and the bold title with no author line
+
+#### Scenario: Header URL is hidden in compact mode
+
+- **WHEN** an article with a link URL is displayed in compact link mode
+- **THEN** the header URL line is not rendered and the article title is the first content line
+
+#### Scenario: Compact header starts with the title then author
+
+- **WHEN** an article with a title and author is displayed in compact mode
+- **THEN** the title renders as the first content line, with the `by <author>` line directly beneath it, and no URL line appears
 
 #### Scenario: Body links follow the link display mode
 
@@ -1836,3 +1849,52 @@ height budget even for a long caption shared by a gallery of narrow images.
 
 - **WHEN** an inline image with a short caption renders
 - **THEN** the caption is centered at the standard caption width beneath the image, not stretched to the photo's width
+
+### Requirement: No-op article scrolls do not re-render
+
+The system SHALL memoize the article reader's rendered frame and SHALL NOT
+re-render it when a scroll action produces no change in scroll position. A
+no-op scroll is one that leaves the viewport offset unchanged — for example
+scrolling the mouse wheel up while already at the top of the article, or
+scrolling down while already at the bottom — so the article's viewport
+composition, native-image re-show and clipped-transmit transforms, and border
+rendering are not re-run for that input. The frame the system produces after a
+no-op scroll SHALL be byte-identical to the frame it produced before the
+no-op. A scroll that changes the scroll position, or any other change to the
+state the article view renders (a resize, an image-load recomposition, a
+selection change, a glyph-mode change, a link-mode change, or a native-image
+transmit transition), SHALL re-render the frame and update the cached frame.
+
+#### Scenario: Wheel up at the top does not re-render
+
+- **WHEN** the article view is scrolled to the top (offset zero) and the user
+  scrolls the mouse wheel up
+- **THEN** the scroll is a no-op, the article frame is not re-rendered, and the
+  rendered output is unchanged
+
+#### Scenario: Wheel down at the bottom does not re-render
+
+- **WHEN** the article view is scrolled to the bottom and the user scrolls the
+  mouse wheel down
+- **THEN** the scroll is a no-op, the article frame is not re-rendered, and the
+  rendered output is unchanged
+
+#### Scenario: No-op frame is byte-identical
+
+- **WHEN** the article view renders once and then receives a no-op scroll
+- **THEN** the frame rendered after the no-op is byte-identical to the frame
+  rendered before it
+
+#### Scenario: A real scroll re-renders
+
+- **WHEN** the article view is scrolled away from a boundary and the user
+  scrolls the mouse wheel in a direction that changes the scroll position
+- **THEN** the article frame is re-rendered and the cached frame is updated to
+  reflect the new scroll offset
+
+#### Scenario: Image recomposition re-renders
+
+- **WHEN** an image load lands and re-composes the open article while the
+  reader is at a boundary scroll position
+- **THEN** the article frame is re-rendered to include the newly available
+  image block rather than served from the stale cache
