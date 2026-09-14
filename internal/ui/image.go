@@ -585,6 +585,93 @@ func (m *Model) recomposeArticle() {
 	}
 }
 
+// toggleLinkExpand flips the compact/expanded link mode and re-composes the
+// article, keeping the first visible content line anchored: the line that was
+// first visible before the toggle stays first visible after it. recomposeArticle
+// alone preserves a reading position by bumping the offset by the article's
+// total line-count delta, which is only correct for insertions at the top of
+// the content; a link-mode toggle widens lines across the whole body, so the
+// handle is re-anchored on the first visible line's visible text instead. A
+// reader pinned at the bottom stays pinned by recomposeArticle's bottom path.
+func (m *Model) toggleLinkExpand() {
+	oldOffset := m.article.viewport.YOffset
+	oldLen := len(m.article.lines)
+	vpH := m.article.viewport.Height
+	atBottom := oldOffset > 0 && oldOffset >= oldLen-vpH
+	anchor := ""
+	if !atBottom && oldOffset >= 0 && oldOffset < oldLen {
+		anchor = strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+	}
+	m.linkExpand = !m.linkExpand
+	m.recomposeArticle()
+	if anchor == "" {
+		return
+	}
+	idx, ok := findAnchorLine(m.article.lines, anchor)
+	if !ok {
+		// The anchor line vanished (for example a link name removed by the
+		// mode change); recomposeArticle's total-delta offset is no worse
+		// than today's behavior, so leave it.
+		return
+	}
+	if maxOffset := len(m.article.lines) - vpH; idx > maxOffset {
+		idx = maxOffset
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	m.article.viewport.SetYOffset(idx)
+}
+
+// findAnchorLine locates the content line in lines whose visible text matches
+// text. It scans in three passes: an exact trimmed match first; then the first
+// line that starts with the text, so a wrapped link name whose line break
+// shifted across modes still anchors on its leading text; then the line sharing
+// the longest leading run with the text, so a line whose trailing words moved
+// (a link grew visibly wider and pushed following text to a new line) still
+// anchors on the paragraph that begins it. The first matching line wins within
+// each pass, keeping the scan deterministic for repeated text.
+func findAnchorLine(lines []string, text string) (int, bool) {
+	for i, ln := range lines {
+		if strings.TrimSpace(ansi.Strip(ln)) == text {
+			return i, true
+		}
+	}
+	for i, ln := range lines {
+		if strings.HasPrefix(strings.TrimSpace(ansi.Strip(ln)), text) {
+			return i, true
+		}
+	}
+	firstWord, _, _ := strings.Cut(text, " ")
+	best, bestLen, found := 0, 0, false
+	for i, ln := range lines {
+		l := commonPrefix(strings.TrimSpace(ansi.Strip(ln)), text)
+		if l > bestLen {
+			best, bestLen, found = i, l, true
+		}
+	}
+	if found && bestLen >= len(firstWord) && bestLen > 0 {
+		return best, true
+	}
+	return 0, false
+}
+
+// commonPrefix returns the length of the longest common leading run of the two
+// strings in runes.
+func commonPrefix(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	n := len(ra)
+	if len(rb) < n {
+		n = len(rb)
+	}
+	for i := 0; i < n; i++ {
+		if ra[i] != rb[i] {
+			return i
+		}
+	}
+	return n
+}
+
 // flushRecompose runs the pending article recompose, at most once, when the
 // flag is set and the article view is still active, then fires the deferred
 // native renders (and newly in-range loads) the recompose's fresh anchors

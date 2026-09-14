@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -245,5 +246,106 @@ func TestCompactHeaderHidesURL(t *testing.T) {
 	}
 	if joined := strings.Join(lines, "\n"); strings.Contains(joined, "example.com/post") {
 		t.Errorf("compact header should not render the URL line: %q", joined)
+	}
+}
+
+// anchorToggleFixture builds an article whose paragraphs each start with a
+// stable "paragraph <n> text anchor<n>" line and end in a wrapped hyperlink, so
+// toggling link mode adds URL lines that push the text off its compact position
+// without changing each paragraph's leading words.
+func anchorToggleFixture(t *testing.T, n int) (*Model, *store.Store) {
+	t.Helper()
+	var html strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&html, `<p>paragraph %d text anchor%d [j](%s)</p>`, i, i, wrapURL)
+	}
+	return openTestArticle(t, "anchor-toggle", html.String())
+}
+
+func TestLinkExpandToggleKeepsFirstVisibleLine(t *testing.T) {
+	m, _ := anchorToggleFixture(t, 30)
+	if strings.Contains(bodyText(m), "example.com") {
+		t.Fatalf("expected compact by default: %q", bodyText(m))
+	}
+	oldLen := len(m.article.lines)
+	// Scroll partway down so the toggle genuinely shifts line indices.
+	m.article.viewport.SetYOffset(2)
+	oldOffset := m.article.viewport.YOffset
+	anchor := strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+	if anchor == "" {
+		t.Fatalf("anchor line at offset %d is empty", oldOffset)
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	// Non-vacuous guard: expanded mode really added URL lines.
+	if newLen := len(m.article.lines); newLen <= oldLen {
+		t.Fatalf("link toggle did not grow the article (%d -> %d lines); test is vacuous", oldLen, newLen)
+	}
+	// Total-delta bump is exactly what the toggle must NOT do.
+	inserted := len(m.article.lines) - oldLen
+	if got := m.article.viewport.YOffset; got == oldOffset+inserted {
+		t.Errorf("toggle jumped to the total-delta offset %d; the first visible line drifted", got)
+	}
+	// The anchored paragraph is the first visible line again, with its leading
+	// words intact (a link grew on the line, so trailing text can move).
+	first := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+	if !strings.HasPrefix(first, anchor) {
+		t.Errorf("first visible line after toggle = %q, want it to start with the anchor %q", first, anchor)
+	}
+}
+
+func TestLinkExpandToggleAtBottomStaysPinned(t *testing.T) {
+	m, _ := anchorToggleFixture(t, 40)
+	m.article.viewport.GotoBottom()
+	preBottom := m.article.viewport.YOffset
+	if preBottom == 0 {
+		t.Fatalf("article does not scroll; test is vacuous")
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	got := m.article.viewport.YOffset
+	maxOffset := len(m.article.lines) - m.article.viewport.Height
+	if got != maxOffset {
+		t.Errorf("after x at the bottom: offset = %d, want the new bottom %d (was %d)", got, maxOffset, preBottom)
+	}
+}
+
+func TestLinkExpandToggleBackReturnsToAnchor(t *testing.T) {
+	m, _ := anchorToggleFixture(t, 30)
+	m.article.viewport.SetYOffset(2)
+	anchor := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if !strings.Contains(bodyText(m), "example.com") {
+		t.Fatalf("expected expanded after x: %q", bodyText(m))
+	}
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if got := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset])); got != anchor {
+		t.Errorf("after toggling back: first visible line = %q, want the original anchor %q", got, anchor)
+	}
+}
+
+func TestFindAnchorLine(t *testing.T) {
+	lines := []string{
+		"title",
+		"",
+		"paragraph 1 text anchor1 https://example.com/very/long",
+		"paragraph 2 text anchor2",
+		"a wrapped",
+	}
+	if idx, ok := findAnchorLine(lines, "paragraph 2 text anchor2"); !ok || idx != 3 {
+		t.Errorf("exact match: got (%d, %v), want (3, true)", idx, ok)
+	}
+	if idx, ok := findAnchorLine(lines, "paragraph 1 text anchor1"); !ok || idx != 2 {
+		t.Errorf("prefix match over URL-extended line: got (%d, %v), want (2, true)", idx, ok)
+	}
+	if idx, ok := findAnchorLine(lines, "a wrapped name shifted"); !ok || idx != 4 {
+		t.Errorf("common-prefix fallback: got (%d, %v), want (4, true)", idx, ok)
+	}
+	if _, ok := findAnchorLine(lines, "nothing matches this at all"); ok {
+		t.Errorf("no-match scan should report false")
 	}
 }

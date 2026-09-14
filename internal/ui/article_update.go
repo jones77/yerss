@@ -55,8 +55,7 @@ func (m *Model) updateArticle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case config.TagPopup:
 		m.openTagPopup(popupTagsArticle)
 	case config.LinkExpandToggle:
-		m.linkExpand = !m.linkExpand
-		m.recomposeArticle()
+		m.toggleLinkExpand()
 	case config.Help:
 		m.popup = popupHelp
 	}
