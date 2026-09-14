@@ -192,6 +192,27 @@ func TestSelectionHighlightRendering(t *testing.T) {
 	}
 }
 
+func TestSelectionHighlightSpansLink(t *testing.T) {
+	// A selection crossing the link's SGR reset must re-assert reverse video
+	// instead of letting the link's reset end the highlight early.
+	line := "\x1b[37mbefore \x1b[m\x1b]8;;https://example.com/x\x07\x1b[94;1mlink\x1b[m\x1b]8;;\x07\x1b[37m after\x1b[m"
+	sel := textSelection{active: true, anchorX: 3, anchorY: 0, curX: 13, curY: 0}
+	out := highlightSelection([]string{line}, sel)
+	if len(out) != 1 {
+		t.Fatalf("highlightSelection returned %d lines, want 1", len(out))
+	}
+	got := out[0]
+	if ansi.Strip(got) != ansi.Strip(line) {
+		t.Fatalf("highlight changed the visible text:\n got %q\nwant %q", ansi.Strip(got), ansi.Strip(line))
+	}
+	if n := strings.Count(got, "\x1b[7m"); n < 2 {
+		t.Errorf("selection across the link has %d reverse-on sequences, want at least 2 (re-asserted after the link reset): %q", n, got)
+	}
+	if !strings.Contains(got, "\x1b]8;;https://example.com/x") {
+		t.Errorf("link open dropped inside the highlight: %q", got)
+	}
+}
+
 func TestSelectedTextStripsEscapes(t *testing.T) {
 	m := articleMouseModel(t)
 	osc := ansi.SetHyperlink("https://example.com") + "[world]" + ansi.ResetHyperlink() + "(https://example.com)"

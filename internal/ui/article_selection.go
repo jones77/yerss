@@ -212,7 +212,6 @@ func highlightSelection(lines []string, sel textSelection) []string {
 		return lines
 	}
 	lo, hi := sel.rangeFor()
-	const revOn, revOff = "\x1b[7m", "\x1b[0m"
 	out := make([]string, len(lines))
 	for i, line := range lines {
 		if i < lo.y || i > hi.y {
@@ -228,10 +227,7 @@ func highlightSelection(lines []string, sel textSelection) []string {
 			out[i] = line
 			continue
 		}
-		before := ansi.Truncate(line, from, "")
-		selSeg := ansi.Cut(line, from, to)
-		after := ansi.Cut(line, to, width)
-		out[i] = before + revOn + selSeg + revOff + after
+		out[i] = compose.InvertRange(line, from, to)
 	}
 	return out
 }

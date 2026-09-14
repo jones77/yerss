@@ -345,6 +345,164 @@ func TestLinkExpandToggleBackReturnsToAnchor(t *testing.T) {
 	}
 }
 
+func TestAnchorableLineSkipsBlankAndURL(t *testing.T) {
+	links := []articleLink{{url: "https://example.com/on-of-narco-terrorist-refueling-vessel-aug-28-2026/"}}
+	lines := []string{
+		"",
+		"",
+		"https://example.com/on-of-narco-terrorist-refueling-vessel-aug-28-2026/",
+		"on-of-narco-terrorist-refueling-vessel-aug-28-2026/",
+		"claimed was refueling",
+	}
+	anchor, gap, found := anchorableLine(lines, links, 0)
+	if !found {
+		t.Fatal("expected an anchorable line")
+	}
+	if anchor != "claimed was refueling" {
+		t.Errorf("anchor = %q, want the first real text line", anchor)
+	}
+	if gap != 2 {
+		t.Errorf("gap = %d, want 2 blank separators skipped", gap)
+	}
+
+	// A URL-leading line anchors on the first real word that follows it.
+	anchor, _, found = anchorableLine([]string{"https://example.com/x tail words here"}, links, 0)
+	if !found || anchor != "tail words here" {
+		t.Errorf("URL-leading line anchor = %q, found = %v; want %q", anchor, found, "tail words here")
+	}
+
+	// A tail that is blank or URL only reports no anchor.
+	if _, _, found := anchorableLine(lines[:3], links, 0); found {
+		t.Error("blank/URL-only tail should report no anchorable word")
+	}
+}
+
+func TestLinkExpandToggleBlankFirstLineKeepsSeparator(t *testing.T) {
+	m, _ := anchorToggleFixture(t, 30)
+	oldLen := len(m.article.lines)
+	blank := -1
+	for i := 1; i < oldLen-1; i++ {
+		if strings.TrimSpace(ansi.Strip(m.article.lines[i])) == "" &&
+			strings.TrimSpace(ansi.Strip(m.article.lines[i+1])) != "" {
+			blank = i
+			break
+		}
+	}
+	if blank < 0 {
+		t.Fatal("no blank separator line found; test is vacuous")
+	}
+	m.article.viewport.SetYOffset(blank)
+	oldOffset := m.article.viewport.YOffset
+	if strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset])) != "" {
+		t.Fatalf("viewport top is not the blank line: %q", ansi.Strip(m.article.lines[oldOffset]))
+	}
+	anchorLine := strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset+1]))
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if newLen := len(m.article.lines); newLen <= oldLen {
+		t.Fatalf("link toggle did not grow the article (%d -> %d lines); test is vacuous", oldLen, newLen)
+	}
+	if got := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset])); got != "" {
+		t.Errorf("after toggle the first visible line = %q, want the blank separator", got)
+	}
+	next := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset+1]))
+	if !strings.HasPrefix(next, strings.Split(anchorLine, " ")[0]) {
+		t.Errorf("paragraph below the separator = %q, want it to start with the anchor %q", next, anchorLine)
+	}
+}
+
+func TestLinkExpandToggleURLFirstLineNearEndGluesBottom(t *testing.T) {
+	m, st := newTestModel(t)
+	m.linkExpand = true
+	longURL := "https://example.com/" + strings.Repeat("segment-", 300) + "end"
+	var html strings.Builder
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&html, "<p>filler paragraph %d with some words</p>", i)
+	}
+	fmt.Fprintf(&html, "<p>tail [link](%s)</p>", longURL)
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "g-url-tail",
+		Title:   "url-tail",
+		Content: html.String(),
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.newArticleState(a)
+
+	oldLen := len(m.article.lines)
+	maxOffset := oldLen - m.article.viewport.Height
+	if maxOffset <= 0 {
+		t.Fatalf("article does not scroll; test is vacuous")
+	}
+	// The viewport top must land on a URL-only continuation line, with only URL
+	// or blank lines below it, so no anchorable word survives the mode change.
+	top := strings.TrimSpace(ansi.Strip(m.article.lines[maxOffset]))
+	if !strings.Contains(top, "segment-") {
+		t.Fatalf("viewport top %d is not a URL continuation line: %q", maxOffset, top)
+	}
+	m.article.viewport.SetYOffset(maxOffset)
+	if got := m.article.viewport.YOffset; got != maxOffset {
+		t.Fatalf("could not position at %d (got %d)", maxOffset, got)
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if strings.Contains(bodyText(m), "example.com") {
+		t.Fatalf("expected compact after toggle: %q", bodyText(m))
+	}
+	want := len(m.article.lines) - m.article.viewport.Height
+	if got := m.article.viewport.YOffset; got != want {
+		t.Errorf("URL-first-line toggle offset = %d, want glued to bottom %d", got, want)
+	}
+}
+
+func TestLinkExpandToggleReflowReanchorsFirstWord(t *testing.T) {
+	// A paragraph whose compact line reflows across modes: the anchor is the
+	// pre-toggle first visible line's text, and the new first visible line must
+	// contain that line's first word so the reader can re-orient.
+	name := "Richard Jebreal and the Democratic Party of Nothing is quite long and keeps going"
+	var html strings.Builder
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&html, "<p>filler paragraph %d with some words</p>", i)
+	}
+	html.WriteString(`<p>before [` + name + `](` + wrapURL + `) after</p>`)
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&html, "<p>trailing paragraph %d with some words</p>", i)
+	}
+	m, _ := openTestArticle(t, "reflow", html.String())
+	oldLen := len(m.article.lines)
+	oldOffset := -1
+	for i, ln := range m.article.lines {
+		if strings.Contains(ansi.Strip(ln), "Richard") {
+			oldOffset = i
+			break
+		}
+	}
+	if oldOffset < 0 {
+		t.Fatal("article body missing the reflow paragraph")
+	}
+	m.article.viewport.SetYOffset(oldOffset)
+	if got := m.article.viewport.YOffset; got != oldOffset {
+		t.Fatalf("could not position at the reflow line %d (got %d)", oldOffset, got)
+	}
+	firstWord := strings.Fields(strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset])))[0]
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if newLen := len(m.article.lines); newLen == oldLen {
+		t.Fatalf("link toggle did not change the article; test is vacuous")
+	}
+	first := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+	if !strings.HasPrefix(first, firstWord) {
+		t.Errorf("first visible line after toggle = %q, want it to start with %q", first, firstWord)
+	}
+}
+
 func TestFindAnchorLine(t *testing.T) {
 	lines := []string{
 		"title",

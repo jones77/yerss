@@ -1053,9 +1053,12 @@ syntax. A publisher-attached lead image (from `<enclosure>` or
 above the rendered article content and is not affected by this placeholder rule.
 `<strong>` and `<b>` SHALL render with the theme's bold styling and
 `<em>`/`<i>` with its italic styling, not as literal markdown markers.
-Hyperlinks SHALL render as the styled link text followed by the URL
-(`text url`) and SHALL be wrapped in OSC 8 hyperlink escape sequences carrying
-the URL. Structured HTML SHALL render as styled markdown: ordered and unordered
+Hyperlink rendering SHALL follow the active link display mode: in expanded mode a
+hyperlink SHALL render as the styled link text followed by the URL
+(`text url`), while in compact mode (the default) it SHALL render as the styled
+link name only with the URL hidden. In both modes the link SHALL be wrapped in
+OSC 8 hyperlink escape sequences carrying the URL. Structured HTML SHALL render
+as styled markdown: ordered and unordered
 lists (including nested lists) with correct bullet markers and indentation,
 blockquotes, code blocks, and tables. When a link's rendered text does not fit
 on the current line, the renderer SHALL wrap it onto a new line. When a URL is
@@ -1117,19 +1120,24 @@ article text without markdown formatting markers (no literal `**` or
 - **WHEN** an article contains an `<img>` element with alt text "a *b* [c]"
 - **THEN** the reader displays `[a *b* [c]]` literally, with the `*` and `[`/`]` shown as plain characters and no styled or link formatting applied
 
-#### Scenario: Link rendered as styled text followed by the URL
+#### Scenario: Expanded mode renders link as styled text followed by the URL
 
-- **WHEN** an article contains `<a href="https://example.com/post">world</a>` and is displayed in the reader view
+- **WHEN** an article contains `<a href="https://example.com/post">world</a>` and is displayed in the reader view in expanded mode
 - **THEN** the reader displays "world" styled as a link followed by `https://example.com/post`, with the link wrapped in OSC 8 hyperlink escapes
 
-#### Scenario: Long URL wraps onto a new line
+#### Scenario: Compact mode renders only the link name
 
-- **WHEN** a link's rendered text does not fit on the current wrapped line
+- **WHEN** an article contains `<a href="https://example.com/post">world</a>` and is displayed in the reader view in compact mode
+- **THEN** the reader displays "world" styled as a link without the URL text, with the link wrapped in OSC 8 hyperlink escapes carrying the URL
+
+#### Scenario: Long URL wraps onto a new line in expanded mode
+
+- **WHEN** in expanded mode a link's rendered text does not fit on the current wrapped line
 - **THEN** the URL portion is placed on a new line
 
-#### Scenario: Overlong URL wraps across lines
+#### Scenario: Overlong URL wraps across lines in expanded mode
 
-- **WHEN** a URL is too long to fit on a single display line by itself
+- **WHEN** in expanded mode a URL is too long to fit on a single display line by itself
 - **THEN** the displayed URL is wrapped across multiple lines and is not truncated or elided
 
 #### Scenario: Conversion failure renders plain text, not raw HTML
@@ -1680,8 +1688,10 @@ extend the selection to the current cell. Releasing the button SHALL copy the
 selected text to the system clipboard and clear the selection highlight. The
 selection SHALL span the rendered viewport cells, so it tracks the article's
 current scroll position and wrapping. The system SHALL render the selected
-cells with an inverted (highlighted) style distinct from unselected text.
-Copied text SHALL be the plain text characters within the selected region,
+cells with an inverted (highlighted) style distinct from unselected text, and
+the inverted style SHALL remain continuous across hyperlinks and styled text
+within the selection rather than resetting at the first link on a line. Copied
+text SHALL be the plain text characters within the selected region,
 preserving the line breaks of the wrapped rendering, with all ANSI styling and
 OSC 8 hyperlink escape sequences stripped. A press with an empty or zero-width
 selection SHALL copy nothing. Starting a new selection SHALL replace the
@@ -1706,6 +1716,11 @@ previous selection. Leaving the article view SHALL clear the selection.
 
 - **WHEN** the selected region includes text rendered with ANSI styling or OSC 8 hyperlink sequences
 - **THEN** the copied text contains the visible characters with no ANSI or OSC 8 escape bytes
+
+#### Scenario: Selection highlights continuously across a link
+
+- **WHEN** the selected region spans a hyperlink and the surrounding text on the same line
+- **THEN** the inverted highlight covers the entire selected region including the link, with no un-highlighted gap and no early reset at the link boundary
 
 #### Scenario: Selection tracks scroll
 

@@ -599,6 +599,8 @@ func (m *Model) toggleLinkExpand() {
 	vpH := m.article.viewport.Height
 	atBottom := oldOffset > 0 && oldOffset >= oldLen-vpH
 	anchor := ""
+	gap := 0
+	anchorFound := false
 	// A photo block anchors as a unit: its photo rows strip to blank/escape
 	// noise, so the text anchor would miss them, and anchoring a caption line
 	// at the viewport top would push the photo above it off screen. When the
@@ -616,7 +618,7 @@ func (m *Model) toggleLinkExpand() {
 			}
 		}
 		if blockRow < 0 {
-			anchor = strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+			anchor, gap, anchorFound = anchorableLine(m.article.lines, m.article.links, oldOffset)
 		}
 	}
 	m.linkExpand = !m.linkExpand
@@ -637,7 +639,11 @@ func (m *Model) toggleLinkExpand() {
 		// The URL's block vanished after the recompose (e.g. dedup dropped
 		// it); fall through to the text anchor with no better option.
 	}
-	if anchor == "" {
+	if !anchorFound {
+		// Nothing below the offset survives a mode change (the article tail is
+		// blank or URL text only), so there is no line to re-anchor on; glue to
+		// the bottom rather than let the total-delta offset drift.
+		m.article.viewport.GotoBottom()
 		return
 	}
 	idx, ok := findAnchorLine(m.article.lines, anchor)
@@ -647,6 +653,7 @@ func (m *Model) toggleLinkExpand() {
 		// than today's behavior, so leave it.
 		return
 	}
+	idx -= gap
 	if maxOffset := len(m.article.lines) - vpH; idx > maxOffset {
 		idx = maxOffset
 	}
@@ -654,6 +661,73 @@ func (m *Model) toggleLinkExpand() {
 		idx = 0
 	}
 	m.article.viewport.SetYOffset(idx)
+}
+
+// anchorableLine scans downward from oldOffset for the first content line whose
+// text survives a link-mode change and returns that line's leading text, the
+// number of blank separator lines skipped before it, and whether such a line was
+// found. Blank lines are counted in gap and skipped; a line whose leading tokens
+// are URL text (a link href the compact mode hides) is skipped too, anchoring on
+// the first real word that follows. When no anchorable word exists below the
+// offset, found is false and the caller glues to the bottom.
+func anchorableLine(lines []string, links []articleLink, oldOffset int) (anchor string, gap int, found bool) {
+	for i := oldOffset; i < len(lines); i++ {
+		visible := strings.TrimSpace(ansi.Strip(lines[i]))
+		if visible == "" {
+			gap++
+			continue
+		}
+		text, ok := stripLeadingURLTokens(visible, links)
+		if !ok {
+			continue
+		}
+		return text, gap, true
+	}
+	return "", gap, false
+}
+
+// stripLeadingURLTokens drops the leading URL tokens of a line's visible text,
+// returning the remainder and whether any real (non-URL) word is left. A token
+// is URL text when it carries a scheme, starts with www., or is a long-enough
+// contiguous substring of a known link URL (a wrapped URL continuation such as
+// on-of-narco-terrorist-refueling-vessel-aug-28-2026/). The length floor keeps
+// short common words that happen to appear inside a URL from being mistaken for
+// a fragment.
+func stripLeadingURLTokens(visible string, links []articleLink) (string, bool) {
+	fields := strings.Fields(visible)
+	i := 0
+	for i < len(fields) && isURLToken(fields[i], links) {
+		i++
+	}
+	if i == 0 {
+		return visible, true
+	}
+	if i >= len(fields) {
+		return "", false
+	}
+	return strings.Join(fields[i:], " "), true
+}
+
+// minURLFragmentLen is the shortest token that substring matching against a
+// link URL will treat as a wrapped URL fragment; below it a token is assumed to
+// be an ordinary word.
+const minURLFragmentLen = 6
+
+// isURLToken reports whether tok is a URL or a wrapped fragment of one of the
+// article's harvested links.
+func isURLToken(tok string, links []articleLink) bool {
+	if strings.Contains(tok, "://") || strings.HasPrefix(tok, "www.") {
+		return true
+	}
+	if len([]rune(tok)) < minURLFragmentLen {
+		return false
+	}
+	for _, l := range links {
+		if l.url != "" && strings.Contains(l.url, tok) {
+			return true
+		}
+	}
+	return false
 }
 
 // findAnchorLine locates the content line in lines whose visible text matches

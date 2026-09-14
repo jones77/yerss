@@ -48,6 +48,42 @@ func TestReflowShortLinesLeavesPaddedParagraph(t *testing.T) {
 	}
 }
 
+func TestReflowAfterStripHrefSingleSpace(t *testing.T) {
+	url := "https://example.com/very/long/path/that/exceeds/the/content/width/and/wraps/again"
+	md := "the report claimed [the vessel was]( " + url + " ) refueling at sea and more text follows here to fill the line"
+	const w = 60
+
+	stripped := StripLinkHrefs(renderLink(t, md, w))
+	if strings.Contains(ansi.Strip(stripped), "example.com") {
+		t.Fatalf("href not stripped:\n%q", ansi.Strip(stripped))
+	}
+	out := ansi.Strip(ReflowShortLines(stripped, w))
+	if strings.Contains(out, "  ") {
+		t.Errorf("reflow left a double space: %q", out)
+	}
+	if !strings.Contains(out, "claimed the vessel was refueling") {
+		t.Errorf("link name and following text not joined with a single space: %q", out)
+	}
+}
+
+func TestReflowAfterStripPunctuatedLinkName(t *testing.T) {
+	url := "https://example.com/very/long/path/that/exceeds/the/content/width/and/wraps/again"
+	md := "the report [claimed.]( " + url + " ) was refueling at sea and more text follows here to fill the line"
+	const w = 60
+
+	stripped := StripLinkHrefs(renderLink(t, md, w))
+	if strings.Contains(ansi.Strip(stripped), "example.com") {
+		t.Fatalf("href not stripped:\n%q", ansi.Strip(stripped))
+	}
+	out := ansi.Strip(ReflowShortLines(stripped, w))
+	if strings.Contains(out, "  ") {
+		t.Errorf("reflow left a double space after punctuated name: %q", out)
+	}
+	if !strings.Contains(out, "claimed. was refueling") {
+		t.Errorf("punctuated link name not joined with a single space: %q", out)
+	}
+}
+
 func TestTrimStyledWSKeepsTrailingEscapes(t *testing.T) {
 	line := "\x1b[37mhello\x1b[m\x1b[37m   \x1b[m"
 	got := trimStyledWS(line)

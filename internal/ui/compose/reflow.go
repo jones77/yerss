@@ -2,6 +2,7 @@ package compose
 
 import (
 	"strings"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
@@ -88,21 +89,36 @@ func reflowParagraph(para []string, contentW int) []string {
 }
 
 // trimStyledWS removes the styled fill spaces glamour appends to pad each line
-// to the content width, keeping every escape sequence after the last visible
-// text so OSC 8 hyperlinks and style resets stay balanced.
+// to the content width and any leading whitespace left where a hidden link href
+// was stripped, keeping every escape sequence around the visible text so OSC 8
+// hyperlinks and style resets stay balanced: escapes before the first visible
+// rune (the style/link state active at that point) and after the last visible
+// rune (resets and link closes) are both preserved.
 func trimStyledWS(line string) string {
 	segs := ScanANSI(line)
-	lastNonWS := 0
+	firstNonWS, lastNonWS := -1, 0
 	for _, seg := range segs {
-		if seg.Kind == SegText && strings.TrimSpace(line[seg.Start:seg.End]) != "" {
+		if seg.Kind != SegText {
+			continue
+		}
+		t := line[seg.Start:seg.End]
+		if i := strings.IndexFunc(t, func(r rune) bool { return !unicode.IsSpace(r) }); i >= 0 {
+			if firstNonWS < 0 {
+				firstNonWS = seg.Start + i
+			}
 			lastNonWS = seg.End
 		}
 	}
-	if lastNonWS == 0 {
+	if firstNonWS < 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(line[:lastNonWS])
+	for _, seg := range segs {
+		if seg.Kind != SegText && seg.End <= firstNonWS {
+			b.WriteString(line[seg.Start:seg.End])
+		}
+	}
+	b.WriteString(line[firstNonWS:lastNonWS])
 	for _, seg := range segs {
 		if seg.Kind != SegText && seg.Start >= lastNonWS {
 			b.WriteString(line[seg.Start:seg.End])
