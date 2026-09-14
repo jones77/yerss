@@ -4,7 +4,6 @@ import (
 	"strings"
 	"unicode"
 
-	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 )
 
@@ -81,7 +80,7 @@ func reflowParagraph(para []string, contentW int) []string {
 		}
 		b.WriteString(trimmed)
 	}
-	flow := lipgloss.Wrap(b.String(), contentW, "")
+	flow := xansi.Wrap(b.String(), contentW, "")
 	if flow == "" {
 		return para
 	}
