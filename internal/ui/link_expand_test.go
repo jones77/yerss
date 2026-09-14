@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/compose"
+	"yerss/internal/ui/render"
 )
 
 // openTestArticle inserts an article and opens it in the reader view.
@@ -347,5 +349,144 @@ func TestFindAnchorLine(t *testing.T) {
 	}
 	if _, ok := findAnchorLine(lines, "nothing matches this at all"); ok {
 		t.Errorf("no-match scan should report false")
+	}
+}
+
+// photoToggleModel builds a model on an article whose lead photo composes a
+// block and whose body wraps a long URL across lines, so toggling link mode
+// changes the line count while the photo block stays present.
+func photoToggleModel(t *testing.T) (*Model, *store.Store) {
+	t.Helper()
+	a := store.Article{
+		FeedURL:  "https://example.com/feed.xml",
+		GUID:     "g-photo-toggle",
+		Title:    "Headline",
+		Author:   "Jane",
+		Link:     "https://example.com/a",
+		ImageURL: "https://example.com/lead.jpg",
+		Content: `<p>intro text with a [wrapped link](` + wrapURL + `) and more</p>` +
+			strings.Repeat(`<p>trailing paragraph `+wrapURL+` body text</p>`, 20),
+	}
+	m, st := newTestModel(t)
+	fr := &fakeRenderer{fixed: []string{"IMG1", "IMG2", "IMG3", "IMG4", "IMG5", "IMG6", "IMG7", "IMG8", "IMG9", "IMG10", "IMG11", "IMG12"}}
+	m.sess.ImgRenderer = fr
+	m.sess.ImgCache.Set(a.ImageURL, testImg())
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.newArticleState(a)
+	return m, st
+}
+
+func findBlock(m *Model, url string) *compose.ImageBlock {
+	for i := range m.article.imageBlocks {
+		if m.article.imageBlocks[i].URL == url {
+			return &m.article.imageBlocks[i]
+		}
+	}
+	return nil
+}
+
+// photoRowCount returns the number of photo rows the block renders (its
+// attribution rows follow).
+func photoRowCount(b *compose.ImageBlock) int {
+	return b.CapStart - b.ImgStart
+}
+
+func TestLinkExpandToggleKeepsPhotoOnScreen(t *testing.T) {
+	m, _ := photoToggleModel(t)
+	b := findBlock(m, "https://example.com/lead.jpg")
+	if b == nil {
+		t.Fatal("lead photo block not composed")
+	}
+	const rowRel = 3 // scroll a few rows into the photo
+	m.article.viewport.SetYOffset(b.ImgStart + rowRel)
+	oldLen := len(m.article.lines)
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if newLen := len(m.article.lines); newLen <= oldLen {
+		t.Fatalf("link toggle did not re-render differently (%d -> %d lines); test is vacuous", oldLen, newLen)
+	}
+	nb := findBlock(m, "https://example.com/lead.jpg")
+	if nb == nil {
+		t.Fatal("lead photo block vanished after toggle")
+	}
+	// The same row of the same photo must lie at the viewport start.
+	want := nb.ImgStart + rowRel
+	if got := m.article.viewport.YOffset; got != want {
+		t.Errorf("after toggle: offset = %d, want the same photo row at %d (block %d..%d)", got, want, nb.ImgStart, nb.ImgEnd)
+	}
+	// The photo stays on screen.
+	if m.article.viewport.YOffset > nb.ImgEnd {
+		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.viewport.YOffset)
+	}
+}
+
+func TestLinkExpandToggleKeepsAttributionOnScreen(t *testing.T) {
+	m, _ := photoToggleModel(t)
+	b := findBlock(m, "https://example.com/lead.jpg")
+	if b == nil {
+		t.Fatal("lead photo block not composed")
+	}
+	// First visible line is the photo's attribution line (still inside the
+	// block's span); the photo must stay on screen above it.
+	m.article.viewport.SetYOffset(b.CapStart)
+	oldLen := len(m.article.lines)
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if newLen := len(m.article.lines); newLen <= oldLen {
+		t.Fatalf("link toggle did not re-render differently (%d -> %d lines); test is vacuous", oldLen, newLen)
+	}
+	nb := findBlock(m, "https://example.com/lead.jpg")
+	if nb == nil {
+		t.Fatal("lead photo block vanished after toggle")
+	}
+	want := nb.ImgStart + (b.CapStart - b.ImgStart)
+	if got := m.article.viewport.YOffset; got != want {
+		t.Errorf("after toggle: offset = %d, want the same attribution row at %d (block %d..%d)", got, want, nb.ImgStart, nb.ImgEnd)
+	}
+	if m.article.viewport.YOffset > nb.ImgEnd {
+		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.viewport.YOffset)
+	}
+}
+
+func TestLinkExpandToggleDoesNotResizePhoto(t *testing.T) {
+	m, _ := photoToggleModel(t)
+	b := findBlock(m, "https://example.com/lead.jpg")
+	if b == nil {
+		t.Fatal("lead photo block not composed")
+	}
+	compactRows := photoRowCount(b)
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	nb := findBlock(m, "https://example.com/lead.jpg")
+	if nb == nil {
+		t.Fatal("lead photo block vanished after toggle")
+	}
+	expandedRows := photoRowCount(nb)
+	if expandedRows != compactRows {
+		t.Errorf("photo re-sized on toggle: %d rows compact vs %d expanded", compactRows, expandedRows)
+	}
+	if expandedRows < 1 {
+		t.Errorf("photo block has no rows; test is vacuous")
+	}
+}
+
+func TestFitHeaderLinesIsMaxAcrossModes(t *testing.T) {
+	m, _ := photoToggleModel(t)
+	contentW, _, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	compact := len(strings.Split(m.renderHeader(*m.article.article, contentW, false), "\n"))
+	expanded := len(strings.Split(m.renderHeader(*m.article.article, contentW, true), "\n"))
+	want := max(compact, expanded)
+	if expanded == compact {
+		t.Fatalf("headers identical across modes; test is vacuous")
+	}
+	if got := m.article.fitHeaderLines; got != want {
+		t.Errorf("fitHeaderLines = %d, want the tallest header across modes (%d)", got, want)
 	}
 }

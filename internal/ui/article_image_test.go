@@ -152,14 +152,18 @@ func TestArticleImageBlockHeightCap(t *testing.T) {
 	if len(fr.calls) != 1 {
 		t.Fatalf("expected one render call, got %d", len(fr.calls))
 	}
-	header := m.renderHeader(imageArticle(), m.article.viewport.Width, m.linkExpand)
-	headerLines := 0
-	if header != "" {
-		headerLines = len(strings.Split(header, "\n"))
+	headerCompact := m.renderHeader(imageArticle(), m.article.viewport.Width, false)
+	headerExpanded := m.renderHeader(imageArticle(), m.article.viewport.Width, true)
+	fitLines := 0
+	for _, h := range []string{headerCompact, headerExpanded} {
+		if n := len(strings.Split(h, "\n")); n > fitLines {
+			fitLines = n
+		}
 	}
 	// The cap reserves the blank lines around the block, one attribution
-	// line, and one line of body text.
-	if want := m.article.viewport.Height - headerLines - 4; fr.calls[0].maxH != want {
+	// line, and one line of body text, against the mode-independent header
+	// budget (the tallest header across both link modes).
+	if want := m.article.viewport.Height - fitLines - 4; fr.calls[0].maxH != want {
 		t.Errorf("height cap = %d, want %d", fr.calls[0].maxH, want)
 	}
 	if fr.calls[0].w != m.article.viewport.Width {
@@ -662,12 +666,15 @@ const kittyDeleteEsc = "\x1b_Ga=d,d=a,q=1\x1b\\"
 func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
 	t.Helper()
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	header := m.renderHeader(a, width, m.linkExpand)
-	headerLines := 0
-	if header != "" {
-		headerLines = len(strings.Split(header, "\n"))
+	fitLines := 0
+	for _, expand := range []bool{false, true} {
+		if h := m.renderHeader(a, width, expand); h != "" {
+			if n := len(strings.Split(h, "\n")); n > fitLines {
+				fitLines = n
+			}
+		}
 	}
-		msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), headerLines, compose.CaptionWidth(m.width, width))()
+	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, a.ImageURL, width, vpH, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), fitLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -2693,7 +2700,7 @@ func TestInlineLinkTextCaptionFitsNativeBlock(t *testing.T) {
 
 	// Render the inline photo natively with that caption and re-compose.
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, cap, m.article.headerLines, compose.CaptionWidth(m.width, width))()
+	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, cap, m.article.fitHeaderLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg, got %T", msg)
@@ -2900,7 +2907,7 @@ func TestNativeKittyExitDeletesEveryRecordedID(t *testing.T) {
 	m.article = m.newArticleState(a)
 	m.view = viewArticle
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.headerLines, compose.CaptionWidth(m.width, width))()
+	msg := imgpkg.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, "inline.jpg", width, vpH, m.inlineAttrFor("inline.jpg"), m.article.fitHeaderLines, compose.CaptionWidth(m.width, width))()
 	nm, ok := msg.(imgpkg.NativeMsg)
 	if !ok {
 		t.Fatalf("expected NativeMsg for the inline image, got %T", msg)

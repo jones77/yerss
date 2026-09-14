@@ -599,11 +599,44 @@ func (m *Model) toggleLinkExpand() {
 	vpH := m.article.viewport.Height
 	atBottom := oldOffset > 0 && oldOffset >= oldLen-vpH
 	anchor := ""
+	// A photo block anchors as a unit: its photo rows strip to blank/escape
+	// noise, so the text anchor would miss them, and anchoring a caption line
+	// at the viewport top would push the photo above it off screen. When the
+	// first visible line lies inside a composed block's span — its photo rows
+	// and its attribution/caption rows both — remember the URL and the row the
+	// viewport starts at within the block, so the same photo region stays on
+	// screen after the mode change.
+	blockURL, blockRow := "", -1
 	if !atBottom && oldOffset >= 0 && oldOffset < oldLen {
-		anchor = strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+		for i := range m.article.imageBlocks {
+			b := &m.article.imageBlocks[i]
+			if oldOffset >= b.ImgStart && oldOffset <= b.ImgEnd {
+				blockURL, blockRow = b.URL, oldOffset-b.ImgStart
+				break
+			}
+		}
+		if blockRow < 0 {
+			anchor = strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+		}
 	}
 	m.linkExpand = !m.linkExpand
 	m.recomposeArticle()
+	if blockRow >= 0 {
+		for i := range m.article.imageBlocks {
+			if m.article.imageBlocks[i].URL == blockURL {
+				idx := m.article.imageBlocks[i].ImgStart + blockRow
+				if maxOffset := len(m.article.lines) - vpH; idx > maxOffset {
+					idx = maxOffset
+				}
+				if idx >= 0 {
+					m.article.viewport.SetYOffset(idx)
+				}
+				return
+			}
+		}
+		// The URL's block vanished after the recompose (e.g. dedup dropped
+		// it); fall through to the text anchor with no better option.
+	}
 	if anchor == "" {
 		return
 	}
@@ -745,7 +778,7 @@ func (m *Model) nativeRenderCmd(url string) tea.Cmd {
 		attr = compose.ResolveImageAttribution(a, a.ImageURL, "", "", true)
 	}
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	return m.gateCmd(image.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.headerLines, compose.CaptionWidth(m.width, width)))
+	return m.gateCmd(image.NativeCmd(m.sess.ImgCache, m.sess.ImgNative, m.sess.ImgPhotos, m.sess.ImgNatives, url, width, vpH, attr, m.article.fitHeaderLines, compose.CaptionWidth(m.width, width)))
 }
 
 // onPhotoLoaded fires the off-thread native render for the photo at msg's URL

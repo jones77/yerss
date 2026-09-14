@@ -18,19 +18,25 @@ import (
 )
 
 type articleState struct {
-	id           int64
-	article      *store.Article
-	lines        []string
-	viewport     viewport.Model
-	readMarked   bool
-	sel          textSelection
-	headerLines  int
-	imgStart     int
-	imgEnd       int
-	capStart     int
-	nativeImg    bool
-	imageBlocks  []compose.ImageBlock
-	imageURLs    []string
+	id          int64
+	article     *store.Article
+	lines       []string
+	viewport    viewport.Model
+	readMarked  bool
+	sel         textSelection
+	headerLines int
+	// fitHeaderLines is the mode-independent header budget the image-block
+	// height fit reserves: the line count of the tallest header the article
+	// presents across both link modes. The height fit consumes this instead of
+	// headerLines so a photo does not re-size when the user toggles link mode
+	// (the expanded header's URL line would otherwise shrink the photo).
+	fitHeaderLines int
+	imgStart       int
+	imgEnd         int
+	capStart       int
+	nativeImg      bool
+	imageBlocks    []compose.ImageBlock
+	imageURLs      []string
 	// anchorRows records, parallel to imageURLs, the content row where each
 	// image's block starts in the current composition (the block's ImgStart
 	// when composed, the reserved placeholder row while uncomposed). It is
@@ -189,13 +195,17 @@ type articleDerivation struct {
 	content     string
 	header      string
 	headerLines int
-	bodyMD      string
-	segments    []string
-	inline      []convert.InlineImage
-	imageURLs   []string
-	links       []articleLink
-	captions    map[string]string
-	leadURL     string
+	// fitHeaderLines is the header budget the image-block height fit reserves
+	// (see articleState.fitHeaderLines). It is the tallest header across both
+	// link modes so the fit does not depend on the current display mode.
+	fitHeaderLines int
+	bodyMD         string
+	segments       []string
+	inline         []convert.InlineImage
+	imageURLs      []string
+	links          []articleLink
+	captions       map[string]string
+	leadURL        string
 }
 
 // derivationKey identifies a cached articleDerivation: the article (id and
@@ -259,6 +269,17 @@ func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivati
 	headerLines := 0
 	if header != "" {
 		headerLines = len(strings.Split(header, "\n"))
+	}
+	// The image-block height fit reserves the tallest header the article
+	// presents across both link modes, so a photo does not re-size when the
+	// link display mode toggles. Rendered in a fixed mode (expanded) here
+	// because the expanded header is always at least as tall as the compact
+	// one: compact omits the URL line that expanded prepends.
+	fitHeaderLines := headerLines
+	if expanded := m.renderHeader(a, contentW, true); expanded != "" {
+		if n := len(strings.Split(expanded, "\n")); n > fitHeaderLines {
+			fitHeaderLines = n
+		}
 	}
 	bodyMD, inline := convert.ConvertImages(a.Content)
 	leadURL := ""
@@ -325,16 +346,17 @@ func (m *Model) computeDerivation(a store.Article, contentW int) articleDerivati
 		}
 	}
 	return articleDerivation{
-		content:     a.Content,
-		header:      header,
-		headerLines: headerLines,
-		bodyMD:      bodyMD,
-		segments:    segments,
-		inline:      inline,
-		imageURLs:   imageURLs,
-		links:       harvestArticleLinks(a),
-		captions:    captions,
-		leadURL:     leadURL,
+		content:        a.Content,
+		header:         header,
+		headerLines:    headerLines,
+		fitHeaderLines: fitHeaderLines,
+		bodyMD:         bodyMD,
+		segments:       segments,
+		inline:         inline,
+		imageURLs:      imageURLs,
+		links:          harvestArticleLinks(a),
+		captions:       captions,
+		leadURL:        leadURL,
 	}
 }
 
@@ -377,7 +399,7 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 	if der.leadURL != "" {
 		leadAnchor := der.headerLines + 1
 		if m.imagesEnabled() {
-			if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.headerLines); len(block) > 0 {
+			if block, rows, native, id := m.composeImageBlock(a.ImageURL, compose.ResolveImageAttribution(a, a.ImageURL, "", "", true), contentW, vpH, der.fitHeaderLines); len(block) > 0 {
 				leadAnchor = addImageBlock(a.ImageURL, block, rows, native, id)
 			} else {
 				// The lead is uncomposed: its block will land on the blank
@@ -392,7 +414,7 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 	if len(der.inline) == 0 {
 		addPart(der.segments[0])
 	} else {
-		bodyParts, bodyBlocks, bodyAnchors, inlineCaps := m.spliceBody(der, contentW, vpH, der.headerLines, lineCount)
+		bodyParts, bodyBlocks, bodyAnchors, inlineCaps := m.spliceBody(der, contentW, vpH, der.fitHeaderLines, lineCount)
 		parts = append(parts, bodyParts...)
 		lineCount += compose.LineCountOf(bodyParts)
 		blocks = append(blocks, bodyBlocks...)
@@ -420,22 +442,23 @@ func (m *Model) composeArticle(a store.Article, der articleDerivation, contentW,
 		nativeImg = blocks[0].NativeImg
 	}
 	st := articleState{
-		id:           a.ID,
-		article:      &a,
-		lines:        strings.Split(rendered, "\n"),
-		viewport:     vp,
-		headerLines:  der.headerLines,
-		imgStart:     imgStart,
-		imgEnd:       imgEnd,
-		capStart:     capStart,
-		nativeImg:    nativeImg,
-		imageBlocks:  blocks,
-		imageURLs:    der.imageURLs,
-		anchorRows:   anchors,
-		inlineImages: der.inline,
-		inlineCaps:   captions,
-		links:        der.links,
-		leadShown:    leadShown,
+		id:             a.ID,
+		article:        &a,
+		lines:          strings.Split(rendered, "\n"),
+		viewport:       vp,
+		headerLines:    der.headerLines,
+		fitHeaderLines: der.fitHeaderLines,
+		imgStart:       imgStart,
+		imgEnd:         imgEnd,
+		capStart:       capStart,
+		nativeImg:      nativeImg,
+		imageBlocks:    blocks,
+		imageURLs:      der.imageURLs,
+		anchorRows:     anchors,
+		inlineImages:   der.inline,
+		inlineCaps:     captions,
+		links:          der.links,
+		leadShown:      leadShown,
 	}
 	if len(st.lines) <= vpH {
 		st.markRead(m.sess.Store())
