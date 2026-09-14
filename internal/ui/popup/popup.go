@@ -1,4 +1,9 @@
-package ui
+// Package popup renders and handles the modal overlays that float over the
+// list and article views: the tag grid, the article links list, and the key
+// binding help. It is a pure view component: it knows nothing of the Model,
+// the list, or the article, and reports coarse actions for the Model to act
+// on.
+package popup
 
 import (
 	"fmt"
@@ -8,27 +13,114 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/store"
 	"yerss/internal/ui/render"
 )
 
-type popupState struct {
+// Kind identifies which popup is open. KindNone means no popup is showing.
+type Kind int
+
+const (
+	KindNone Kind = iota
+	// KindTagsList is the tag grid opened over the list view.
+	KindTagsList
+	// KindTagsArticle is the tag grid opened over the article view, limited
+	// to the open article's own categories.
+	KindTagsArticle
+	// KindHelp is the key binding help popup.
+	KindHelp
+	// KindLinks is the current article's links popup.
+	KindLinks
+)
+
+// Action reports how the Model should react to a popup key message.
+type Action int
+
+const (
+	ActionNone Action = iota
+	ActionQuit
+	ActionBack
+	ActionOpenURL
+	ActionConfirm
+)
+
+// Link is one hyperlink shown in the links popup.
+type Link struct {
+	Text string
+	URL  string
+}
+
+// State holds the popup's data and rendering/input state.
+type State struct {
+	kind Kind
+
+	sess    *app.Session
+	styles  styles
+	palette render.Palette
+	ascii   bool
+
+	width  int
+	height int
+
 	tags      []store.TagCount
-	links     []articleLink
+	links     []Link
 	cursor    int
 	scrollCol int
 }
 
-func (m *Model) openTagPopup(mode popupMode) {
-	tags, err := m.sess.ListTags()
-	if err != nil {
-		m.setStatus("tags error: " + err.Error())
-		return
+// New builds a popup State bound to a session.
+func New(sess *app.Session, palette render.Palette, ascii bool, width, height int) *State {
+	return &State{
+		sess:    sess,
+		styles:  newStyles(palette),
+		palette: palette,
+		ascii:   ascii,
+		width:   width,
+		height:  height,
 	}
-	if mode == popupTagsArticle {
+}
+
+// SetSize updates the terminal dimensions the popup lays out against.
+func (s *State) SetSize(width, height int) { s.width, s.height = width, height }
+
+// Kind returns the currently open popup.
+func (s *State) Kind() Kind { return s.kind }
+
+// SetKind switches the open popup (or closes it with KindNone).
+func (s *State) SetKind(k Kind) { s.kind = k }
+
+// Cursor returns the selected item's index.
+func (s *State) Cursor() int { return s.cursor }
+
+// SetCursor positions the selection cursor.
+func (s *State) SetCursor(c int) { s.cursor = c }
+
+// Tags returns the popup's tag counts.
+func (s *State) Tags() []store.TagCount { return s.tags }
+
+// SetTags replaces the popup's tag counts.
+func (s *State) SetTags(tags []store.TagCount) { s.tags = tags }
+
+// Links returns the popup's links.
+func (s *State) Links() []Link { return s.links }
+
+// SetLinks replaces the popup's links.
+func (s *State) SetLinks(links []Link) { s.links = links }
+
+// OpenTags loads the session's tag counts into the popup and switches to the
+// given tag popup kind. categories limits the tags to the named categories
+// when non-empty (the article-view variant); an empty slice keeps all tags.
+// It returns a status message on error.
+func (s *State) OpenTags(kind Kind, categories []string) string {
+	tags, err := s.sess.ListTags()
+	if err != nil {
+		return "tags error: " + err.Error()
+	}
+	if kind == KindTagsArticle {
 		want := map[string]bool{}
-		for _, c := range m.article.article.Categories {
+		for _, c := range categories {
 			want[c] = true
 		}
 		filtered := make([]store.TagCount, 0, len(want))
@@ -39,112 +131,117 @@ func (m *Model) openTagPopup(mode popupMode) {
 		}
 		tags = filtered
 	}
-	m.popup = mode
-	m.popupData = popupState{tags: tags}
+	s.kind = kind
+	s.tags = tags
+	return ""
 }
 
-func (m *Model) updatePopup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.popup == popupHelp {
+// OpenLinks switches to the links popup seeded with the given links.
+func (s *State) OpenLinks(links []Link) {
+	s.kind = KindLinks
+	s.links = links
+}
+
+// SelectedTag returns the tag at the cursor, if any.
+func (s *State) SelectedTag() (store.TagCount, bool) {
+	if len(s.tags) == 0 || s.cursor < 0 || s.cursor >= len(s.tags) {
+		return store.TagCount{}, false
+	}
+	return s.tags[s.cursor], true
+}
+
+// SelectedURL returns the URL of the link at the cursor, if any.
+func (s *State) SelectedURL() string {
+	if s.cursor < 0 || s.cursor >= len(s.links) {
+		return ""
+	}
+	return s.links[s.cursor].URL
+}
+
+// Update processes a key message against the popup and returns the action the
+// Model should take. Keys bound in the popup view map (keys) drive navigation
+// and selection.
+func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
+	if s.kind == KindHelp {
 		switch msg.String() {
 		case "q", "esc", "enter", " ":
-			m.popup = noPopup
+			s.kind = KindNone
+			return ActionBack
 		case "ctrl+c":
-			return m, tea.Quit
+			return ActionQuit
 		}
-		return m, nil
+		return ActionNone
 	}
 	if msg.String() == "enter" {
-		if m.popup == popupLinks {
-			return m.confirmLinkSelection()
-		}
-		return m.confirmTagSelection()
+		return ActionConfirm
 	}
-	act, ok := m.keys[config.ViewPopup][msg.String()]
+	act, ok := keys[msg.String()]
 	if !ok {
-		return m, nil
+		return ActionNone
 	}
 	switch act {
 	case config.Quit:
-		m.persistSelection()
-		return m, tea.Quit
+		return ActionQuit
 	case config.Back:
-		m.popup = noPopup
+		s.kind = KindNone
+		return ActionBack
 	case config.MoveDown:
-		m.movePopupCursor(1)
+		s.movePopupCursor(1)
 	case config.MoveUp:
-		m.movePopupCursor(-1)
+		s.movePopupCursor(-1)
 	case config.MoveLeft:
-		if m.isTagPopup() {
-			m.moveTagCursorHorizontal(-1)
+		if s.isTagPopup() {
+			s.moveTagCursorHorizontal(-1)
 		}
 	case config.MoveRight:
-		if m.isTagPopup() {
-			m.moveTagCursorHorizontal(1)
+		if s.isTagPopup() {
+			s.moveTagCursorHorizontal(1)
 		}
 	case config.Top:
-		if m.isTagPopup() {
-			m.jumpTagCursor(true)
+		if s.isTagPopup() {
+			s.jumpTagCursor(true)
 		}
 	case config.Bottom:
-		if m.isTagPopup() {
-			m.jumpTagCursor(false)
+		if s.isTagPopup() {
+			s.jumpTagCursor(false)
 		}
 	case config.OpenURL:
-		if (m.popup == popupLinks || m.popup == popupTagsArticle) && m.article.article.Link != "" {
-			return m, openURLCmd(m.article.article.Link)
+		if s.kind == KindLinks || s.kind == KindTagsArticle {
+			return ActionOpenURL
 		}
 	}
-	return m, nil
+	return ActionNone
 }
 
-// openLinksPopup opens the links popup over the article view, seeded with the
-// links harvested from the current article's markdown source.
-func (m *Model) openLinksPopup() {
-	m.popup = popupLinks
-	m.popupData = popupState{links: m.article.links}
-}
-
-// confirmLinkSelection closes the links popup and opens the selected URL in
-// the system browser. An empty popup (an article without links) just closes.
-func (m *Model) confirmLinkSelection() (tea.Model, tea.Cmd) {
-	links := m.popupData.links
-	m.popup = noPopup
-	if m.popupData.cursor < 0 || m.popupData.cursor >= len(links) {
-		return m, nil
+// Render returns the current popup's frame, or "" when no popup is open.
+func (s *State) Render() string {
+	switch s.kind {
+	case KindTagsList, KindTagsArticle:
+		return s.renderTagPopup()
+	case KindLinks:
+		return s.renderLinksPopup()
+	case KindHelp:
+		return s.renderHelp()
 	}
-	return m, openURLCmd(links[m.popupData.cursor].url)
+	return ""
 }
 
-func (m *Model) confirmTagSelection() (tea.Model, tea.Cmd) {
-	if len(m.popupData.tags) == 0 {
-		m.popup = noPopup
-		return m, nil
-	}
-	t := m.popupData.tags[m.popupData.cursor]
-	m.popup = noPopup
-	m.list.filter = t.Name
-	m.view = viewList
-	m.article.sel = textSelection{}
-	m.loadList()
-	return m, nil
-}
-
-func (m *Model) movePopupCursor(delta int) {
-	n := len(m.popupData.tags)
-	if m.popup == popupLinks {
-		n = len(m.popupData.links)
+func (s *State) movePopupCursor(delta int) {
+	n := len(s.tags)
+	if s.kind == KindLinks {
+		n = len(s.links)
 	}
 	if n == 0 {
 		return
 	}
-	m.popupData.cursor = wrapIndex(m.popupData.cursor, delta, n)
+	s.cursor = render.WrapIndex(s.cursor, delta, n)
 }
 
 // isTagPopup reports whether the current popup is one of the tag popups, which
 // use the column-major grid navigation. The links popup stays single-column
 // and linear.
-func (m *Model) isTagPopup() bool {
-	return m.popup == popupTagsList || m.popup == popupTagsArticle
+func (s *State) isTagPopup() bool {
+	return s.kind == KindTagsList || s.kind == KindTagsArticle
 }
 
 // moveTagCursorHorizontal moves the tag popup cursor one column left or right,
@@ -152,19 +249,19 @@ func (m *Model) isTagPopup() bool {
 // that holds fewer tags than the full columns. Vertical movement stays on
 // movePopupCursor: in column-major order the next index is exactly "one row
 // down, or the top of the next column", so wrapIndex already wraps both ends.
-func (m *Model) moveTagCursorHorizontal(delta int) {
-	rows, cols, _, _ := m.tagGrid()
-	n := len(m.popupData.tags)
+func (s *State) moveTagCursorHorizontal(delta int) {
+	rows, cols, _, _ := s.tagGrid()
+	n := len(s.tags)
 	if n == 0 || cols <= 1 {
 		return
 	}
-	items := m.tagItems()
-	disp := m.tagDispPos(m.popupData.cursor)
+	items := s.tagItems()
+	disp := s.tagDispPos(s.cursor)
 	col := disp / rows
 	row := disp % rows
-	col = wrapIndex(col, delta, cols)
-	if idx := m.tagAtColumnRow(col, row, items, rows); idx >= 0 {
-		m.popupData.cursor = idx
+	col = render.WrapIndex(col, delta, cols)
+	if idx := s.tagAtColumnRow(col, row, items, rows); idx >= 0 {
+		s.cursor = idx
 	}
 }
 
@@ -173,7 +270,7 @@ func (m *Model) moveTagCursorHorizontal(delta int) {
 // section subtitle or lies past the column's last item (a shorter final
 // column), preferring the tag just below. Returns -1 when the column holds no
 // tags.
-func (m *Model) tagAtColumnRow(c, r int, items []tagItem, rows int) int {
+func (s *State) tagAtColumnRow(c, r int, items []tagItem, rows int) int {
 	d := len(items)
 	pos := c*rows + r
 	if pos >= 0 && pos < d && items[pos].tagIdx >= 0 {
@@ -196,23 +293,23 @@ func (m *Model) tagAtColumnRow(c, r int, items []tagItem, rows int) int {
 
 // jumpTagCursor moves the tag popup cursor to the first (most popular) or last
 // (least popular) tag.
-func (m *Model) jumpTagCursor(first bool) {
-	n := len(m.popupData.tags)
+func (s *State) jumpTagCursor(first bool) {
+	n := len(s.tags)
 	if n == 0 {
 		return
 	}
 	if first {
-		m.popupData.cursor = 0
+		s.cursor = 0
 	} else {
-		m.popupData.cursor = n - 1
+		s.cursor = n - 1
 	}
 }
 
 // tagPopupSize returns the tag popup box dimensions: the screen minus a
 // 12-column margin on the left and right and a 2-row margin at the top and
 // bottom, clamped to a minimal usable box on tiny terminals.
-func (m *Model) tagPopupSize() (h, w int) {
-	return max(3, m.height-4), max(12, m.width-24)
+func (s *State) tagPopupSize() (h, w int) {
+	return max(3, s.height-4), max(12, s.width-24)
 }
 
 // maxTagColWidth is the widest a tag popup column may be; longer entries have
@@ -236,8 +333,8 @@ type tagItem struct {
 // category tags, each only when its group is non-empty. Tags keep their
 // column-major order in the returned list, so vertical navigation over the
 // tags (wrapIndex on the tag count) is unaffected by the subtitles.
-func (m *Model) tagItems() []tagItem {
-	tags := m.popupData.tags
+func (s *State) tagItems() []tagItem {
+	tags := s.tags
 	items := make([]tagItem, 0, len(tags)+2)
 	sourceHeader := false
 	tagsHeader := false
@@ -256,8 +353,8 @@ func (m *Model) tagItems() []tagItem {
 
 // tagDispPos returns the item-grid position of the tag with the given index:
 // its tag index plus the subtitles laid out before it.
-func (m *Model) tagDispPos(tagIdx int) int {
-	for pos, it := range m.tagItems() {
+func (s *State) tagDispPos(tagIdx int) int {
+	for pos, it := range s.tagItems() {
 		if it.tagIdx == tagIdx {
 			return pos
 		}
@@ -267,11 +364,11 @@ func (m *Model) tagDispPos(tagIdx int) int {
 
 // tagItemWidth returns the display width of a grid cell: the count-bearing
 // entry for a tag, or the subtitle label on its own.
-func (m *Model) tagItemWidth(it tagItem) int {
+func (s *State) tagItemWidth(it tagItem) int {
 	if it.tagIdx < 0 {
 		return ansi.StringWidth(it.label)
 	}
-	return m.tagEntryWidth(it.tagIdx)
+	return s.tagEntryWidth(it.tagIdx)
 }
 
 // tagGrid computes the tag popup grid geometry: the number of rows (the box
@@ -286,10 +383,10 @@ func (m *Model) tagItemWidth(it tagItem) int {
 // horizontal window over it. When the natural grid is narrower than the
 // interior, the spare space on the right is used to widen the columns so the
 // grid fills the interior (see fillColumns), and the box width follows suit.
-func (m *Model) tagGrid() (rows, cols int, colWidths []int, boxW int) {
-	h, boxW := m.tagPopupSize()
+func (s *State) tagGrid() (rows, cols int, colWidths []int, boxW int) {
+	h, boxW := s.tagPopupSize()
 	textW := max(1, boxW-4)
-	items := m.tagItems()
+	items := s.tagItems()
 	d := len(items)
 	rows = max(1, h-2)
 	if d == 0 {
@@ -304,7 +401,7 @@ func (m *Model) tagGrid() (rows, cols int, colWidths []int, boxW int) {
 			if pos >= d {
 				break
 			}
-			colWidths[c] = max(colWidths[c], m.tagItemWidth(items[pos]))
+			colWidths[c] = max(colWidths[c], s.tagItemWidth(items[pos]))
 		}
 		colWidths[c] = min(colWidths[c], maxTagColWidth)
 	}
@@ -366,8 +463,8 @@ func fillColumns(widths, cols []int, textW int) ([]int, int) {
 // the tag name, a space, and the count display. Cells have no cursor gutter;
 // the box's one-space padding and the single space between columns keep the
 // tag one column from the edges.
-func (m *Model) tagEntryWidth(idx int) int {
-	t := m.popupData.tags[idx]
+func (s *State) tagEntryWidth(idx int) int {
+	t := s.tags[idx]
 	plain, bold := tagCountText(t.Unread, t.Total)
 	return ansi.StringWidth(t.Name) + 1 + ansi.StringWidth(plain+bold)
 }
@@ -382,27 +479,27 @@ func (m *Model) tagEntryWidth(idx int) int {
 // background is applied per segment (like the list view) so inner style
 // resets cannot drop the highlight from the padding, keeping the highlight
 // exactly the column's width for every item in the column.
-func (m *Model) tagCell(idx, width int) string {
-	t := m.popupData.tags[idx]
+func (s *State) tagCell(idx, width int) string {
+	t := s.tags[idx]
 	plain, bold := tagCountText(t.Unread, t.Total)
 	counts := plain + bold
 	countsW := ansi.StringWidth(counts)
 	nameW := width - 1 - countsW
 	name := t.Name
 	if w := ansi.StringWidth(name); w > nameW {
-		name = render.ElideMiddle(name, max(1, nameW), m.glyphs().Ellipsis)
+		name = render.ElideMiddle(name, max(1, nameW), s.glyphs().Ellipsis)
 	}
 
-	selected := idx == m.popupData.cursor
-	nameStyle := m.styles.plain
-	boldStyle := m.styles.bright
-	plainStyle := m.styles.text
-	padStyle := m.styles.plain
+	selected := idx == s.cursor
+	nameStyle := s.styles.plain
+	boldStyle := s.styles.bright
+	plainStyle := s.styles.text
+	padStyle := s.styles.plain
 	if selected {
-		nameStyle = m.styles.selRow
-		boldStyle = m.styles.selBright
-		plainStyle = m.styles.selText
-		padStyle = m.styles.selRow
+		nameStyle = s.styles.selRow
+		boldStyle = s.styles.selBright
+		plainStyle = s.styles.selText
+		padStyle = s.styles.selRow
 	}
 
 	// The name sits on the left; the counts right-align to the column edge,
@@ -419,8 +516,8 @@ func (m *Model) tagCell(idx, width int) string {
 // "Tags") in the status-bar blue role, non-bold, centered within the column
 // width. It never carries the selection highlight and navigation never lands
 // on it.
-func (m *Model) tagSubtitleCell(it tagItem, width int) string {
-	style := m.styles.status
+func (s *State) tagSubtitleCell(it tagItem, width int) string {
+	style := s.styles.status
 	label := style.Render(it.label)
 	if pad := width - ansi.StringWidth(it.label); pad > 0 {
 		left := pad / 2
@@ -437,14 +534,14 @@ func (m *Model) tagSubtitleCell(it tagItem, width int) string {
 // window scrolled left eagerly on every left move. Wraps, jumps, and resizes
 // still snap the window to show the cursor, and the stored scroll column is
 // kept in sync here so it reflects the last render.
-func (m *Model) tagPopupWindow(colWidths []int, rows, textW int) []int {
+func (s *State) tagPopupWindow(colWidths []int, rows, textW int) []int {
 	blockStart := make([]int, len(colWidths))
 	off := 0
 	for c, cw := range colWidths {
 		blockStart[c] = off
 		off += cw + tagColGap
 	}
-	cursorCol := m.tagDispPos(m.popupData.cursor) / rows
+	cursorCol := s.tagDispPos(s.cursor) / rows
 
 	// visibleFrom returns how many columns fit starting at column start.
 	visibleFrom := func(start int) int {
@@ -462,7 +559,7 @@ func (m *Model) tagPopupWindow(colWidths []int, rows, textW int) []int {
 		return n
 	}
 
-	scrollCol := m.popupData.scrollCol
+	scrollCol := s.scrollCol
 	vis := visibleFrom(scrollCol)
 	if vis == 0 {
 		scrollCol = cursorCol
@@ -477,7 +574,7 @@ func (m *Model) tagPopupWindow(colWidths []int, rows, textW int) []int {
 	for scrollCol > 0 && scrollCol+visibleFrom(scrollCol) > len(colWidths) {
 		scrollCol--
 	}
-	m.popupData.scrollCol = scrollCol
+	s.scrollCol = scrollCol
 
 	edge := blockStart[scrollCol] + textW
 	var visible []int
@@ -490,11 +587,11 @@ func (m *Model) tagPopupWindow(colWidths []int, rows, textW int) []int {
 	return visible
 }
 
-func (m *Model) renderTagPopup() string {
-	h, _ := m.tagPopupSize()
+func (s *State) renderTagPopup() string {
+	h, _ := s.tagPopupSize()
 	title := "Tags & Sources"
-	g := m.glyphs()
-	style := m.styles.status
+	g := s.glyphs()
+	style := s.styles.status
 	v := style.Render(g.V)
 	pad := " "
 
@@ -504,15 +601,15 @@ func (m *Model) renderTagPopup() string {
 	// "Tags") are non-selectable cells laid out in the same column-major grid.
 	// The box width comes from the grid so it can shrink to avoid a trailing
 	// gap once the columns fill the interior.
-	rows, _, colWidths, boxW := m.tagGrid()
+	rows, _, colWidths, boxW := s.tagGrid()
 	textW := max(1, boxW-4)
-	items := m.tagItems()
+	items := s.tagItems()
 	d := len(items)
 	gridLines := min(rows, max(0, h-2))
 	var body []string
 	var renderWidths []int
 	if d > 0 {
-		visible := m.tagPopupWindow(colWidths, rows, textW)
+		visible := s.tagPopupWindow(colWidths, rows, textW)
 		// Fill the visible window so it spans the interior: a no-op when the
 		// whole grid already fits, and the way a grid wider than the interior
 		// avoids a trailing gap in its horizontal window. The box width follows
@@ -528,9 +625,9 @@ func (m *Model) renderTagPopup() string {
 				}
 				it := items[pos]
 				if it.tagIdx < 0 {
-					rowCells = append(rowCells, m.tagSubtitleCell(it, renderWidths[c]))
+					rowCells = append(rowCells, s.tagSubtitleCell(it, renderWidths[c]))
 				} else {
-					rowCells = append(rowCells, m.tagCell(it.tagIdx, renderWidths[c]))
+					rowCells = append(rowCells, s.tagCell(it.tagIdx, renderWidths[c]))
 				}
 			}
 			body = append(body, strings.Join(rowCells, strings.Repeat(" ", tagColGap)))
@@ -540,11 +637,11 @@ func (m *Model) renderTagPopup() string {
 		body = append(body, "")
 	}
 
-	out := []string{inlineTitleBorder(title, boxW, g, m.palette)}
+	out := []string{inlineTitleBorder(title, boxW, g, s.palette)}
 	for _, l := range body {
 		out = append(out, v+pad+render.PadRight(render.Truncate(l, textW), textW)+pad+v)
 	}
-	out = append(out, m.tagBottomBorder(boxW, g))
+	out = append(out, s.tagBottomBorder(boxW, g))
 	return strings.Join(out, "\n")
 }
 
@@ -553,12 +650,12 @@ func (m *Model) renderTagPopup() string {
 // among all tags — mirroring the article view's bottom border and the list
 // view's status bar, with dash fill to the left. The line and the indicator
 // render in the same chrome role as the rest of the popup border.
-func (m *Model) tagBottomBorder(w int, g render.BorderGlyphs) string {
-	style := m.styles.status
-	textStyle := m.styles.status
+func (s *State) tagBottomBorder(w int, g render.BorderGlyphs) string {
+	style := s.styles.status
+	textStyle := s.styles.status
 
-	n := len(m.popupData.tags)
-	pos := m.popupData.cursor + 1
+	n := len(s.tags)
+	pos := s.cursor + 1
 	if pos < 0 || n == 0 {
 		pos = 0
 	}
@@ -581,9 +678,9 @@ func (m *Model) tagBottomBorder(w int, g render.BorderGlyphs) string {
 
 // renderLinksPopup renders the article links popup: each row shows the link
 // text followed by the URL in the dim style, truncated to the box width.
-func (m *Model) renderLinksPopup() string {
-	h := m.height * 6 / 10
-	w := m.width * 8 / 10
+func (s *State) renderLinksPopup() string {
+	h := s.height * 6 / 10
+	w := s.width * 8 / 10
 	if h < 3 {
 		h = 3
 	}
@@ -592,22 +689,22 @@ func (m *Model) renderLinksPopup() string {
 	}
 
 	var lines []string
-	lines = append(lines, m.styles.statusBold.Render("Links"))
-	dim := m.styles.dim
-	for i, l := range m.popupData.links {
+	lines = append(lines, s.styles.statusBold.Render("Links"))
+	dim := s.styles.dim
+	for i, l := range s.links {
 		cursor := "  "
-		if i == m.popupData.cursor {
+		if i == s.cursor {
 			cursor = "> "
 		}
 		// text + separator + dim URL, truncated to the interior width.
 		innerW := w - 6
-		url := ansi.Truncate(l.url, max(1, innerW-ansi.StringWidth(l.text)-3), m.glyphs().Ellipsis)
-		line := l.text + dim.Render(" · "+url)
+		url := ansi.Truncate(l.URL, max(1, innerW-ansi.StringWidth(l.Text)-3), s.glyphs().Ellipsis)
+		line := l.Text + dim.Render(" · "+url)
 		lines = append(lines, cursor+ansi.Truncate(line, innerW, ""))
 	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.palette.StatusBar).
+		BorderForeground(s.palette.StatusBar).
 		Width(w).
 		Height(h).
 		Padding(0, 1)
@@ -628,5 +725,10 @@ func tagCountText(unread, total int) (plain, bold string) {
 	return fmt.Sprintf("/%d", total), fmt.Sprintf("%d", unread)
 }
 
-// actionLabel renders an action identifier as a display label: underscores
-// become spaces and each word is capitalized (e.g. open_article -> Open
+func (s *State) glyphs() render.BorderGlyphs {
+	g := render.GlyphsFor(s.ascii)
+	if s.sess.Config().Display.Scrollbar == "double" && !s.ascii {
+		g.Fill = "║"
+	}
+	return g
+}

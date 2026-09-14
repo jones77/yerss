@@ -22,7 +22,7 @@ func TestShortArticleMarkedReadOnOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 	got, err := st.GetArticle(id)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestLongArticleNotMarkedOnOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 	got, err := st.GetArticle(id)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestDownwardScrollKeysMarkRead(t *testing.T) {
 		{Type: tea.KeySpace},
 	} {
 		_ = st.SetRead(id, false)
-		m.article = m.newArticleState(a)
+		m.article = m.article.Recompose(a)
 		m.updateArticle(key)
 		got, _ := st.GetArticle(id)
 		if !got.Read {
@@ -111,8 +111,8 @@ func TestUpwardScrollDoesNotMarkRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
-	m.article.viewport.ScrollDown(2)
+	m.article = m.article.Recompose(a)
+	m.article.Viewport.ScrollDown(2)
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyUp})
 	got, _ := st.GetArticle(id)
 	if got.Read {

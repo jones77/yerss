@@ -1,7 +1,8 @@
-package ui
+package listview
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +10,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
+	"yerss/internal/app"
+	"yerss/internal/config"
 	"yerss/internal/store"
 	"yerss/internal/timeutil"
 	"yerss/internal/ui/render"
@@ -20,6 +24,30 @@ func withLocalZone(t *testing.T, loc *time.Location) {
 	old := time.Local
 	time.Local = loc
 	t.Cleanup(func() { time.Local = old })
+}
+
+func newTestState(t *testing.T) (*State, *store.Store) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	s := New(app.New(config.Default(), st), render.DarkPalette(), false, 80, 24)
+	return s, st
+}
+
+func listKeys(t *testing.T) map[string]config.Action {
+	t.Helper()
+	km, err := config.ParseKeybindings(config.DefaultKeybindings())
+	if err != nil {
+		t.Fatalf("ParseKeybindings: %v", err)
+	}
+	keys, err := km.EffectiveKeys(config.ViewList)
+	if err != nil {
+		t.Fatalf("EffectiveKeys: %v", err)
+	}
+	return keys
 }
 
 func insertTimedArticle(t *testing.T, st *store.Store, title string, pub time.Time) int64 {
@@ -38,36 +66,33 @@ func insertTimedArticle(t *testing.T, st *store.Store, title string, pub time.Ti
 	return id
 }
 
-func TestLongDateOrdinals(t *testing.T) {
-	withLocalZone(t, time.UTC)
-	cases := []struct {
-		day  int
-		want string
-	}{
-		{1, "1st"}, {2, "2nd"}, {3, "3rd"},
-		{11, "11th"}, {12, "12th"}, {13, "13th"},
-		{21, "21st"}, {22, "22nd"}, {23, "23rd"},
-		{30, "30th"}, {31, "31st"},
+func insertArticle(t *testing.T, st *store.Store, title string, tags []string) int64 {
+	t.Helper()
+	id := insertTimedArticle(t, st, title, time.Time{})
+	if err := st.SetArticleTags(id, tags); err != nil {
+		t.Fatalf("SetArticleTags: %v", err)
 	}
-	for _, c := range cases {
-		tm := time.Date(2026, 8, c.day, 0, 0, 0, 0, time.UTC)
-		got := timeutil.LongDate(tm)
-		if !strings.Contains(got, c.want) {
-			t.Errorf("longDate(%d) = %q, missing ordinal %q", c.day, got, c.want)
-		}
-		if !strings.Contains(got, "August, 2026") {
-			t.Errorf("longDate(%d) = %q, missing month/year", c.day, got)
-		}
-		if !strings.Contains(got, " ") {
-			t.Errorf("longDate(%d) = %q, expected a weekday prefix", c.day, got)
-		}
+	return id
+}
+
+func mustParseTime(t *testing.T, v string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return tm
+}
+
+func forceTrueColor(t *testing.T) {
+	t.Helper()
+	orig := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(orig) })
 }
 
 func TestBucketDayGroupsOrdering(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	// Input mirrors ListArticles order: reverse chronological, undated last.
-	// The reference time makes day1 "today" and day2 "yesterday".
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	arts := []store.Article{
 		{Title: "day1-1", PublishedAt: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
@@ -99,13 +124,13 @@ func TestBucketDayGroupsOrdering(t *testing.T) {
 
 func TestVisibleRowsCollapse(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "c", time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	rows := m.visibleRows()
+	rows := s.visibleRows()
 	if len(rows) != 5 {
 		t.Fatalf("expanded visible rows = %d, want 5", len(rows))
 	}
@@ -114,8 +139,8 @@ func TestVisibleRowsCollapse(t *testing.T) {
 		t.Errorf("unexpected expanded row kinds: %+v", rows)
 	}
 
-	m.collapse(0)
-	rows = m.visibleRows()
+	s.collapse(0)
+	rows = s.visibleRows()
 	if len(rows) != 3 {
 		t.Fatalf("collapsed visible rows = %d, want 3", len(rows))
 	}
@@ -126,138 +151,129 @@ func TestVisibleRowsCollapse(t *testing.T) {
 
 func TestCursorWrapsAcrossVisibleRows(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	// rows: [header, a, b]; cursor 0.
-	m.list.cursor = 0
-	m.moveListCursor(-1)
-	if m.list.cursor != 2 {
-		t.Errorf("wrap up: cursor = %d, want 2", m.list.cursor)
+	s.cursor = 0
+	s.moveListCursor(-1)
+	if s.cursor != 2 {
+		t.Errorf("wrap up: cursor = %d, want 2", s.cursor)
 	}
-	m.moveListCursor(1)
-	if m.list.cursor != 0 {
-		t.Errorf("wrap down: cursor = %d, want 0", m.list.cursor)
+	s.moveListCursor(1)
+	if s.cursor != 0 {
+		t.Errorf("wrap down: cursor = %d, want 0", s.cursor)
 	}
 }
 
 func TestPageKeysClampAtBoundaries(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	// rows: [header, a, b]; pageSize is large (> 3), so one page jump should
-	// land directly on the last row, and page up from there back on the first.
-	m.list.cursor = 0
-	m.updateList(tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.list.cursor != 2 {
-		t.Errorf("page down from top: cursor = %d, want 2", m.list.cursor)
+	keys := listKeys(t)
+	s.cursor = 0
+	s.Update(tea.KeyMsg{Type: tea.KeyPgDown}, keys)
+	if s.cursor != 2 {
+		t.Errorf("page down from top: cursor = %d, want 2", s.cursor)
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyPgUp})
-	if m.list.cursor != 0 {
-		t.Errorf("page up from bottom: cursor = %d, want 0", m.list.cursor)
+	s.Update(tea.KeyMsg{Type: tea.KeyPgUp}, keys)
+	if s.cursor != 0 {
+		t.Errorf("page up from bottom: cursor = %d, want 0", s.cursor)
 	}
 
-	// Half-page and page jumps must not wrap: on the first row a page up and a
-	// half-page up stay put, and on the last row a page down stays put.
-	m.updateList(tea.KeyMsg{Type: tea.KeyPgUp})
-	if m.list.cursor != 0 {
-		t.Errorf("page up at top should clamp: cursor = %d, want 0", m.list.cursor)
+	s.Update(tea.KeyMsg{Type: tea.KeyPgUp}, keys)
+	if s.cursor != 0 {
+		t.Errorf("page up at top should clamp: cursor = %d, want 0", s.cursor)
 	}
-	m.list.cursor = 2
-	m.updateList(tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.list.cursor != 2 {
-		t.Errorf("page down at bottom should clamp: cursor = %d, want 2", m.list.cursor)
+	s.cursor = 2
+	s.Update(tea.KeyMsg{Type: tea.KeyPgDown}, keys)
+	if s.cursor != 2 {
+		t.Errorf("page down at bottom should clamp: cursor = %d, want 2", s.cursor)
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyCtrlD})
-	if m.list.cursor != 2 {
-		t.Errorf("half page down at bottom should clamp: cursor = %d, want 2", m.list.cursor)
+	s.Update(tea.KeyMsg{Type: tea.KeyCtrlD}, keys)
+	if s.cursor != 2 {
+		t.Errorf("half page down at bottom should clamp: cursor = %d, want 2", s.cursor)
 	}
-	m.list.cursor = 0
-	m.updateList(tea.KeyMsg{Type: tea.KeyCtrlU})
-	if m.list.cursor != 0 {
-		t.Errorf("half page up at top should clamp: cursor = %d, want 0", m.list.cursor)
+	s.cursor = 0
+	s.Update(tea.KeyMsg{Type: tea.KeyCtrlU}, keys)
+	if s.cursor != 0 {
+		t.Errorf("half page up at top should clamp: cursor = %d, want 0", s.cursor)
 	}
 }
 
 func TestOpenAndFoldKeysOnHeader(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	m.list.cursor = 0 // header row
-	m.updateList(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.view != viewList {
-		t.Errorf("Enter on a header should not open an article, view = %d", m.view)
+	keys := listKeys(t)
+	s.cursor = 0 // header row
+	if act := s.Update(tea.KeyMsg{Type: tea.KeyEnter}, keys); act != ActionNone {
+		t.Errorf("Enter on a header should fold in place, action = %d", act)
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
-	if m.view != viewList {
-		t.Errorf("l on a header should not open an article, view = %d", m.view)
+	if act := s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")}, keys); act != ActionNone {
+		t.Errorf("l on a header should fold in place, action = %d", act)
 	}
-	if m.list.groups[0].collapsed {
-		t.Error("enter/l on a header should not toggle the fold")
+	if s.Collapsed(0) {
+		t.Error("enter/l on a header should not leave the day folded")
 	}
 }
 
 func TestFoldKeys(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	m.list.cursor = 0 // header
-	m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
-	if !m.list.groups[0].collapsed {
+	keys := listKeys(t)
+	s.cursor = 0 // header
+	s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")}, keys)
+	if !s.Collapsed(0) {
 		t.Error("h on a header should collapse the day")
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
-	if m.list.groups[0].collapsed {
+	s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")}, keys)
+	if s.Collapsed(0) {
 		t.Error("l on a header should expand the day")
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyEnter})
-	if !m.list.groups[0].collapsed {
+	s.Update(tea.KeyMsg{Type: tea.KeyEnter}, keys)
+	if !s.Collapsed(0) {
 		t.Error("enter on a header should toggle the fold")
 	}
-	m.updateList(tea.KeyMsg{Type: tea.KeyTab})
-	if m.list.groups[0].collapsed {
+	s.Update(tea.KeyMsg{Type: tea.KeyTab}, keys)
+	if s.Collapsed(0) {
 		t.Error("tab on a header should toggle the fold")
 	}
-	m.expand(0)
-	m.list.cursor = 1 // first article row
-	m.updateList(tea.KeyMsg{Type: tea.KeyTab})
-	if !m.list.groups[0].collapsed {
+	s.expand(0)
+	s.cursor = 1 // first article row
+	s.Update(tea.KeyMsg{Type: tea.KeyTab}, keys)
+	if !s.Collapsed(0) {
 		t.Error("tab on an article row should toggle its day group")
 	}
 }
 
 func TestStatusBarShowsNT(t *testing.T) {
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertArticle(t, st, "one", []string{"tech"})
 	insertArticle(t, st, "two", nil)
-	m.loadList()
+	s.Load()
 
-	// rows: [header, one, two]; select the second article (position 2 of 2).
-	m.list.cursor = 2
-	if got := m.renderStatusBar(); !strings.Contains(got, "100% "+render.GlyphsFor(m.ascii).Bullet+" 2/2") {
-		t.Errorf("status bar = %q, want 100%% %s 2/2", got, render.GlyphsFor(m.ascii).Bullet)
+	s.cursor = 2
+	if got := s.renderStatusBar(); !strings.Contains(got, "100% "+render.GlyphsFor(s.ascii).Bullet+" 2/2") {
+		t.Errorf("status bar = %q, want 100%% %s 2/2", got, render.GlyphsFor(s.ascii).Bullet)
 	}
 
-	m.popupData = popupState{
-		tags:   []store.TagCount{{Name: "tech", Total: 1, Unread: 1}},
-		cursor: 0,
-	}
-	m.confirmTagSelection()
-	// filtered to [header, one]; select article one (position 1 of 2 total).
-	m.list.cursor = 1
-	got := m.renderStatusBar()
-	if !strings.Contains(got, "50% "+render.GlyphsFor(m.ascii).Bullet+" 1/2") {
-		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, render.GlyphsFor(m.ascii).Bullet)
+	s.SetFilter("tech")
+	s.Load()
+	s.cursor = 1
+	got := s.renderStatusBar()
+	if !strings.Contains(got, "50% "+render.GlyphsFor(s.ascii).Bullet+" 1/2") {
+		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, render.GlyphsFor(s.ascii).Bullet)
 	}
 	if !strings.Contains(got, "filter tech") {
 		t.Errorf("filtered status bar missing filter name: %q", got)
@@ -265,49 +281,48 @@ func TestStatusBarShowsNT(t *testing.T) {
 }
 
 func TestStatusBarShowsDBSize(t *testing.T) {
-	m, st := newTestModel(t)
-	m.width = 120 // the DB/percent/position right side is long
+	s, st := newTestState(t)
+	s.width = 120 // the DB/percent/position right side is long
 	insertArticle(t, st, "one", nil)
-	m.loadList()
+	s.Load()
 
-	got := m.renderStatusBar()
-	if m.dbSize <= 0 {
-		t.Fatalf("expected dbSize set by loadList, got %d", m.dbSize)
+	got := s.renderStatusBar()
+	if s.dbSize <= 0 {
+		t.Fatalf("expected dbSize set by load, got %d", s.dbSize)
 	}
-	if !strings.Contains(got, "DB "+formatMB(m.dbSize)) {
-		t.Errorf("status bar = %q, want DB %s", got, formatMB(m.dbSize))
+	if !strings.Contains(got, "DB "+render.FormatMB(s.dbSize)) {
+		t.Errorf("status bar = %q, want DB %s", got, render.FormatMB(s.dbSize))
 	}
 	if !strings.Contains(got, "never refreshed") {
 		t.Errorf("status bar = %q, want size alongside refresh info", got)
 	}
 
-	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
-	m.list.cursor = 1 // the single article
-	got = m.renderStatusBar()
+	s.Status.LastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	s.cursor = 1 // the single article
+	got = s.renderStatusBar()
 	if !strings.Contains(got, "15:04 Friday 28th August, 2026 last refresh") {
 		t.Errorf("status bar = %q, want last refresh time with long date", got)
 	}
-	if !strings.Contains(got, "DB "+formatMB(m.dbSize)) {
-		t.Errorf("status bar = %q, want DB %s", got, formatMB(m.dbSize))
+	if !strings.Contains(got, "DB "+render.FormatMB(s.dbSize)) {
+		t.Errorf("status bar = %q, want DB %s", got, render.FormatMB(s.dbSize))
 	}
-	if !strings.Contains(got, "DB "+formatMB(m.dbSize)+" "+render.GlyphsFor(m.ascii).Bullet+" 100% "+render.GlyphsFor(m.ascii).Bullet+" 1/1") {
-		t.Errorf("status bar = %q, want DB %s percentage %s position", got, render.GlyphsFor(m.ascii).Bullet, render.GlyphsFor(m.ascii).Bullet)
+	if !strings.Contains(got, "DB "+render.FormatMB(s.dbSize)+" "+render.GlyphsFor(s.ascii).Bullet+" 100% "+render.GlyphsFor(s.ascii).Bullet+" 1/1") {
+		t.Errorf("status bar = %q, want DB %s percentage %s position", got, render.GlyphsFor(s.ascii).Bullet, render.GlyphsFor(s.ascii).Bullet)
 	}
 }
 
 func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	forceTrueColor(t)
-	m, st := newTestModel(t)
-	m.SetAscii(false)
+	s, st := newTestState(t)
 	insertArticle(t, st, "one", nil)
-	m.loadList()
-	m.list.cursor = 1
-	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	s.Load()
+	s.cursor = 1
+	s.Status.LastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
 
-	got := m.renderStatusBar()
-	dim := lipgloss.NewStyle().Foreground(m.palette.Dim)
-	base := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
-	bullet := render.GlyphsFor(m.ascii).Bullet
+	got := s.renderStatusBar()
+	dim := lipgloss.NewStyle().Foreground(render.DarkPalette().Dim)
+	base := lipgloss.NewStyle().Foreground(render.DarkPalette().StatusBar)
+	bullet := render.GlyphsFor(s.ascii).Bullet
 	if !strings.Contains(got, dim.Render(bullet)) {
 		t.Errorf("bullets should render in the dim role (ANSI 8): %q", got)
 	}
@@ -317,99 +332,94 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	if !strings.Contains(got, base.Render("100%")) {
 		t.Errorf("elements between bullets should stay in the chrome role: %q", got)
 	}
-	if !strings.Contains(got, base.Render("DB "+formatMB(m.dbSize))) {
+	if !strings.Contains(got, base.Render("DB "+render.FormatMB(s.dbSize))) {
 		t.Errorf("database size should stay in the chrome role: %q", got)
 	}
 }
 
 func TestStatusBarHelpHintTrailing(t *testing.T) {
-	m, _ := newTestModel(t)
-	m.dbSize = 0
-	m.list.total = 1
-	m.list.cursor = 1
-	m.list.groups = []dayGroup{{articles: []articleItem{{ID: 1, Title: "one"}}}}
-	got := ansi.Strip(m.renderStatusBar())
-	// left = "never refreshed" (15); the right side leads with the `?: help`
-	// hint, then the DB footprint, then the percentage and position.
-	b := render.GlyphsFor(m.ascii).Bullet
+	s, _ := newTestState(t)
+	s.dbSize = 0
+	s.total = 1
+	s.cursor = 1
+	s.groups = []dayGroup{{articles: []Item{{ID: 1, Title: "one"}}}}
+	got := ansi.Strip(s.renderStatusBar())
+	b := render.GlyphsFor(s.ascii).Bullet
 	right := "?: help " + b + " DB 0MB " + b + " 100% " + b + " 1/1"
 	left := "never refreshed"
-	pad := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	pad := s.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	want := left + strings.Repeat(" ", pad) + right
 	if got != want {
 		t.Errorf("status bar = %q, want %q", got, want)
 	}
-	if ansi.StringWidth(got) != m.width {
-		t.Errorf("status bar width = %d, want %d: %q", ansi.StringWidth(got), m.width, got)
+	if ansi.StringWidth(got) != s.width {
+		t.Errorf("status bar width = %d, want %d: %q", ansi.StringWidth(got), s.width, got)
 	}
 }
 
 func TestExpandToggleFold(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "c", time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
+	keys := listKeys(t)
 	pressX := func() {
-		m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+		s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}, keys)
 	}
 	allCollapsed := func() bool {
-		for i := range m.list.groups {
-			if !m.list.groups[i].collapsed {
+		for i := range s.groups {
+			if !s.groups[i].collapsed {
 				return false
 			}
 		}
 		return true
 	}
 	allExpanded := func() bool {
-		for i := range m.list.groups {
-			if m.list.groups[i].collapsed {
+		for i := range s.groups {
+			if s.groups[i].collapsed {
 				return false
 			}
 		}
 		return true
 	}
 
-	// All expanded → x collapses all.
 	pressX()
 	if !allCollapsed() {
 		t.Error("x on an all-expanded list should collapse every group")
 	}
 
-	// All collapsed → x expands all.
 	pressX()
 	if !allExpanded() {
 		t.Error("x on an all-collapsed list should expand every group")
 	}
 
-	// Mixed → x expands all.
-	m.collapse(0)
+	s.collapse(0)
 	pressX()
 	if !allExpanded() {
 		t.Error("x on a mixed list should expand every group")
 	}
 
-	// Works from an article row and clamps the cursor when the list shrinks.
-	m.list.cursor = 5 // last article row of the 6 visible rows
+	s.cursor = 5 // last article row of the 6 visible rows
 	pressX()
 	if !allCollapsed() {
 		t.Error("x from an article row should collapse every group")
 	}
-	if n := len(m.visibleRows()); m.list.cursor >= n {
-		t.Errorf("cursor = %d out of range for %d visible rows after collapse", m.list.cursor, n)
+	if n := len(s.visibleRows()); s.cursor >= n {
+		t.Errorf("cursor = %d out of range for %d visible rows after collapse", s.cursor, n)
 	}
 }
 
 func TestArticleRowShowsLocalTime(t *testing.T) {
 	withLocalZone(t, time.FixedZone("UTC-5", -5*60*60))
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	item := &m.list.groups[0].articles[0]
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	item := &s.groups[0].articles[0]
+	line := ansi.Strip(s.renderArticleRow(item, false))
 	if !strings.Contains(line, "10:04") {
 		t.Errorf("row = %q, want local time 10:04 (15:04 UTC - 5h)", line)
 	}
@@ -422,20 +432,20 @@ func TestArticleRowShowsLocalTime(t *testing.T) {
 	if !strings.Contains(line, "timed") {
 		t.Errorf("row should contain the title: %q", line)
 	}
-	if strings.Contains(line, render.GlyphsFor(m.ascii).Bullet) {
+	if strings.Contains(line, render.GlyphsFor(s.ascii).Bullet) {
 		t.Errorf("row should not contain bullets: %q", line)
 	}
 }
 
 func TestArticleRowShowsSecondsWhenEnabled(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
-	m.sess.Config().Display.ShowSeconds = true
+	s, st := newTestState(t)
+	s.sess.Config().Display.ShowSeconds = true
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
+	s.Load()
 
-	item := &m.list.groups[0].articles[0]
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	item := &s.groups[0].articles[0]
+	line := ansi.Strip(s.renderArticleRow(item, false))
 	if !strings.HasPrefix(line, "15:04:05 ") {
 		t.Errorf("row should start with the seconds publication time: %q", line)
 	}
@@ -445,14 +455,14 @@ func TestArticleRowShowsSecondsWhenEnabled(t *testing.T) {
 }
 
 func TestStatusBarShowsSecondsWhenEnabled(t *testing.T) {
-	m, st := newTestModel(t)
-	m.sess.Config().Display.ShowSeconds = true
+	s, st := newTestState(t)
+	s.sess.Config().Display.ShowSeconds = true
 	insertArticle(t, st, "one", nil)
-	m.loadList()
-	m.lastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
-	m.list.cursor = 1
+	s.Load()
+	s.Status.LastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
+	s.cursor = 1
 
-	got := m.renderStatusBar()
+	got := s.renderStatusBar()
 	if !strings.Contains(got, "15:04:05 Friday 28th August, 2026 last refresh") {
 		t.Errorf("status bar = %q, want seconds in the last refresh time", got)
 	}
@@ -460,14 +470,13 @@ func TestStatusBarShowsSecondsWhenEnabled(t *testing.T) {
 
 func TestTreeRailBookendGlyphs(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	insertTimedArticle(t, st, "a", now)
 	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
-	m.loadList()
+	s.Load()
 
-	// rows: [header today, a, header yesterday, b]
-	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	lines := strings.Split(ansi.Strip(s.Render()), "\n")
 	if !strings.HasPrefix(lines[0], "┌──── ") {
 		t.Errorf("first day header should be prefixed with the top corner: %q", lines[0])
 	}
@@ -484,24 +493,22 @@ func TestTreeRailBookendGlyphs(t *testing.T) {
 
 func TestTreeRailStableWhileScrolling(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	// Two days of 12 articles each = 26 rows; the page window (23) covers
-	// neither the first nor the last row.
 	for i := 0; i < 12; i++ {
 		insertTimedArticle(t, st, fmt.Sprintf("a%02d", i), now.Add(-time.Duration(i)*time.Minute))
 		insertTimedArticle(t, st, fmt.Sprintf("b%02d", i), now.Add(-24*time.Hour-time.Duration(i)*time.Minute))
 	}
-	m.loadList()
-	m.list.cursor = 12
+	s.Load()
+	s.cursor = 12
 
-	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
-	rows := m.visibleRows()
-	start, end := listWindow(len(rows), m.list.cursor, m.pageSize())
+	lines := strings.Split(ansi.Strip(s.Render()), "\n")
+	rows := s.visibleRows()
+	start, end := listWindow(len(rows), s.cursor, s.pageSize())
 	for i := start; i < end; i++ {
 		line := lines[i-start]
 		if rows[i].kind == rowHeader {
-			want := m.railGlyph(len(m.list.groups), rows[i].groupIdx)
+			want := s.railGlyph(len(s.groups), rows[i].groupIdx)
 			if !strings.HasPrefix(line, want+"──── ") {
 				t.Errorf("scrolled window day header %d should use %q, got %q", i, want, line)
 			}
@@ -513,16 +520,14 @@ func TestTreeRailStableWhileScrolling(t *testing.T) {
 
 func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
+	s, st := newTestState(t)
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	insertTimedArticle(t, st, "a", now)
 	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
-	m.loadList()
-	m.collapse(0)
+	s.Load()
+	s.collapse(0)
 
-	// rows: [header today, header yesterday, b]; yesterday is the last group
-	// but still expanded, so it stays a T-junction.
-	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	lines := strings.Split(ansi.Strip(s.Render()), "\n")
 	if !strings.HasPrefix(lines[0], "┌──── ") {
 		t.Errorf("first day header should stay the top corner: %q", lines[0])
 	}
@@ -536,17 +541,77 @@ func TestTreeRailRecomputesWhenCollapsed(t *testing.T) {
 
 func TestTreeRailASCIIFallback(t *testing.T) {
 	withLocalZone(t, time.UTC)
-	m, st := newTestModel(t)
-	m.SetAscii(true)
+	s, st := newTestState(t)
+	s.ascii = true
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	insertTimedArticle(t, st, "a", now)
 	insertTimedArticle(t, st, "b", now.Add(-24*time.Hour))
-	m.loadList()
+	s.Load()
 
-	lines := strings.Split(ansi.Strip(m.renderList()), "\n")
+	lines := strings.Split(ansi.Strip(s.Render()), "\n")
 	for i, want := range []string{"+---- ", "12:00 ", "+---- ", "12:00 "} {
 		if !strings.HasPrefix(lines[i], want) {
 			t.Errorf("ascii rail row %d = %q, want prefix %q", i, lines[i], want)
 		}
+	}
+}
+
+func TestListWindow(t *testing.T) {
+	cases := []struct {
+		name               string
+		n, cursor, height  int
+		wantStart, wantEnd int
+	}{
+		{"all fit", 5, 2, 10, 0, 5},
+		{"empty list", 0, 0, 10, 0, 0},
+		{"exact fit", 10, 5, 10, 0, 10},
+		{"cursor at top", 20, 0, 10, 0, 10},
+		{"cursor middle", 20, 10, 10, 5, 15},
+		{"cursor at bottom", 20, 19, 10, 10, 20},
+		{"height one at top", 20, 0, 1, 0, 1},
+		{"height one at bottom", 20, 19, 1, 19, 20},
+	}
+	for _, c := range cases {
+		start, end := listWindow(c.n, c.cursor, c.height)
+		if start != c.wantStart || end != c.wantEnd {
+			t.Errorf("%s: listWindow(%d,%d,%d) = (%d,%d), want (%d,%d)",
+				c.name, c.n, c.cursor, c.height, start, end, c.wantStart, c.wantEnd)
+		}
+	}
+}
+
+func TestRenderListZeroHeight(t *testing.T) {
+	s, _ := newTestState(t)
+	s.SetSize(0, 0)
+	if got := len(strings.Split(s.Render(), "\n")); got != 1 {
+		t.Errorf("expected 1 line, got %d: %q", got, s.Render())
+	}
+}
+
+func TestRenderListEmptyHeightOne(t *testing.T) {
+	s, _ := newTestState(t)
+	s.SetSize(0, 1)
+	if got := len(strings.Split(s.Render(), "\n")); got != 1 {
+		t.Errorf("expected 1 line, got %d: %q", got, s.Render())
+	}
+}
+
+func TestRenderListNonEmptyHeightOne(t *testing.T) {
+	s, st := newTestState(t)
+	insertArticle(t, st, "one", nil)
+	s.Load()
+	s.SetSize(0, 1)
+	if got := len(strings.Split(s.Render(), "\n")); got != 1 {
+		t.Errorf("expected 1 line, got %d: %q", got, s.Render())
+	}
+}
+
+func TestRenderListZeroWidth(t *testing.T) {
+	s, st := newTestState(t)
+	insertArticle(t, st, "one", nil)
+	s.Load()
+	s.SetSize(0, 24)
+	if got := s.Render(); got == "" {
+		t.Error("expected non-empty render")
 	}
 }

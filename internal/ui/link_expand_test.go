@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
@@ -29,12 +30,12 @@ func openTestArticle(t *testing.T, title, content string) (*Model, *store.Store)
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 	return m, st
 }
 
 func bodyText(m *Model) string {
-	return ansi.Strip(strings.Join(m.article.lines, "\n"))
+	return ansi.Strip(strings.Join(m.article.Lines(), "\n"))
 }
 
 func TestLinkDisplayDefaultsToCompact(t *testing.T) {
@@ -62,14 +63,14 @@ func TestLinkExpandToggle(t *testing.T) {
 	}
 
 	// Scroll into the article to exercise offset preservation.
-	m.article.viewport.SetYOffset(1)
-	off := m.article.viewport.YOffset
+	m.article.Viewport.SetYOffset(1)
+	off := m.article.Viewport.YOffset
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	if !strings.Contains(bodyText(m), "world https://example.com/post") {
 		t.Errorf("after x: want expanded link: %q", bodyText(m))
 	}
-	if got := m.article.viewport.YOffset; got != off {
+	if got := m.article.Viewport.YOffset; got != off {
 		t.Errorf("x moved the scroll: %d -> %d", off, got)
 	}
 
@@ -96,7 +97,7 @@ func TestLinkExpandModePersistsAcrossArticles(t *testing.T) {
 		t.Fatal(err)
 	}
 	a2.ID = id2
-	m.article = m.newArticleState(a2)
+	m.article = m.article.Recompose(a2)
 	if !strings.Contains(bodyText(m), "again https://example.com/post") {
 		t.Errorf("expanded mode did not persist across article switches: %q", bodyText(m))
 	}
@@ -107,23 +108,23 @@ func TestCompactLinkSpanIsClickable(t *testing.T) {
 	// the left-click hit-testing reports exactly the name's URL and columns.
 	m, _ := openTestArticle(t, "spans", `<p>hello [world](https://example.com/post) end</p>`)
 	found := false
-	for i, ln := range m.article.lines {
+	for i, ln := range m.article.Lines() {
 		if !strings.Contains(ansi.Strip(ln), "world") {
 			continue
 		}
 		found = true
-		spans := parseLinkSpans(ln)
+		spans := articleview.ParseLinkSpans(ln)
 		if len(spans) != 1 {
 			t.Fatalf("compact line %d has %d link spans, want 1: %+v", i, len(spans), spans)
 		}
 		sp := spans[0]
-		if sp.url != "https://example.com/post" {
-			t.Errorf("compact line %d span url = %q", i, sp.url)
+		if sp.URL != "https://example.com/post" {
+			t.Errorf("compact line %d span url = %q", i, sp.URL)
 		}
 		name := ansi.Strip(ln)
 		start := strings.Index(name, "world")
-		if start < 0 || sp.start != start || sp.end != start+len("world") {
-			t.Errorf("compact line %d span (%d,%d) should cover the name at %d..%d: %q", i, sp.start, sp.end, start, start+len("world"), name)
+		if start < 0 || sp.Start != start || sp.End != start+len("world") {
+			t.Errorf("compact line %d span (%d,%d) should cover the name at %d..%d: %q", i, sp.Start, sp.End, start, start+len("world"), name)
 		}
 	}
 	if !found {
@@ -133,13 +134,13 @@ func TestCompactLinkSpanIsClickable(t *testing.T) {
 
 func TestReaderHeaderURLRendersBlue(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.linkExpand = true
-	m.article = m.newArticleState(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
+	m.SetLinkExpand(true)
+	m.article = m.article.Recompose(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
 	blue := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.StatusBar).Render("x"))
-	if !strings.Contains(m.article.lines[0], blue) {
-		t.Errorf("header URL line should render in the status-bar blue role: %q", m.article.lines[0])
+	if !strings.Contains(m.article.Lines()[0], blue) {
+		t.Errorf("header URL line should render in the status-bar blue role: %q", m.article.Lines()[0])
 	}
-	if first := ansi.Strip(m.article.lines[0]); !strings.Contains(first, "example.com/post") {
+	if first := ansi.Strip(m.article.Lines()[0]); !strings.Contains(first, "example.com/post") {
 		t.Errorf("first content line should be the URL in expanded mode: %q", first)
 	}
 }
@@ -175,7 +176,7 @@ func TestCompactWrapHidesWrappedURL(t *testing.T) {
 	// mode, so the trailing "after" lands on a later line than "before".
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	bi, ai := -1, -1
-	for i, ln := range m.article.lines {
+	for i, ln := range m.article.Lines() {
 		s := ansi.Strip(ln)
 		if bi < 0 && strings.Contains(s, "before") {
 			bi = i
@@ -230,7 +231,7 @@ func TestCompactWrapAdjacentSameURL(t *testing.T) {
 	// expanded mode, so "after" lands on a later line than "before".
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	bi, ai := -1, -1
-	for i, ln := range m.article.lines {
+	for i, ln := range m.article.Lines() {
 		s := ansi.Strip(ln)
 		if bi < 0 && strings.Contains(s, "before") {
 			bi = i
@@ -256,8 +257,8 @@ func nonEmptyLines(s string) int {
 
 func TestCompactHeaderHidesURL(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.article = m.newArticleState(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
-	lines := strippedLines(m.article.lines)
+	m.article = m.article.Recompose(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
+	lines := strippedLines(m.article.Lines())
 	if first := strings.TrimRight(lines[0], " "); first != "t" {
 		t.Errorf("first content line = %q, want the title", first)
 	}
@@ -284,11 +285,11 @@ func TestLinkExpandToggleKeepsFirstVisibleLine(t *testing.T) {
 	if strings.Contains(bodyText(m), "example.com") {
 		t.Fatalf("expected compact by default: %q", bodyText(m))
 	}
-	oldLen := len(m.article.lines)
+	oldLen := len(m.article.Lines())
 	// Scroll partway down so the toggle genuinely shifts line indices.
-	m.article.viewport.SetYOffset(2)
-	oldOffset := m.article.viewport.YOffset
-	anchor := strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset]))
+	m.article.Viewport.SetYOffset(2)
+	oldOffset := m.article.Viewport.YOffset
+	anchor := strings.TrimSpace(ansi.Strip(m.article.Lines()[oldOffset]))
 	if anchor == "" {
 		t.Fatalf("anchor line at offset %d is empty", oldOffset)
 	}
@@ -296,17 +297,17 @@ func TestLinkExpandToggleKeepsFirstVisibleLine(t *testing.T) {
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
 	// Non-vacuous guard: expanded mode really added URL lines.
-	if newLen := len(m.article.lines); newLen <= oldLen {
+	if newLen := len(m.article.Lines()); newLen <= oldLen {
 		t.Fatalf("link toggle did not grow the article (%d -> %d lines); test is vacuous", oldLen, newLen)
 	}
 	// Total-delta bump is exactly what the toggle must NOT do.
-	inserted := len(m.article.lines) - oldLen
-	if got := m.article.viewport.YOffset; got == oldOffset+inserted {
+	inserted := len(m.article.Lines()) - oldLen
+	if got := m.article.Viewport.YOffset; got == oldOffset+inserted {
 		t.Errorf("toggle jumped to the total-delta offset %d; the first visible line drifted", got)
 	}
 	// The anchored paragraph is the first visible line again, with its leading
 	// words intact (a link grew on the line, so trailing text can move).
-	first := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+	first := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset]))
 	if !strings.HasPrefix(first, anchor) {
 		t.Errorf("first visible line after toggle = %q, want it to start with the anchor %q", first, anchor)
 	}
@@ -314,16 +315,16 @@ func TestLinkExpandToggleKeepsFirstVisibleLine(t *testing.T) {
 
 func TestLinkExpandToggleAtBottomStaysPinned(t *testing.T) {
 	m, _ := anchorToggleFixture(t, 40)
-	m.article.viewport.GotoBottom()
-	preBottom := m.article.viewport.YOffset
+	m.article.Viewport.GotoBottom()
+	preBottom := m.article.Viewport.YOffset
 	if preBottom == 0 {
 		t.Fatalf("article does not scroll; test is vacuous")
 	}
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	got := m.article.viewport.YOffset
-	maxOffset := len(m.article.lines) - m.article.viewport.Height
+	got := m.article.Viewport.YOffset
+	maxOffset := len(m.article.Lines()) - m.article.Viewport.Height
 	if got != maxOffset {
 		t.Errorf("after x at the bottom: offset = %d, want the new bottom %d (was %d)", got, maxOffset, preBottom)
 	}
@@ -331,8 +332,8 @@ func TestLinkExpandToggleAtBottomStaysPinned(t *testing.T) {
 
 func TestLinkExpandToggleBackReturnsToAnchor(t *testing.T) {
 	m, _ := anchorToggleFixture(t, 30)
-	m.article.viewport.SetYOffset(2)
-	anchor := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+	m.article.Viewport.SetYOffset(2)
+	anchor := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset]))
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	if !strings.Contains(bodyText(m), "example.com") {
@@ -340,50 +341,18 @@ func TestLinkExpandToggleBackReturnsToAnchor(t *testing.T) {
 	}
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	if got := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset])); got != anchor {
+	if got := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset])); got != anchor {
 		t.Errorf("after toggling back: first visible line = %q, want the original anchor %q", got, anchor)
-	}
-}
-
-func TestAnchorableLineSkipsBlankAndURL(t *testing.T) {
-	links := []articleLink{{url: "https://example.com/on-of-narco-terrorist-refueling-vessel-aug-28-2026/"}}
-	lines := []string{
-		"",
-		"",
-		"https://example.com/on-of-narco-terrorist-refueling-vessel-aug-28-2026/",
-		"on-of-narco-terrorist-refueling-vessel-aug-28-2026/",
-		"claimed was refueling",
-	}
-	anchor, gap, found := anchorableLine(lines, links, 0)
-	if !found {
-		t.Fatal("expected an anchorable line")
-	}
-	if anchor != "claimed was refueling" {
-		t.Errorf("anchor = %q, want the first real text line", anchor)
-	}
-	if gap != 2 {
-		t.Errorf("gap = %d, want 2 blank separators skipped", gap)
-	}
-
-	// A URL-leading line anchors on the first real word that follows it.
-	anchor, _, found = anchorableLine([]string{"https://example.com/x tail words here"}, links, 0)
-	if !found || anchor != "tail words here" {
-		t.Errorf("URL-leading line anchor = %q, found = %v; want %q", anchor, found, "tail words here")
-	}
-
-	// A tail that is blank or URL only reports no anchor.
-	if _, _, found := anchorableLine(lines[:3], links, 0); found {
-		t.Error("blank/URL-only tail should report no anchorable word")
 	}
 }
 
 func TestLinkExpandToggleBlankFirstLineKeepsSeparator(t *testing.T) {
 	m, _ := anchorToggleFixture(t, 30)
-	oldLen := len(m.article.lines)
+	oldLen := len(m.article.Lines())
 	blank := -1
 	for i := 1; i < oldLen-1; i++ {
-		if strings.TrimSpace(ansi.Strip(m.article.lines[i])) == "" &&
-			strings.TrimSpace(ansi.Strip(m.article.lines[i+1])) != "" {
+		if strings.TrimSpace(ansi.Strip(m.article.Lines()[i])) == "" &&
+			strings.TrimSpace(ansi.Strip(m.article.Lines()[i+1])) != "" {
 			blank = i
 			break
 		}
@@ -391,22 +360,22 @@ func TestLinkExpandToggleBlankFirstLineKeepsSeparator(t *testing.T) {
 	if blank < 0 {
 		t.Fatal("no blank separator line found; test is vacuous")
 	}
-	m.article.viewport.SetYOffset(blank)
-	oldOffset := m.article.viewport.YOffset
-	if strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset])) != "" {
-		t.Fatalf("viewport top is not the blank line: %q", ansi.Strip(m.article.lines[oldOffset]))
+	m.article.Viewport.SetYOffset(blank)
+	oldOffset := m.article.Viewport.YOffset
+	if strings.TrimSpace(ansi.Strip(m.article.Lines()[oldOffset])) != "" {
+		t.Fatalf("viewport top is not the blank line: %q", ansi.Strip(m.article.Lines()[oldOffset]))
 	}
-	anchorLine := strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset+1]))
+	anchorLine := strings.TrimSpace(ansi.Strip(m.article.Lines()[oldOffset+1]))
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	if newLen := len(m.article.lines); newLen <= oldLen {
+	if newLen := len(m.article.Lines()); newLen <= oldLen {
 		t.Fatalf("link toggle did not grow the article (%d -> %d lines); test is vacuous", oldLen, newLen)
 	}
-	if got := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset])); got != "" {
+	if got := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset])); got != "" {
 		t.Errorf("after toggle the first visible line = %q, want the blank separator", got)
 	}
-	next := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset+1]))
+	next := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset+1]))
 	if !strings.HasPrefix(next, strings.Split(anchorLine, " ")[0]) {
 		t.Errorf("paragraph below the separator = %q, want it to start with the anchor %q", next, anchorLine)
 	}
@@ -414,7 +383,7 @@ func TestLinkExpandToggleBlankFirstLineKeepsSeparator(t *testing.T) {
 
 func TestLinkExpandToggleURLFirstLineNearEndGluesBottom(t *testing.T) {
 	m, st := newTestModel(t)
-	m.linkExpand = true
+	m.SetLinkExpand(true)
 	longURL := "https://example.com/" + strings.Repeat("segment-", 300) + "end"
 	var html strings.Builder
 	for i := 0; i < 20; i++ {
@@ -432,21 +401,21 @@ func TestLinkExpandToggleURLFirstLineNearEndGluesBottom(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 
-	oldLen := len(m.article.lines)
-	maxOffset := oldLen - m.article.viewport.Height
+	oldLen := len(m.article.Lines())
+	maxOffset := oldLen - m.article.Viewport.Height
 	if maxOffset <= 0 {
 		t.Fatalf("article does not scroll; test is vacuous")
 	}
 	// The viewport top must land on a URL-only continuation line, with only URL
 	// or blank lines below it, so no anchorable word survives the mode change.
-	top := strings.TrimSpace(ansi.Strip(m.article.lines[maxOffset]))
+	top := strings.TrimSpace(ansi.Strip(m.article.Lines()[maxOffset]))
 	if !strings.Contains(top, "segment-") {
 		t.Fatalf("viewport top %d is not a URL continuation line: %q", maxOffset, top)
 	}
-	m.article.viewport.SetYOffset(maxOffset)
-	if got := m.article.viewport.YOffset; got != maxOffset {
+	m.article.Viewport.SetYOffset(maxOffset)
+	if got := m.article.Viewport.YOffset; got != maxOffset {
 		t.Fatalf("could not position at %d (got %d)", maxOffset, got)
 	}
 
@@ -455,8 +424,8 @@ func TestLinkExpandToggleURLFirstLineNearEndGluesBottom(t *testing.T) {
 	if strings.Contains(bodyText(m), "example.com") {
 		t.Fatalf("expected compact after toggle: %q", bodyText(m))
 	}
-	want := len(m.article.lines) - m.article.viewport.Height
-	if got := m.article.viewport.YOffset; got != want {
+	want := len(m.article.Lines()) - m.article.Viewport.Height
+	if got := m.article.Viewport.YOffset; got != want {
 		t.Errorf("URL-first-line toggle offset = %d, want glued to bottom %d", got, want)
 	}
 }
@@ -475,9 +444,9 @@ func TestLinkExpandToggleReflowReanchorsFirstWord(t *testing.T) {
 		fmt.Fprintf(&html, "<p>trailing paragraph %d with some words</p>", i)
 	}
 	m, _ := openTestArticle(t, "reflow", html.String())
-	oldLen := len(m.article.lines)
+	oldLen := len(m.article.Lines())
 	oldOffset := -1
-	for i, ln := range m.article.lines {
+	for i, ln := range m.article.Lines() {
 		if strings.Contains(ansi.Strip(ln), "Richard") {
 			oldOffset = i
 			break
@@ -486,42 +455,20 @@ func TestLinkExpandToggleReflowReanchorsFirstWord(t *testing.T) {
 	if oldOffset < 0 {
 		t.Fatal("article body missing the reflow paragraph")
 	}
-	m.article.viewport.SetYOffset(oldOffset)
-	if got := m.article.viewport.YOffset; got != oldOffset {
+	m.article.Viewport.SetYOffset(oldOffset)
+	if got := m.article.Viewport.YOffset; got != oldOffset {
 		t.Fatalf("could not position at the reflow line %d (got %d)", oldOffset, got)
 	}
-	firstWord := strings.Fields(strings.TrimSpace(ansi.Strip(m.article.lines[oldOffset])))[0]
+	firstWord := strings.Fields(strings.TrimSpace(ansi.Strip(m.article.Lines()[oldOffset])))[0]
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	if newLen := len(m.article.lines); newLen == oldLen {
+	if newLen := len(m.article.Lines()); newLen == oldLen {
 		t.Fatalf("link toggle did not change the article; test is vacuous")
 	}
-	first := strings.TrimSpace(ansi.Strip(m.article.lines[m.article.viewport.YOffset]))
+	first := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset]))
 	if !strings.HasPrefix(first, firstWord) {
 		t.Errorf("first visible line after toggle = %q, want it to start with %q", first, firstWord)
-	}
-}
-
-func TestFindAnchorLine(t *testing.T) {
-	lines := []string{
-		"title",
-		"",
-		"paragraph 1 text anchor1 https://example.com/very/long",
-		"paragraph 2 text anchor2",
-		"a wrapped",
-	}
-	if idx, ok := findAnchorLine(lines, "paragraph 2 text anchor2"); !ok || idx != 3 {
-		t.Errorf("exact match: got (%d, %v), want (3, true)", idx, ok)
-	}
-	if idx, ok := findAnchorLine(lines, "paragraph 1 text anchor1"); !ok || idx != 2 {
-		t.Errorf("prefix match over URL-extended line: got (%d, %v), want (2, true)", idx, ok)
-	}
-	if idx, ok := findAnchorLine(lines, "a wrapped name shifted"); !ok || idx != 4 {
-		t.Errorf("common-prefix fallback: got (%d, %v), want (4, true)", idx, ok)
-	}
-	if _, ok := findAnchorLine(lines, "nothing matches this at all"); ok {
-		t.Errorf("no-match scan should report false")
 	}
 }
 
@@ -549,14 +496,14 @@ func photoToggleModel(t *testing.T) (*Model, *store.Store) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 	return m, st
 }
 
 func findBlock(m *Model, url string) *compose.ImageBlock {
-	for i := range m.article.imageBlocks {
-		if m.article.imageBlocks[i].URL == url {
-			return &m.article.imageBlocks[i]
+	for i := range m.article.ImageBlocks() {
+		if m.article.ImageBlocks()[i].URL == url {
+			return &m.article.ImageBlocks()[i]
 		}
 	}
 	return nil
@@ -575,12 +522,12 @@ func TestLinkExpandToggleKeepsPhotoOnScreen(t *testing.T) {
 		t.Fatal("lead photo block not composed")
 	}
 	const rowRel = 3 // scroll a few rows into the photo
-	m.article.viewport.SetYOffset(b.ImgStart + rowRel)
-	oldLen := len(m.article.lines)
+	m.article.Viewport.SetYOffset(b.ImgStart + rowRel)
+	oldLen := len(m.article.Lines())
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	if newLen := len(m.article.lines); newLen <= oldLen {
+	if newLen := len(m.article.Lines()); newLen <= oldLen {
 		t.Fatalf("link toggle did not re-render differently (%d -> %d lines); test is vacuous", oldLen, newLen)
 	}
 	nb := findBlock(m, "https://example.com/lead.jpg")
@@ -589,12 +536,12 @@ func TestLinkExpandToggleKeepsPhotoOnScreen(t *testing.T) {
 	}
 	// The same row of the same photo must lie at the viewport start.
 	want := nb.ImgStart + rowRel
-	if got := m.article.viewport.YOffset; got != want {
+	if got := m.article.Viewport.YOffset; got != want {
 		t.Errorf("after toggle: offset = %d, want the same photo row at %d (block %d..%d)", got, want, nb.ImgStart, nb.ImgEnd)
 	}
 	// The photo stays on screen.
-	if m.article.viewport.YOffset > nb.ImgEnd {
-		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.viewport.YOffset)
+	if m.article.Viewport.YOffset > nb.ImgEnd {
+		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.Viewport.YOffset)
 	}
 }
 
@@ -606,12 +553,12 @@ func TestLinkExpandToggleKeepsAttributionOnScreen(t *testing.T) {
 	}
 	// First visible line is the photo's attribution line (still inside the
 	// block's span); the photo must stay on screen above it.
-	m.article.viewport.SetYOffset(b.CapStart)
-	oldLen := len(m.article.lines)
+	m.article.Viewport.SetYOffset(b.CapStart)
+	oldLen := len(m.article.Lines())
 
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
-	if newLen := len(m.article.lines); newLen <= oldLen {
+	if newLen := len(m.article.Lines()); newLen <= oldLen {
 		t.Fatalf("link toggle did not re-render differently (%d -> %d lines); test is vacuous", oldLen, newLen)
 	}
 	nb := findBlock(m, "https://example.com/lead.jpg")
@@ -619,11 +566,11 @@ func TestLinkExpandToggleKeepsAttributionOnScreen(t *testing.T) {
 		t.Fatal("lead photo block vanished after toggle")
 	}
 	want := nb.ImgStart + (b.CapStart - b.ImgStart)
-	if got := m.article.viewport.YOffset; got != want {
+	if got := m.article.Viewport.YOffset; got != want {
 		t.Errorf("after toggle: offset = %d, want the same attribution row at %d (block %d..%d)", got, want, nb.ImgStart, nb.ImgEnd)
 	}
-	if m.article.viewport.YOffset > nb.ImgEnd {
-		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.viewport.YOffset)
+	if m.article.Viewport.YOffset > nb.ImgEnd {
+		t.Errorf("photo block %d..%d left the viewport (offset %d)", nb.ImgStart, nb.ImgEnd, m.article.Viewport.YOffset)
 	}
 }
 
@@ -653,13 +600,13 @@ func TestLinkExpandToggleDoesNotResizePhoto(t *testing.T) {
 func TestFitHeaderLinesIsMaxAcrossModes(t *testing.T) {
 	m, _ := photoToggleModel(t)
 	contentW, _, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
-	compact := len(strings.Split(m.renderHeader(*m.article.article, contentW, false), "\n"))
-	expanded := len(strings.Split(m.renderHeader(*m.article.article, contentW, true), "\n"))
+	compact := len(strings.Split(m.article.RenderHeaderMode(*m.article.Article(), contentW, false), "\n"))
+	expanded := len(strings.Split(m.article.RenderHeaderMode(*m.article.Article(), contentW, true), "\n"))
 	want := max(compact, expanded)
 	if expanded == compact {
 		t.Fatalf("headers identical across modes; test is vacuous")
 	}
-	if got := m.article.fitHeaderLines; got != want {
+	if got := m.article.FitHeaderLines(); got != want {
 		t.Errorf("fitHeaderLines = %d, want the tallest header across modes (%d)", got, want)
 	}
 }

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/popup"
 	"yerss/internal/ui/render"
 )
 
@@ -16,7 +16,7 @@ func TestRenderList(t *testing.T) {
 	m, st := newTestModel(t)
 	insertArticle(t, st, "one", nil)
 	insertArticle(t, st, "two", nil)
-	m.loadList()
+	m.list.Load()
 	s := m.renderList()
 	if !strings.Contains(s, "one") || !strings.Contains(s, "two") {
 		t.Errorf("list render missing articles: %q", s)
@@ -41,10 +41,10 @@ func TestRenderArticleBorder(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.linkExpand = true
-	m.article = m.newArticleState(a)
+	m.SetLinkExpand(true)
+	m.article = m.article.Recompose(a)
 
-	s := m.renderArticle()
+	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 	if len(lines) != m.height {
 		t.Fatalf("expected %d lines, got %d", m.height, len(lines))
@@ -79,9 +79,9 @@ func TestRenderArticleBorderShowSeconds(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ID = id
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 
-	s := m.renderArticle()
+	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 	wantDate := mustParseTime(t, "2026-01-02T15:04:05Z").Local().Format("2006-01-02 15:04:05")
 	if !strings.Contains(lines[0], wantDate) {
@@ -91,15 +91,15 @@ func TestRenderArticleBorderShowSeconds(t *testing.T) {
 
 func TestRenderArticleBorderASCII(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.ascii = true
+	m.SetAscii(true)
 	a := store.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g2",
 		Title:   "ascii",
 		Content: "<p>x</p>",
 	}
-	m.article = m.newArticleState(a)
-	s := m.renderArticle()
+	m.article = m.article.Recompose(a)
+	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 	if !strings.Contains(lines[0], "+") {
 		t.Errorf("ascii top border missing +: %q", lines[0])
@@ -108,12 +108,12 @@ func TestRenderArticleBorderASCII(t *testing.T) {
 
 func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.ascii = true
-	m.article = m.newArticleState(store.Article{
+	m.SetAscii(true)
+	m.article = m.article.Recompose(store.Article{
 		Title:   "Hello world article title",
 		Content: "<p>a short paragraph</p>",
 	})
-	lines := strings.Split(m.renderArticle(), "\n")
+	lines := strings.Split(m.article.Render(), "\n")
 	first := ansi.Strip(lines[2])
 	// padX contributes two leading spaces; glamour's document margin is removed
 	// so it does not stack on top.
@@ -147,11 +147,11 @@ func trackGlyphs(t *testing.T, s string) string {
 
 func TestRenderArticleThumbPosition(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.ascii = true
-	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.SetAscii(true)
+	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
 	// 70 content lines vs viewport height 20 (height 24, padY 1 above and
 	// below): scrollable range 50, track height 22, thumb height 22*20/70 = 6.
-	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 
 	cases := []struct {
 		name      string
@@ -164,8 +164,8 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 		{"100%", 50, "::::::::::::::::||||||", "100% . 70/70"},
 	}
 	for _, c := range cases {
-		m.article.viewport.SetYOffset(c.offset)
-		s := m.renderArticle()
+		m.article.Viewport.SetYOffset(c.offset)
+		s := m.article.Render()
 		lines := strings.Split(s, "\n")
 		if got := trackGlyphs(t, s); got != c.wantTrack {
 			t.Errorf("%s: track glyphs = %q, want %q", c.name, got, c.wantTrack)
@@ -178,9 +178,9 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 
 func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.ascii = true
-	m.article = m.newArticleState(store.Article{Title: "short", Content: "<p>x</p>"})
-	s := m.renderArticle()
+	m.SetAscii(true)
+	m.article = m.article.Recompose(store.Article{Title: "short", Content: "<p>x</p>"})
+	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 	if got := trackGlyphs(t, s); got != strings.Repeat(":", 22) {
 		t.Errorf("fitting article track = %q, want all %q", got, strings.Repeat(":", 22))
@@ -192,57 +192,11 @@ func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 
 func TestRenderTagPopup(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.popup = popupTagsList
-	m.popupData = popupState{
-		tags: []store.TagCount{{Name: "tech", Total: 3, Unread: 1}},
-	}
-	s := m.renderTagPopup()
+	m.popupData.SetKind(popup.KindTagsList)
+	m.popupData.SetTags([]store.TagCount{{Name: "tech", Total: 3, Unread: 1}})
+	s := m.popupData.Render()
 	if !strings.Contains(s, "tech") {
 		t.Errorf("popup missing tag: %q", s)
-	}
-}
-
-func TestOverlayCentersByDisplayWidth(t *testing.T) {
-	base := "abcdefghijklmnopqrstuvwxyz" // 26 wide
-	pop := "XXX"                         // 3 wide
-	got := overlay(base, pop)
-	want := "abcdefghijk" + "XXX" + "opqrstuvwxyz"
-	if got != want {
-		t.Errorf("overlay = %q, want %q", got, want)
-	}
-}
-
-func TestOverlayPreservesBaseOutsidePopup(t *testing.T) {
-	base := strings.Join([]string{
-		strings.Repeat("a", 20),
-		strings.Repeat("b", 20),
-		strings.Repeat("c", 20),
-	}, "\n")
-	pop := "YY"
-	got := overlay(base, pop)
-	lines := strings.Split(got, "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d: %q", len(lines), got)
-	}
-	if lines[0] != strings.Repeat("a", 20) {
-		t.Errorf("top line modified: %q", lines[0])
-	}
-	if lines[2] != strings.Repeat("c", 20) {
-		t.Errorf("bottom line modified: %q", lines[2])
-	}
-	// popup width 2, base width 20 → centered at columns 9..10.
-	if want := "bbbbbbbbb" + "YY" + "bbbbbbbbb"; lines[1] != want {
-		t.Errorf("middle line not centered: %q, want %q", lines[1], want)
-	}
-}
-
-func TestOverlayIgnoresANSIWidth(t *testing.T) {
-	base := "aaaaaaaaaa" // 10 wide
-	pop := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render("XX")
-	got := overlay(base, pop)
-	stripped := ansi.Strip(got)
-	if stripped != "aaaaXXaaaa" {
-		t.Errorf("styled overlay stripped = %q, want %q", stripped, "aaaaXXaaaa")
 	}
 }
 

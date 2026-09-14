@@ -31,7 +31,7 @@ func TestGlamourStandardStyleMapping(t *testing.T) {
 
 func TestRenderMarkdownStylesText(t *testing.T) {
 	m, _ := newTestModel(t)
-	out := m.renderMarkdown("**bold text**\n\n[world](https://example.com/post)", 60)
+	out := m.article.RenderMarkdown("**bold text**\n\n[world](https://example.com/post)", 60)
 	if !strings.Contains(out, "\x1b[") {
 		t.Errorf("glamour output should carry ANSI styling: %q", out)
 	}
@@ -52,33 +52,33 @@ func TestRenderMarkdownStylesText(t *testing.T) {
 
 func TestMarkdownRendererRebuildsOnWidthChange(t *testing.T) {
 	m, _ := newTestModel(t)
-	r1 := m.markdownRenderer(60)
+	r1 := m.article.MarkdownRenderer(60)
 	if r1 == nil {
 		t.Fatal("renderer should be built")
 	}
-	r2 := m.markdownRenderer(60)
+	r2 := m.article.MarkdownRenderer(60)
 	if r1 != r2 {
 		t.Errorf("same width should reuse the cached renderer")
 	}
-	r3 := m.markdownRenderer(80)
+	r3 := m.article.MarkdownRenderer(80)
 	if r3 == nil || r3 == r1 {
 		t.Errorf("width change should build a new renderer")
 	}
-	if m.mdRendererW != 80 || m.mdRendererStyle != "dark" {
-		t.Errorf("cache keys not updated: w=%d style=%q", m.mdRendererW, m.mdRendererStyle)
+	if m.article.MarkdownRendererW() != 80 || m.article.MarkdownRendererStyle() != "dark" {
+		t.Errorf("cache keys not updated: w=%d style=%q", m.article.MarkdownRendererW(), m.article.MarkdownRendererStyle())
 	}
 }
 
 func TestMarkdownRendererRebuildsOnThemeChange(t *testing.T) {
 	m, _ := newTestModel(t)
-	r1 := m.markdownRenderer(60)
+	r1 := m.article.MarkdownRenderer(60)
 	m.sess.Config().Display.Theme = "light"
-	r2 := m.markdownRenderer(60)
+	r2 := m.article.MarkdownRenderer(60)
 	if r2 == nil || r2 == r1 {
 		t.Errorf("theme change should build a new renderer")
 	}
-	if m.mdRendererStyle != "light" {
-		t.Errorf("cache style not updated: %q", m.mdRendererStyle)
+	if m.article.MarkdownRendererStyle() != "light" {
+		t.Errorf("cache style not updated: %q", m.article.MarkdownRendererStyle())
 	}
 }
 
@@ -88,14 +88,14 @@ func TestMarkdownBodyTextUsesStandardBaseColor(t *testing.T) {
 	m.sess.Config().Display.Theme = "dark"
 
 	whiteEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Render("x"))
-	out := m.renderMarkdown("plain body text", 60)
+	out := m.article.RenderMarkdown("plain body text", 60)
 	if !strings.Contains(out, whiteEscape) {
 		t.Errorf("dark body text should use ANSI white (7): %q", out)
 	}
 
 	m.sess.Config().Display.Theme = "light"
 	blackEscape := escapePrefix(lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Render("x"))
-	out = m.renderMarkdown("plain body text", 60)
+	out = m.article.RenderMarkdown("plain body text", 60)
 	if !strings.Contains(out, blackEscape) {
 		t.Errorf("light body text should use ANSI black (0): %q", out)
 	}
@@ -126,7 +126,7 @@ func TestIndentListContinuationsHangsIndent(t *testing.T) {
 		"  continuation text\n" +
 		"\n" +
 		"plain paragraph that wraps around but must stay unindented"
-	stripped := ansi.Strip(m.renderMarkdown(md, 30))
+	stripped := ansi.Strip(m.article.RenderMarkdown(md, 30))
 	if !strings.Contains(stripped, "\n  enough to wrap around onto a") {
 		t.Errorf("top-level continuation should hang-indent 2 below the bullet:\n%q", stripped)
 	}
@@ -147,7 +147,7 @@ func TestIndentListContinuationsSkipsPlainParagraph(t *testing.T) {
 
 func TestRenderMarkdownHeadingHasNoHashPrefix(t *testing.T) {
 	m, _ := newTestModel(t)
-	out := m.renderMarkdown("# Title\n\n## Section\n\n### Sub", 40)
+	out := m.article.RenderMarkdown("# Title\n\n## Section\n\n### Sub", 40)
 	for _, level := range []string{"Title", "Section", "Sub"} {
 		if strings.Contains(out, "# "+level) || strings.Contains(out, "## "+level) || strings.Contains(out, "### "+level) {
 			t.Errorf("heading %q should not carry a '#' prefix:\n%q", level, out)
@@ -160,8 +160,8 @@ func TestRenderMarkdownHeadingHasNoHashPrefix(t *testing.T) {
 
 func TestH2BoldH3Plain(t *testing.T) {
 	m, _ := newTestModel(t)
-	h2 := m.renderMarkdown("## Section", 40)
-	h3 := m.renderMarkdown("### Sub", 40)
+	h2 := m.article.RenderMarkdown("## Section", 40)
+	h3 := m.article.RenderMarkdown("### Sub", 40)
 	if !strings.Contains(h2, ";1m") {
 		t.Errorf("H2 heading should render bold, got: %q", h2)
 	}
@@ -179,7 +179,7 @@ func TestRenderMarkdownBlockquoteKeepsSolidBar(t *testing.T) {
 	src := "> What changes must now occur, in our way of looking at things, in our notions! Even the elementary concepts of time and space have begun to vacillate. Space is killed by the railways, and we are left with time alone."
 	m, _ := newTestModel(t)
 	for _, w := range []int{110, 90, 86, 81, 70, 60, 50, 46, 41, 40} {
-		stripped := ansi.Strip(m.renderMarkdown(src, w))
+		stripped := ansi.Strip(m.article.RenderMarkdown(src, w))
 		inQuote := false
 		var words []string
 		for _, line := range strings.Split(stripped, "\n") {
@@ -239,7 +239,7 @@ func TestRenderMarkdownBlockquoteNoClip(t *testing.T) {
 	m, _ := newTestModel(t)
 	md := "> What changes must now occur, in our way of looking at things, in our notions! Even the elementary concepts of time and space have begun to vacillate. Space is killed by the railways, and we are left with time alone. … Now you can travel to Orléans in four and a half hours, and it takes no longer to get to Rouen. Just imagine what will happen when the lines to Belgium and Germany are completed and connected up with their railways! I feel as if the mountains and forests of all countries were advancing on Paris. Even now, I can smell the German linden trees; the North Sea’s breakers are rolling against my door."
 	for _, w := range []int{110, 90, 86, 81, 70, 60, 50, 46, 41, 40} {
-		stripped := ansi.Strip(m.renderMarkdown(md, w))
+		stripped := ansi.Strip(m.article.RenderMarkdown(md, w))
 		// Collapse to logical words (drop the "│" bar and spacing) so line
 		// boundaries do not break substring checks.
 		var sb strings.Builder

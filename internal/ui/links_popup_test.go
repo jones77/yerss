@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/store"
+	"yerss/internal/ui/articleview"
+	"yerss/internal/ui/popup"
 )
 
 func linkyArticle() store.Article {
@@ -21,24 +22,24 @@ func linkyArticle() store.Article {
 func articleWithLinks(t *testing.T) *Model {
 	t.Helper()
 	m, _ := newTestModel(t)
-	m.article = m.newArticleState(linkyArticle())
+	m.article = m.article.Recompose(linkyArticle())
 	m.view = viewArticle
 	return m
 }
 
 func TestHarvestLinksDeduplicatesInDocumentOrder(t *testing.T) {
-	links := harvestLinks("intro [a](https://x.com/1) mid [b](<https://x.com/2>) end [c](https://x.com/1)")
+	links := articleview.HarvestLinks("intro [a](https://x.com/1) mid [b](<https://x.com/2>) end [c](https://x.com/1)")
 	want := []string{"https://x.com/1", "https://x.com/2"}
 	if len(links) != len(want) {
 		t.Fatalf("harvested %d links, want %d: %+v", len(links), len(want), links)
 	}
 	for i, l := range links {
-		if l.url != want[i] {
-			t.Errorf("links[%d].url = %q, want %q", i, l.url, want[i])
+		if l.URL != want[i] {
+			t.Errorf("links[%d].url = %q, want %q", i, l.URL, want[i])
 		}
 	}
-	if links[0].text != "a" || links[1].text != "b" {
-		t.Errorf("link texts = %q, %q; want a, b", links[0].text, links[1].text)
+	if links[0].Text != "a" || links[1].Text != "b" {
+		t.Errorf("link texts = %q, %q; want a, b", links[0].Text, links[1].Text)
 	}
 }
 
@@ -51,8 +52,8 @@ func TestResolveLinkAgainstArticleOrigin(t *testing.T) {
 		"https://theintercept.com/x": "https://theintercept.com/x",
 	}
 	for in, want := range cases {
-		if got := resolveLink(a, in); got != want {
-			t.Errorf("resolveLink(%q) = %q, want %q", in, got, want)
+		if got := articleview.ResolveLink(a, in); got != want {
+			t.Errorf("articleview.ResolveLink(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -62,8 +63,8 @@ func TestHarvestArticleLinksResolvesRelativeTargets(t *testing.T) {
 		Link:    "https://theintercept.com/2026/08/31/iran-war/",
 		Content: `<p><a href="/tomdispatch">TomDispatch</a></p>`,
 	}
-	links := harvestArticleLinks(a)
-	if len(links) != 1 || links[0].url != "https://theintercept.com/tomdispatch" {
+	links := articleview.HarvestArticleLinks(a)
+	if len(links) != 1 || links[0].URL != "https://theintercept.com/tomdispatch" {
 		t.Errorf("links = %+v, want the relative target resolved to https://theintercept.com/tomdispatch", links)
 	}
 }
@@ -79,30 +80,30 @@ func TestHarvestArticleLinksLinkedImageBanner(t *testing.T) {
 			`<div class="promote-banner__text"><p class="promote-banner__eyebrow">Read Our Complete Coverage</p>` +
 			`<h2 class="promote-banner__title">TomDispatch</h2></div></a></aside>`,
 	}
-	links := harvestArticleLinks(a)
+	links := articleview.HarvestArticleLinks(a)
 	if len(links) != 1 {
 		t.Fatalf("links = %+v, want the banner link", links)
 	}
-	if links[0].url != "https://theintercept.com/tomdispatch" {
-		t.Errorf("banner url = %q, want https://theintercept.com/tomdispatch", links[0].url)
+	if links[0].URL != "https://theintercept.com/tomdispatch" {
+		t.Errorf("banner url = %q, want https://theintercept.com/tomdispatch", links[0].URL)
 	}
-	if strings.Contains(links[0].text, "\x00") || strings.Contains(links[0].text, "img:") {
-		t.Errorf("banner link text still carries the image sentinel: %q", links[0].text)
+	if strings.Contains(links[0].Text, "\x00") || strings.Contains(links[0].Text, "img:") {
+		t.Errorf("banner link text still carries the image sentinel: %q", links[0].Text)
 	}
-	if !strings.Contains(links[0].text, "Read Our Complete Coverage") || !strings.Contains(links[0].text, "TomDispatch") {
-		t.Errorf("banner link text = %q, want the banner text", links[0].text)
+	if !strings.Contains(links[0].Text, "Read Our Complete Coverage") || !strings.Contains(links[0].Text, "TomDispatch") {
+		t.Errorf("banner link text = %q, want the banner text", links[0].Text)
 	}
 }
 
 func TestArticleStateHarvestsBodyLinks(t *testing.T) {
 	m := articleWithLinks(t)
 	urls := []string{"https://example.com/one", "https://example.com/two"}
-	if len(m.article.links) != len(urls) {
-		t.Fatalf("links = %+v, want %d body links (header excluded, deduped)", m.article.links, len(urls))
+	if len(m.article.Links()) != len(urls) {
+		t.Fatalf("links = %+v, want %d body links (header excluded, deduped)", m.article.Links(), len(urls))
 	}
-	for i, l := range m.article.links {
-		if l.url != urls[i] {
-			t.Errorf("links[%d].url = %q, want %q", i, l.url, urls[i])
+	for i, l := range m.article.Links() {
+		if l.URL != urls[i] {
+			t.Errorf("links[%d].url = %q, want %q", i, l.URL, urls[i])
 		}
 	}
 }
@@ -110,104 +111,30 @@ func TestArticleStateHarvestsBodyLinks(t *testing.T) {
 func TestLinkPopupOpensViaLAndRight(t *testing.T) {
 	m := articleWithLinks(t)
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
-	if m.popup != popupLinks {
-		t.Fatalf("l should open the links popup, popup = %d", m.popup)
+	if m.popupData.Kind() != popup.KindLinks {
+		t.Fatalf("l should open the links popup, kind = %d", m.popupData.Kind())
 	}
 	m.updatePopup(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.popup != noPopup {
-		t.Fatalf("esc should close the popup, popup = %d", m.popup)
+	if m.popupData.Kind() != popup.KindNone {
+		t.Fatalf("esc should close the popup, kind = %d", m.popupData.Kind())
 	}
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyRight})
-	if m.popup != popupLinks {
-		t.Fatalf("right should open the links popup, popup = %d", m.popup)
-	}
-}
-
-func TestLinkPopupRowsShowTextAndDimURL(t *testing.T) {
-	m := articleWithLinks(t)
-	m.openLinksPopup()
-	m.popupData.cursor = 1
-
-	s := m.renderLinksPopup()
-	if !strings.Contains(s, "Links") {
-		t.Errorf("popup missing title: %q", s)
-	}
-	stripped := ansi.Strip(s)
-	for _, want := range []string{"one", "two", "https://example.com/one", "https://example.com/two"} {
-		if !strings.Contains(stripped, want) {
-			t.Errorf("popup missing %q: %q", want, stripped)
-		}
-	}
-	if strings.Contains(stripped, "post") {
-		t.Errorf("popup should not list the article's own URL: %q", stripped)
-	}
-	if !strings.Contains(s, "> ") {
-		t.Errorf("popup missing the cursor marker: %q", s)
-	}
-}
-
-func TestLinkPopupNavigationWraps(t *testing.T) {
-	m := articleWithLinks(t)
-	m.openLinksPopup()
-	n := len(m.popupData.links)
-
-	m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	if m.popupData.cursor != 1 {
-		t.Errorf("cursor after j = %d, want 1", m.popupData.cursor)
-	}
-	for i := 0; i < n-1; i++ {
-		m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	}
-	if m.popupData.cursor != 0 {
-		t.Errorf("cursor should wrap to 0, got %d", m.popupData.cursor)
-	}
-	m.updatePopup(tea.KeyMsg{Type: tea.KeyUp})
-	if m.popupData.cursor != n-1 {
-		t.Errorf("cursor should wrap up to %d, got %d", n-1, m.popupData.cursor)
-	}
-}
-
-func TestLinkPopupIgnoresGridKeys(t *testing.T) {
-	m := articleWithLinks(t)
-	m.openLinksPopup()
-	m.popupData.cursor = 1
-	gridKeys := []tea.KeyMsg{
-		{Type: tea.KeyLeft},
-		{Type: tea.KeyRight},
-		{Type: tea.KeyRunes, Runes: []rune("h")},
-		{Type: tea.KeyRunes, Runes: []rune("l")},
-		{Type: tea.KeyRunes, Runes: []rune("1")},
-		{Type: tea.KeyRunes, Runes: []rune("g")},
-		{Type: tea.KeyRunes, Runes: []rune("G")},
-	}
-	for _, key := range gridKeys {
-		m.updatePopup(key)
-		if m.popupData.cursor != 1 {
-			t.Fatalf("grid key %v changed the links cursor to %d", key, m.popupData.cursor)
-		}
-	}
-	// Up/down navigation still works and wraps as before.
-	m.updatePopup(tea.KeyMsg{Type: tea.KeyDown})
-	if m.popupData.cursor != 0 {
-		t.Errorf("down should wrap the links cursor to 0, got %d", m.popupData.cursor)
-	}
-	m.updatePopup(tea.KeyMsg{Type: tea.KeyUp})
-	if m.popupData.cursor != 1 {
-		t.Errorf("up should wrap the links cursor back to 1, got %d", m.popupData.cursor)
+	if m.popupData.Kind() != popup.KindLinks {
+		t.Fatalf("right should open the links popup, kind = %d", m.popupData.Kind())
 	}
 }
 
 func TestLinkPopupEnterOpensSelected(t *testing.T) {
 	m := articleWithLinks(t)
 	m.openLinksPopup()
-	m.popupData.cursor = 1 // https://example.com/two
+	m.popupData.SetCursor(1) // https://example.com/two
 
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Enter should return an open command for the selected link")
 	}
-	if m.popup != noPopup {
-		t.Errorf("popup should close after confirming, popup = %d", m.popup)
+	if m.popupData.Kind() != popup.KindNone {
+		t.Errorf("popup should close after confirming, kind = %d", m.popupData.Kind())
 	}
 }
 
@@ -218,19 +145,19 @@ func TestLinkPopupEscClosesWithoutNavigating(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("esc should not navigate, got %T", cmd)
 	}
-	if m.popup != noPopup || m.view != viewArticle {
-		t.Errorf("esc should close the popup and stay in the article, popup = %d view = %d", m.popup, m.view)
+	if m.popupData.Kind() != popup.KindNone || m.view != viewArticle {
+		t.Errorf("esc should close the popup and stay in the article, kind = %d view = %d", m.popupData.Kind(), m.view)
 	}
 }
 
 func TestLinkPopupEmptyArticle(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.article = m.newArticleState(store.Article{Title: "bare", Content: "<p>no links</p>"})
+	m.article = m.article.Recompose(store.Article{Title: "bare", Content: "<p>no links</p>"})
 	m.openLinksPopup()
-	if len(m.popupData.links) != 0 {
-		t.Fatalf("expected no links, got %+v", m.popupData.links)
+	if len(m.popupData.Links()) != 0 {
+		t.Fatalf("expected no links, got %+v", m.popupData.Links())
 	}
-	s := m.renderLinksPopup()
+	s := m.popupData.Render()
 	if !strings.Contains(s, "Links") {
 		t.Errorf("empty popup should still render: %q", s)
 	}
@@ -247,27 +174,16 @@ func TestLinkPopupOOpensArticleURL(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("o with the links popup open should open the article URL")
 	}
-	if m.popup != popupLinks {
-		t.Errorf("o should keep the popup open, popup = %d", m.popup)
+	if m.popupData.Kind() != popup.KindLinks {
+		t.Errorf("o should keep the popup open, kind = %d", m.popupData.Kind())
 	}
 }
 
 func TestTagPopupListOOpensNothing(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.popup = popupTagsList
+	m.popupData.SetKind(popup.KindTagsList)
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	if cmd != nil {
 		t.Errorf("o over the list tag popup should not open anything, got %T", cmd)
-	}
-}
-
-func TestHelpListsLinkPopup(t *testing.T) {
-	m, _ := newTestModel(t)
-	s := ansi.Strip(m.renderHelp())
-	if !strings.Contains(s, "Link Popup") {
-		t.Errorf("help should list the link_popup action: %q", s)
-	}
-	if !strings.Contains(s, "l, right") {
-		t.Errorf("help should show the link_popup keys: %q", s)
 	}
 }

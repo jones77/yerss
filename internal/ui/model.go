@@ -2,18 +2,18 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
-	"charm.land/glamour/v2"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/image"
+	"yerss/internal/ui/articleview"
+	"yerss/internal/ui/imageview"
+	"yerss/internal/ui/listview"
+	"yerss/internal/ui/popup"
 	"yerss/internal/ui/render"
 )
 
@@ -24,143 +24,32 @@ const (
 	viewArticle
 )
 
-type popupMode int
-
-const (
-	noPopup popupMode = iota
-	popupTagsList
-	popupTagsArticle
-	popupHelp
-	popupLinks
-)
-
 type Model struct {
 	sess *app.Session
 
-	view  viewState
-	popup popupMode
+	view viewState
 
 	width  int
 	height int
 
-	list      listState
-	article   articleState
-	popupData popupState
+	list      listview.State
+	article   articleview.State
+	popupData popup.State
+	// images owns the image-loading, block-composition, and native-image
+	// sequencing state and methods (see the imageview package).
+	images imageview.ImageView
 
 	palette render.Palette
 	ascii   bool
 
-	// styles holds the lipgloss styles derived from the palette roles,
-	// precomputed once in New so the per-frame render paths reuse them instead
-	// of constructing a fresh style for every row and cell. The sel* variants
-	// carry the Selection background for highlighted rows.
-	styles modelStyles
-
-	mdRenderer      *glamour.TermRenderer
-	mdRendererW     int
-	mdRendererStyle string
-
 	// linkExpand toggles the article reader's link display mode: false (the
 	// default) renders body hyperlinks compact (name only), true renders them
 	// expanded (name + URL). It is session-scoped, persisting across article
-	// switches, and keys the derivation cache so toggling recomposes.
+	// switches, and keys the derivation cache so toggling recomposes. The
+	// articleview.State mirrors it in its own LinkExpand field for derivation.
 	linkExpand bool
 
-	// derivCache holds the open article's derived display content (converted
-	// markdown, rendered body segments, harvested links, inline images) so an
-	// image-load recompose at the same geometry reuses the expensive
-	// derivation instead of re-running it on the UI thread. derivKey records
-	// what the entry was derived from; a miss on any component (article id or
-	// content, geometry, ascii mode, palette, theme style) — or no cached entry
-	// — re-derives and replaces the single-entry cache.
-	derivCache articleDerivation
-	derivKey   derivationKey
-	derivValid bool
-
-	// contentGen counts article-state constructions (open, recompose, resize,
-	// selection rebuild — every path newArticleState runs), so the article-frame
-	// cache is invalidated exactly when the composed content could change.
-	// nativeGen counts the native transmit-state transitions the frame body also
-	// renders from (nativeSent / nativeClearArticleID changes, advanced in
-	// recomputeNativeClear). Both start at 0 (the zero value) and only grow
-	// within a session; they feed the comparable articleFrameKey below.
-	contentGen int
-	nativeGen  int
-
-	// frameKey/frameValid/frameStr memoize the article reader's rendered frame —
-	// the renderArticle body, without the nativeClearPrefix View() prepends —
-	// keyed on a cheap signature of the state the body draws from. A no-op
-	// boundary scroll (the offset and every render input unchanged) hits the
-	// cache instead of re-running the viewport composition, native transforms,
-	// selection highlight, and border render on the UI goroutine, so a burst of
-	// boundary wheel ticks cannot backlog the input queue.
-	frameKey   articleFrameKey
-	frameValid bool
-	frameStr   string
-	// frameRenderCount counts full article frame compositions (renderArticle
-	// cache misses: renderArticleUncached calls), so tests can assert that
-	// no-op boundary scrolls are served from the frame cache without re-render.
-	frameRenderCount int
-
-	// recomposePending is set by the image-load message handlers when the open
-	// article needs recomposing. Update flushes it once after the message switch
-	// (flushRecompose), so the per-message work is bounded to cache updates and
-	// the recompose — which reuses the cached derivation — runs at most once per
-	// message.
-	recomposePending bool
-	// recomposeCount counts article recompositions (recomposeArticle calls), so
-	// tests can assert how many recomposes a message batch triggered.
-	recomposeCount int
-
-	imgLoading map[string]bool
-	// imgFrontier is the load frontier index into the open article's imageURLs:
-	// the largest index whose image's anchor row is within the viewport plus
-	// the lookahead margin. Images at or before it are eligible to load; images
-	// past it are not fetched, decoded, or rendered until the reader scrolls
-	// toward them. It only grows within an article open.
-	imgFrontier int
-	// nativePending holds the URLs of the open article's photos whose bytes
-	// are fetched but whose native render is deferred because the block is out
-	// of view; the render fires when the reader scrolls the block into view.
-	nativePending map[string]bool
-	// imgSem bounds the number of concurrent image fetch/decode/render
-	// operations (block, photo, and native commands) to imgConcurrency,
-	// regardless of how many image commands are fired.
-	imgSem chan struct{}
-	// previewCache memoizes the halfblock preview rendered for each partially
-	// visible native image (keyed by URL, content width, and preview row
-	// count), so the clipped-preview path renders each image at most once
-	// instead of once per frame while it is partially visible.
-	previewCache map[string][]string
-	// nativeSent tracks the kitty image id last transmitted per URL, so a
-	// frame can delete the prior size's image before a re-render at a new
-	// size, and leaving the article can free every image the terminal holds.
-	nativeSent map[string]uint32
-	// nativeSentPrev snapshots nativeSent as it stood at the start of the
-	// current frame's recomputeNativeClear, before computeNativeClear advanced
-	// it with this frame's transmits. The render path uses it to tell a
-	// placement-reference re-show (the image was transmitted on an earlier
-	// frame) from this frame's fresh transmit, so the first frame after a
-	// transmit (or a scroll-back or resize) always carries the full payload.
-	nativeSentPrev map[string]uint32
-	// nativeClearPrefix holds the precomputed kitty image clear sequence for
-	// the current frame, computed in the update path so View() stays pure.
-	nativeClearPrefix string
-	// nativeClearArticleID records the article the delete-all was last emitted
-	// for; it gates the delete-all so it fires only on the transition into an
-	// article with no native images, not on every no-native-image frame. -1
-	// means none emitted yet (initial, or after leaving the article view).
-	nativeClearArticleID int64
-
-	statusMsg     string
-	statusExpires time.Time
-
-	lastRefreshedAt time.Time
-	refreshing      bool
-
 	feedOutcomes []feed.FeedOutcome
-
-	dbSize int64
 
 	keys map[config.View]map[string]config.Action
 }
@@ -172,51 +61,6 @@ type refreshFinishedMsg struct {
 	fetchedAt time.Time
 }
 
-// modelStyles holds the lipgloss style variants the render paths build from
-// the palette roles, precomputed so per-frame rendering reuses them.
-type modelStyles struct {
-	text       lipgloss.Style // Foreground(Text)
-	bright     lipgloss.Style // Bold(true), Foreground(Bright)
-	dim        lipgloss.Style // Foreground(Dim)
-	status     lipgloss.Style // Foreground(StatusBar)
-	statusBold lipgloss.Style // Bold(true), Foreground(StatusBar)
-	plain      lipgloss.Style
-
-	selText   lipgloss.Style // Foreground(Text), Background(Selection)
-	selBright lipgloss.Style // Bold(true), Foreground(Bright), Background(Selection)
-	selDim    lipgloss.Style // Foreground(Dim), Background(Selection)
-	selStatus lipgloss.Style // Foreground(StatusBar), Background(Selection)
-	selRow    lipgloss.Style // Background(Selection)
-}
-
-// buildModelStyles derives the cached style variants for a palette.
-func buildModelStyles(p render.Palette) modelStyles {
-	sel := p.Selection
-	return modelStyles{
-		text:       lipgloss.NewStyle().Foreground(p.Text),
-		bright:     lipgloss.NewStyle().Bold(true).Foreground(p.Bright),
-		dim:        lipgloss.NewStyle().Foreground(p.Dim),
-		status:     lipgloss.NewStyle().Foreground(p.StatusBar),
-		statusBold: lipgloss.NewStyle().Bold(true).Foreground(p.StatusBar),
-		plain:      lipgloss.NewStyle(),
-		selText:    lipgloss.NewStyle().Foreground(p.Text).Background(sel),
-		selBright:  lipgloss.NewStyle().Bold(true).Foreground(p.Bright).Background(sel),
-		selDim:     lipgloss.NewStyle().Foreground(p.Dim).Background(sel),
-		selStatus:  lipgloss.NewStyle().Foreground(p.StatusBar).Background(sel),
-		selRow:     lipgloss.NewStyle().Background(sel),
-	}
-}
-
-// urlActionMsg reports the outcome of an open/copy command: opening an article
-// URL, or copying text (a URL, the full article text, or a mouse selection) to
-// the clipboard. label is the success status line; action names the operation
-// for the failure status line.
-type urlActionMsg struct {
-	action string
-	label  string
-	err    error
-}
-
 // New builds a Model bound to an application session.
 func New(sess *app.Session) *Model {
 	cfg := sess.Config()
@@ -226,25 +70,18 @@ func New(sess *app.Session) *Model {
 	}
 	palette := render.ResolvePalette(cfg.Display.Theme)
 	m := &Model{
-		sess:       sess,
-		view:       viewList,
-		palette:    palette,
-		ascii:      cfg.Display.Ascii || render.DetectAsciiNeeded(),
-		styles:     buildModelStyles(palette),
-		imgLoading: make(map[string]bool),
-		imgFrontier: -1,
-		nativePending: make(map[string]bool),
-		imgSem: make(chan struct{}, imgConcurrency),
-		previewCache: make(map[string][]string),
-		nativeSent: make(map[string]uint32),
-		nativeSentPrev: make(map[string]uint32),
-		// -1 means no delete-all has been emitted for a no-native article yet,
-		// so the first entry into one fires it. Reset to -1 when leaving the
-		// article view so re-entering re-clears.
-		nativeClearArticleID: -1,
-		width:                80,
-		height:               24,
+		sess:    sess,
+		view:    viewList,
+		palette: palette,
+		ascii:   cfg.Display.Ascii || render.DetectAsciiNeeded(),
+		width:   80,
+		height:  24,
 	}
+	m.images = *imageview.New(sess, palette, m.ascii, 80, 24)
+	m.article = articleview.NewState(sess, palette, m.ascii, &m.images, 80, 24)
+	m.article.LinkExpand = m.linkExpand
+	m.list = *listview.New(sess, palette, m.ascii, 80, 24)
+	m.popupData = *popup.New(sess, palette, m.ascii, 80, 24)
 	m.keys = make(map[config.View]map[string]config.Action)
 	for _, v := range []config.View{config.ViewList, config.ViewArticle, config.ViewPopup} {
 		if eff, err := km.EffectiveKeys(v); err == nil {
@@ -256,23 +93,36 @@ func New(sess *app.Session) *Model {
 
 // SetAscii forces ASCII fallback glyph rendering, overriding the config setting
 // and terminal detection. It takes effect on the next render.
-func (m *Model) SetAscii(v bool) { m.ascii = v }
+func (m *Model) SetAscii(v bool) {
+	m.ascii = v
+	m.images.SetAscii(v)
+	m.article.SetAscii(v)
+}
 
 // Ascii reports whether ASCII fallback glyphs are in use.
 func (m *Model) Ascii() bool { return m.ascii }
+
+// SetLinkExpand sets the session's link-expand choice, mirroring it into the
+// article state so the next composition and frame render pick it up.
+func (m *Model) SetLinkExpand(v bool) {
+	m.linkExpand = v
+	m.article.LinkExpand = v
+}
 
 // Init loads articles, restores the saved reader selection (firing the
 // restored article's lead-image load), and kicks off a startup refresh when
 // the gate allows.
 func (m *Model) Init() tea.Cmd {
-	m.loadList()
+	if status := m.list.Load(); status != "" {
+		m.setStatus(status)
+	}
 	imgLoad := m.restoreSelection()
 	last, err := m.sess.LastRefreshedAt()
 	if err != nil {
 		m.setStatus("load error: " + err.Error())
 		last = time.Time{}
 	}
-	m.lastRefreshedAt = last
+	m.list.Status.LastRefreshedAt = last
 	var refresh tea.Cmd
 	if m.hasUnfetchedFeeds() {
 		refresh = m.refreshCmd()
@@ -309,7 +159,7 @@ func (m *Model) hasUnfetchedFeeds() bool {
 }
 
 func (m *Model) refreshCmd() tea.Cmd {
-	m.refreshing = true
+	m.list.Status.Refreshing = true
 	return func() tea.Msg {
 		urls, err := feed.LoadFeeds(m.sess.Config().FeedsFile())
 		if err != nil {
@@ -325,17 +175,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.list.SetSize(msg.Width, msg.Height)
+		m.popupData.SetSize(msg.Width, msg.Height)
+		m.images.SetSize(msg.Width, msg.Height)
+		m.article.SetSize(msg.Width, msg.Height)
 		var load tea.Cmd
 		if m.view == viewArticle {
-			offset := m.article.viewport.YOffset
-			a := *m.article.article
-			m.article = m.newArticleState(a)
-			m.article.viewport.SetYOffset(offset)
-			load = m.ensureImageSource(a)
+			offset := m.article.Viewport.YOffset
+			a := *m.article.Article()
+			m.article = m.article.Recompose(a)
+			m.article.Viewport.SetYOffset(offset)
+			load = m.images.EnsureImageSource(a, &m.article)
 		}
 		return m, load
 	case tea.KeyMsg:
-		if m.popup != noPopup {
+		if m.popupData.Kind() != popup.KindNone {
 			return m.updatePopup(msg)
 		}
 		if m.view == viewList {
@@ -343,7 +197,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateArticle(msg)
 	case tea.MouseMsg:
-		if m.popup != noPopup {
+		if m.popupData.Kind() != popup.KindNone {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -353,36 +207,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateArticleMouse(msg)
 		}
 		return m, cmd
-	case image.BlockMsg:
-		m.onBlockLoaded(msg)
-		return m, m.flushRecompose()
-	case image.PhotoMsg:
-		cmd := m.onPhotoLoaded(msg)
-		return m, tea.Batch(cmd, m.flushRecompose())
-	case image.NativeMsg:
-		m.onNativeLoaded(msg)
-		return m, m.flushRecompose()
-	case image.FailedMsg:
-		m.onImageFailed(msg)
-		return m, m.flushRecompose()
+	case image.BlockMsg, image.PhotoMsg, image.NativeMsg, image.FailedMsg:
+		return m, m.updateImageMessages(msg)
 	case refreshFinishedMsg:
-		m.refreshing = false
+		m.list.Status.Refreshing = false
 		if msg.err != nil {
 			m.setStatus("refresh error: " + msg.err.Error())
 		} else {
-			m.lastRefreshedAt = msg.fetchedAt
+			m.list.Status.LastRefreshedAt = msg.fetchedAt
 			m.setStatus(fmt.Sprintf("Refreshed: %d new, %d updated", msg.result.New, msg.result.Updated))
 			// The latest pass's per-URL outcomes are what exit diagnostics
 			// report; a failed pass leaves the previous outcomes standing.
 			m.feedOutcomes = msg.result.Outcomes
 		}
-		m.loadList()
+		if status := m.list.Load(); status != "" {
+			m.setStatus(status)
+		}
 		return m, nil
-	case urlActionMsg:
-		if msg.err != nil {
-			m.setStatus(msg.action + " failed: " + msg.err.Error())
+	case articleview.URLActionMsg:
+		if msg.Err != nil {
+			m.setStatus(msg.Action + " failed: " + msg.Err.Error())
 		} else {
-			m.setStatus(msg.label)
+			m.setStatus(msg.Label)
 		}
 		return m, nil
 	}
@@ -395,19 +241,14 @@ func (m *Model) View() string {
 	case viewList:
 		s = m.renderList()
 	case viewArticle:
-		s = m.renderArticle()
+		s = m.article.Render()
 	}
-	switch m.popup {
-	case popupTagsList, popupTagsArticle:
-		s = overlay(s, m.renderTagPopup())
-	case popupLinks:
-		s = overlay(s, m.renderLinksPopup())
-	case popupHelp:
-		s = overlay(s, m.renderHelp())
+	if m.popupData.Kind() != popup.KindNone {
+		s = render.Overlay(s, m.popupData.Render())
 	}
 	// The clear escape is zero-width and position-independent; prepending it
 	// to the first line lets the frame repaint carry it to the terminal.
-	return m.nativeClearPrefix + s
+	return m.images.NativeClearPrefix() + s
 }
 
 // FeedOutcomes returns the per-URL outcomes of the most recent completed
@@ -418,72 +259,15 @@ func (m *Model) FeedOutcomes() []feed.FeedOutcome {
 }
 
 func (m *Model) setStatus(msg string) {
-	m.statusMsg = msg
-	m.statusExpires = time.Now().Add(3 * time.Second)
+	m.list.SetStatus(msg)
 }
 
 func (m *Model) refreshManual() tea.Cmd {
 	gate := feed.Gate{MinInterval: m.sess.Config().MinInterval(), Cooldown: m.sess.Config().Cooldown()}
-	if ok, remaining := gate.ManualRefreshAllowed(m.lastRefreshedAt, time.Now()); !ok {
+	if ok, remaining := gate.ManualRefreshAllowed(m.list.Status.LastRefreshedAt, time.Now()); !ok {
 		secs := int((remaining + time.Second - 1) / time.Second)
 		m.setStatus(fmt.Sprintf("next allowed in %ds", secs))
 		return nil
 	}
 	return m.refreshCmd()
-}
-
-// overlay draws pop over base, centered by display width. Centering is computed
-// from visible columns with ANSI escapes excluded, so styled popups are centered
-// rather than glued to the left edge. Base content outside the popup region is
-// preserved.
-func overlay(base, pop string) string {
-	baseLines := strings.Split(base, "\n")
-	popLines := strings.Split(pop, "\n")
-
-	bw := lipgloss.Width(base)
-	bh := len(baseLines)
-	pw := lipgloss.Width(pop)
-	ph := len(popLines)
-	if pw == 0 || ph == 0 {
-		return base
-	}
-	if pw > bw {
-		pw = bw
-	}
-	if ph > bh {
-		ph = bh
-		popLines = popLines[:bh]
-	}
-
-	bx := (bw - pw) / 2
-	if bx < 0 {
-		bx = 0
-	}
-	by := (bh - ph) / 2
-	if by < 0 {
-		by = 0
-	}
-
-	out := make([]string, len(baseLines))
-	copy(out, baseLines)
-	for i, l := range popLines {
-		t := by + i
-		if t < 0 || t >= len(out) {
-			continue
-		}
-		out[t] = spliceStyled(out[t], l, bx, pw)
-	}
-	return strings.Join(out, "\n")
-}
-
-// spliceStyled overlays popRow onto baseRow so that popRow's visible content
-// begins at display column bx. The base row's content before bx and after
-// bx+pw is preserved, and ANSI escape sequences in both rows are kept intact.
-func spliceStyled(baseRow, popRow string, bx, pw int) string {
-	left := ansi.Truncate(baseRow, bx, "")
-	if ansi.StringWidth(left) < bx {
-		left = render.PadRight(left, bx)
-	}
-	right := ansi.Cut(baseRow, bx+pw, ansi.StringWidth(baseRow))
-	return left + popRow + right
 }

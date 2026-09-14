@@ -50,16 +50,16 @@ func TestSetAsciiForcesAsciiGlyphs(t *testing.T) {
 	m, _ := newTestModel(t)
 	// Force ascii off regardless of what config or terminal detection chose.
 	m.SetAscii(false)
-	m.article = m.newArticleState(store.Article{Title: "x", Content: "<p>y</p>"})
+	m.article = m.article.Recompose(store.Article{Title: "x", Content: "<p>y</p>"})
 
-	before := ansi.Strip(m.renderArticle())
+	before := ansi.Strip(m.article.Render())
 	if !strings.HasPrefix(before, "┌") {
 		t.Fatalf("expected a unicode top border before SetAscii(true), got %q", before)
 	}
 
 	m.SetAscii(true)
-	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
-	after := ansi.Strip(m.renderArticle())
+	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+	after := ansi.Strip(m.article.Render())
 	if !strings.HasPrefix(after, "+") {
 		t.Errorf("expected an ASCII top border after SetAscii(true), got %q", after)
 	}

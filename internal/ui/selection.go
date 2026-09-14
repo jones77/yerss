@@ -4,7 +4,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"yerss/internal/store"
-	"yerss/internal/timeutil"
 )
 
 // persistSelection records the current list selection (and the open article,
@@ -13,18 +12,12 @@ func (m *Model) persistSelection() {
 	sel := store.LastSelection{View: "list"}
 	if m.view == viewArticle {
 		sel.View = "article"
-		if m.article.article != nil {
-			sel.ArticleID = m.article.id
-			sel.ArticleOffset = m.article.viewport.YOffset
+		if m.article.Article() != nil {
+			sel.ArticleID = m.article.ID()
+			sel.ArticleOffset = m.article.Viewport.YOffset
 		}
-	} else if item, ok := m.articleAtCursor(); ok {
-		sel.ArticleID = item.ID
 	} else {
-		rows := m.visibleRows()
-		if m.list.cursor >= 0 && m.list.cursor < len(rows) && rows[m.list.cursor].kind == rowHeader {
-			g := &m.list.groups[rows[m.list.cursor].groupIdx]
-			sel.HeaderKey = timeutil.DayKey(g.date)
-		}
+		sel.ArticleID, sel.HeaderKey = m.list.SelectionForCursor()
 	}
 	_ = m.sess.SaveSelection(sel)
 }
@@ -41,34 +34,13 @@ func (m *Model) restoreSelection() tea.Cmd {
 	if err != nil {
 		return nil
 	}
-	if sel.HeaderKey != "" {
-		for gi := range m.list.groups {
-			if timeutil.DayKey(m.list.groups[gi].date) == sel.HeaderKey {
-				rows := m.visibleRows()
-				for i, r := range rows {
-					if r.kind == rowHeader && r.groupIdx == gi {
-						m.list.cursor = i
-						break
-					}
-				}
-				break
-			}
-		}
-	} else if sel.ArticleID != 0 {
-		rows := m.visibleRows()
-		for i, r := range rows {
-			if r.kind == rowArticle && m.list.groups[r.groupIdx].articles[r.artIdx].ID == sel.ArticleID {
-				m.list.cursor = i
-				break
-			}
-		}
-	}
+	m.list.RestoreCursor(sel.ArticleID, sel.HeaderKey)
 	if sel.View == "article" && sel.ArticleID != 0 {
 		if full, err := m.sess.GetArticle(sel.ArticleID); err == nil && full != nil {
-			m.article = m.newArticleState(*full)
-			m.article.viewport.SetYOffset(sel.ArticleOffset)
+			m.article = m.article.Recompose(*full)
+			m.article.Viewport.SetYOffset(sel.ArticleOffset)
 			m.view = viewArticle
-			return m.fireImageLoad(*full)
+			return m.images.FireImageLoad(*full, &m.article)
 		}
 	}
 	return nil

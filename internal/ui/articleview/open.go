@@ -1,4 +1,4 @@
-package ui
+package articleview
 
 import (
 	"os/exec"
@@ -7,6 +7,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// URLActionMsg reports the outcome of an open/copy command.
+type URLActionMsg struct {
+	Action string
+	Label  string
+	Err    error
+}
 
 // openCommand builds the platform command that opens url in the system
 // browser. The URL is always passed as a single exec argument and no shell is
@@ -23,12 +30,12 @@ func openCommand(url string) *exec.Cmd {
 }
 
 // openURLCmd opens url in the system browser via a tea.Cmd.
-func openURLCmd(url string) tea.Cmd {
+func OpenURLCmd(url string) tea.Cmd {
 	return func() tea.Msg {
 		if err := openCommand(url).Run(); err != nil {
-			return urlActionMsg{action: "open", err: err}
+			return URLActionMsg{Action: "open", Err: err}
 		}
-		return urlActionMsg{action: "open", label: "opened URL"}
+		return URLActionMsg{Action: "open", Label: "opened URL"}
 	}
 }
 
@@ -36,7 +43,7 @@ func openURLCmd(url string) tea.Cmd {
 // piped to the platform clipboard helper's standard input without a shell, so
 // feed-controlled content cannot inject commands. label is the success status
 // line (e.g. "copied article text").
-func copyTextCmd(text, label string) tea.Cmd {
+func CopyTextCmd(text, label string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
 		switch runtime.GOOS {
@@ -49,13 +56,13 @@ func copyTextCmd(text, label string) tea.Cmd {
 		}
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err != nil {
-			return urlActionMsg{action: "copy", err: err}
+			return URLActionMsg{Action: "copy", Err: err}
 		}
-		return urlActionMsg{action: "copy", label: label}
+		return URLActionMsg{Action: "copy", Label: label}
 	}
 }
 
 // copyURLCmd copies url to the system clipboard via a tea.Cmd.
-func copyURLCmd(url string) tea.Cmd {
-	return copyTextCmd(url, "copied URL")
+func CopyURLCmd(url string) tea.Cmd {
+	return CopyTextCmd(url, "copied URL")
 }

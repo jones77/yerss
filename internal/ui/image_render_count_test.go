@@ -82,6 +82,7 @@ func TestRecomposeServesCachedBlocksRendersBounded(t *testing.T) {
 	const images = 8 // lead + 7 inline
 	m, st := newTestModel(t)
 	m.width, m.height = 120, 44
+	m.article.SetSize(m.width, m.height)
 	cr := &countingRenderer{inner: imgpkg.Halfblocks{}}
 	m.sess.ImgRenderer = cr
 	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolNone}
@@ -109,17 +110,17 @@ func TestRecomposeServesCachedBlocksRendersBounded(t *testing.T) {
 	if err != nil || full == nil {
 		t.Fatalf("GetArticle(%d): %v", id, err)
 	}
-	m.article = m.newArticleState(*full)
+	m.article = m.article.Recompose(*full)
 	m.view = viewArticle
-	drain(m, m.fireImageLoad(*full))
+	drain(m, m.images.FireImageLoad(*full,&m.article))
 
-	if len(m.article.imageBlocks) != images {
-		t.Fatalf("imageBlocks = %d, want %d (every image should have composed)", len(m.article.imageBlocks), images)
+	if len(m.article.ImageBlocks()) != images {
+		t.Fatalf("imageBlocks = %d, want %d (every image should have composed)", len(m.article.ImageBlocks()), images)
 	}
-	if got := len(m.article.imageURLs); got != images {
+	if got := len(m.article.ImageURLs()); got != images {
 		t.Fatalf("imageURLs = %d, want %d", got, images)
 	}
-	if m.recomposeCount <= 0 {
+	if m.article.RecomposeCount() <= 0 {
 		t.Fatal("the message loop should have recomposed the article")
 	}
 
@@ -128,11 +129,11 @@ func TestRecomposeServesCachedBlocksRendersBounded(t *testing.T) {
 	// constant times the image count, not once per recompose per image.
 	if cr.calls > 3*images {
 		t.Errorf("UI-thread halfblock renders = %d, want <= %d (3N); recomposes = %d",
-			cr.calls, 3*images, m.recomposeCount)
+			cr.calls, 3*images, m.article.RecomposeCount())
 	}
 	// Recompose count is bounded by the messages that drove it (one block
 	// message per image), so it too stays O(N).
-	if m.recomposeCount > 4*images {
-		t.Errorf("recomposeCount = %d, want <= %d (4N)", m.recomposeCount, 4*images)
+	if m.article.RecomposeCount() > 4*images {
+		t.Errorf("recomposeCount = %d, want <= %d (4N)", m.article.RecomposeCount(), 4*images)
 	}
 }

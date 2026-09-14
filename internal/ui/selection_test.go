@@ -36,18 +36,18 @@ func TestRestoreSelectionRestoresListCursor(t *testing.T) {
 	m1 := modelOn(t, st)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
-	m1.loadList()
-	if len(m1.visibleRows()) != 3 {
-		t.Fatalf("expected 3 rows, got %d", len(m1.visibleRows()))
+	m1.list.Load()
+	if m1.list.RowCount() != 3 {
+		t.Fatalf("expected 3 rows, got %d", m1.list.RowCount())
 	}
-	m1.list.cursor = 2 // article b
+	m1.list.SetCursor(2) // article b
 	m1.persistSelection()
 
 	m2 := modelOn(t, st)
-	m2.loadList()
+	m2.list.Load()
 	m2.restoreSelection()
-	if m2.list.cursor != 2 {
-		t.Errorf("restored cursor = %d, want 2", m2.list.cursor)
+	if m2.list.Cursor() != 2 {
+		t.Errorf("restored cursor = %d, want 2", m2.list.Cursor())
 	}
 	if m2.view != viewList {
 		t.Errorf("restored view = %d, want list", m2.view)
@@ -59,18 +59,17 @@ func TestRestoreSelectionRestoresHeader(t *testing.T) {
 	st := openSharedStore(t)
 	m1 := modelOn(t, st)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
-	m1.loadList()
-	m1.list.cursor = 0 // day header
+	m1.list.Load()
+	m1.list.SetCursor(0) // day header
 	m1.persistSelection()
 
 	m2 := modelOn(t, st)
-	m2.loadList()
+	m2.list.Load()
 	m2.restoreSelection()
-	if m2.list.cursor != 0 {
-		t.Errorf("restored header cursor = %d, want 0", m2.list.cursor)
+	if m2.list.Cursor() != 0 {
+		t.Errorf("restored header cursor = %d, want 0", m2.list.Cursor())
 	}
-	rows := m2.visibleRows()
-	if rows[m2.list.cursor].kind != rowHeader {
+	if !m2.list.CursorIsHeader() {
 		t.Errorf("restored row should be a day header")
 	}
 }
@@ -81,36 +80,34 @@ func TestRestoreSelectionReopensArticle(t *testing.T) {
 	m1 := modelOn(t, st)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	insertTimedArticle(t, st, "b", time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC))
-	m1.loadList()
-	m1.list.cursor = 2 // article b
+	m1.list.Load()
+	m1.list.SetCursor(2) // article b
 	m1.openArticle()
 	if m1.view != viewArticle {
 		t.Fatalf("expected article view, got %d", m1.view)
 	}
-	m1.article.viewport.ScrollDown(7)
-	wantOffset := m1.article.viewport.YOffset
+	m1.article.Viewport.ScrollDown(7)
+	wantOffset := m1.article.Viewport.YOffset
 	m1.persistSelection()
 
 	m2 := modelOn(t, st)
-	m2.loadList()
+	m2.list.Load()
 	m2.restoreSelection()
 	if m2.view != viewArticle {
 		t.Errorf("restored view = %d, want article", m2.view)
 	}
-	if m2.article.id != m1.article.id {
-		t.Errorf("restored article id = %d, want %d", m2.article.id, m1.article.id)
+	if m2.article.ID() != m1.article.ID() {
+		t.Errorf("restored article id = %d, want %d", m2.article.ID(), m1.article.ID())
 	}
-	if m2.article.viewport.YOffset != wantOffset {
-		t.Errorf("restored scroll offset = %d, want %d", m2.article.viewport.YOffset, wantOffset)
+	if m2.article.Viewport.YOffset != wantOffset {
+		t.Errorf("restored scroll offset = %d, want %d", m2.article.Viewport.YOffset, wantOffset)
 	}
 
 	m2.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	if m2.view != viewList {
 		t.Errorf("back from restored article should return to list, view = %d", m2.view)
 	}
-	rows := m2.visibleRows()
-	row := rows[m2.list.cursor]
-	if row.kind != rowArticle || m2.list.groups[row.groupIdx].articles[row.artIdx].ID != m2.article.id {
+	if m2.list.CursorIsHeader() || m2.list.ArticleIDAtRow(m2.list.Cursor()) != m2.article.ID() {
 		t.Errorf("back should land on the restored article row")
 	}
 }
@@ -120,28 +117,28 @@ func TestArticleScrollOffsetSurvivesWindowSize(t *testing.T) {
 	st := openSharedStore(t)
 	m1 := modelOn(t, st)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
-	m1.loadList()
-	m1.list.cursor = 1
+	m1.list.Load()
+	m1.list.SetCursor(1)
 	m1.openArticle()
-	m1.article.viewport.ScrollDown(7)
-	wantOffset := m1.article.viewport.YOffset
+	m1.article.Viewport.ScrollDown(7)
+	wantOffset := m1.article.Viewport.YOffset
 	m1.persistSelection()
 
 	m2 := modelOn(t, st)
-	m2.loadList()
+	m2.list.Load()
 	m2.restoreSelection()
 	if m2.view != viewArticle {
 		t.Fatalf("expected article view after restore, got %d", m2.view)
 	}
-	if m2.article.viewport.YOffset != wantOffset {
-		t.Fatalf("restored offset = %d, want %d", m2.article.viewport.YOffset, wantOffset)
+	if m2.article.Viewport.YOffset != wantOffset {
+		t.Fatalf("restored offset = %d, want %d", m2.article.Viewport.YOffset, wantOffset)
 	}
 
 	// The terminal's first WindowSizeMsg recreates the article state; the
 	// scroll offset must survive it.
 	m2.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	if m2.article.viewport.YOffset != wantOffset {
-		t.Errorf("offset after WindowSizeMsg = %d, want %d", m2.article.viewport.YOffset, wantOffset)
+	if m2.article.Viewport.YOffset != wantOffset {
+		t.Errorf("offset after WindowSizeMsg = %d, want %d", m2.article.Viewport.YOffset, wantOffset)
 	}
 }
 
@@ -155,10 +152,10 @@ func TestRestoreSelectionFallsBackWhenArticleGone(t *testing.T) {
 	}
 
 	m := modelOn(t, st)
-	m.loadList()
+	m.list.Load()
 	m.restoreSelection()
-	if m.list.cursor != 0 {
-		t.Errorf("cursor should fall back to 0, got %d", m.list.cursor)
+	if m.list.Cursor() != 0 {
+		t.Errorf("cursor should fall back to 0, got %d", m.list.Cursor())
 	}
 	if m.view != viewList {
 		t.Errorf("view should stay list when the article is gone, got %d", m.view)

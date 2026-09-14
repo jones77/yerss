@@ -1,4 +1,4 @@
-package ui
+package popup
 
 import (
 	"fmt"
@@ -13,6 +13,8 @@ import (
 	"yerss/internal/ui/render"
 )
 
+// actionLabel renders an action identifier as a display label: underscores
+// become spaces and each word is capitalized (e.g. open_article -> Open
 // Article).
 func actionLabel(a config.Action) string {
 	return cases.Title(language.Und).String(strings.ReplaceAll(string(a), "_", " "))
@@ -21,10 +23,10 @@ func actionLabel(a config.Action) string {
 // helpLabel renders an action label for the help popup, replacing the "Half"
 // prefix of the half-page actions with the half glyph (½, or 1/2 in ASCII
 // mode).
-func (m *Model) helpLabel(a config.Action) string {
+func (s *State) helpLabel(a config.Action) string {
 	label := actionLabel(a)
 	if strings.HasPrefix(label, "Half") {
-		return m.glyphs().Half + strings.TrimPrefix(label, "Half")
+		return s.glyphs().Half + strings.TrimPrefix(label, "Half")
 	}
 	return label
 }
@@ -47,16 +49,16 @@ func displayKeys(keys []string) []string {
 	return out
 }
 
-func (m *Model) renderHelp() string {
-	heading := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
-	keyStyle := lipgloss.NewStyle().Foreground(m.palette.Bright)
+func (s *State) renderHelp() string {
+	heading := lipgloss.NewStyle().Foreground(s.palette.StatusBar)
+	keyStyle := lipgloss.NewStyle().Foreground(s.palette.Bright)
 
 	// actionRow renders one binding with its label padded to labelW+2 columns
 	// so the keys align across the section, leaving at least two spaces between
 	// the label and its bound keys. Each bound key renders in the bright role
 	// so it stands out; the commas between keys stay in the default text role.
 	actionRow := func(a config.Action, labelW int) string {
-		keys := displayKeys(m.sess.Config().Keybindings[a])
+		keys := displayKeys(s.sess.Config().Keybindings[a])
 		if len(keys) == 0 {
 			return ""
 		}
@@ -64,7 +66,7 @@ func (m *Model) renderHelp() string {
 		for i, k := range keys {
 			styled[i] = keyStyle.Render(k)
 		}
-		return fmt.Sprintf("%-*s%s", labelW+2, m.helpLabel(a), strings.Join(styled, ", "))
+		return fmt.Sprintf("%-*s%s", labelW+2, s.helpLabel(a), strings.Join(styled, ", "))
 	}
 
 	// section renders a heading followed by its action rows, aligning the keys
@@ -72,7 +74,7 @@ func (m *Model) renderHelp() string {
 	section := func(label string, actions []config.Action) []string {
 		labelW := 0
 		for _, a := range actions {
-			labelW = max(labelW, ansi.StringWidth(m.helpLabel(a)))
+			labelW = max(labelW, ansi.StringWidth(s.helpLabel(a)))
 		}
 		lines := []string{heading.Render(label)}
 		for _, a := range actions {
@@ -110,11 +112,11 @@ func (m *Model) renderHelp() string {
 	// The popup including its border must not exceed 70 columns. The box keeps
 	// one space of padding on each side.
 	gap := 2
-	boxW := min(70, m.width, leftW+gap+rightW+4)
+	boxW := min(70, s.width, leftW+gap+rightW+4)
 	textW := max(1, boxW-4)
 
-	g := m.glyphs()
-	style := lipgloss.NewStyle().Foreground(m.palette.StatusBar)
+	g := s.glyphs()
+	style := lipgloss.NewStyle().Foreground(s.palette.StatusBar)
 	v := style.Render(g.V)
 	pad := " "
 
@@ -127,7 +129,7 @@ func (m *Model) renderHelp() string {
 	// The top edge inlines the "Key Bindings" title; one blank row pads the
 	// top and bottom of the content.
 	blank := v + pad + strings.Repeat(" ", textW) + pad + v
-	rows := []string{inlineTitleBorder("Key Bindings", boxW, g, m.palette), blank}
+	rows := []string{inlineTitleBorder("Key Bindings", boxW, g, s.palette), blank}
 	for _, l := range content {
 		rows = append(rows, v+pad+l+pad+v)
 	}
@@ -151,4 +153,36 @@ func inlineTitleBorder(title string, w int, g render.BorderGlyphs, p render.Pale
 	return style.Render(leftRail+strings.Repeat(g.H, left)) +
 		titleStyle.Render(core) +
 		style.Render(strings.Repeat(g.H, right)+rightRail)
+}
+
+// styles holds the lipgloss style variants the popup render paths build from
+// the palette roles, precomputed once in New so the per-frame render paths
+// reuse them instead of constructing a fresh style for every row and cell.
+type styles struct {
+	text       lipgloss.Style // Foreground(Text)
+	bright     lipgloss.Style // Bold(true), Foreground(Bright)
+	dim        lipgloss.Style // Foreground(Dim)
+	status     lipgloss.Style // Foreground(StatusBar)
+	statusBold lipgloss.Style // Bold(true), Foreground(StatusBar)
+	plain      lipgloss.Style
+
+	selText   lipgloss.Style // Foreground(Text), Background(Selection)
+	selBright lipgloss.Style // Bold(true), Foreground(Bright), Background(Selection)
+	selRow    lipgloss.Style // Background(Selection)
+}
+
+// newStyles derives the cached style variants for a palette.
+func newStyles(p render.Palette) styles {
+	sel := p.Selection
+	return styles{
+		text:       lipgloss.NewStyle().Foreground(p.Text),
+		bright:     lipgloss.NewStyle().Bold(true).Foreground(p.Bright),
+		dim:        lipgloss.NewStyle().Foreground(p.Dim),
+		status:     lipgloss.NewStyle().Foreground(p.StatusBar),
+		statusBold: lipgloss.NewStyle().Bold(true).Foreground(p.StatusBar),
+		plain:      lipgloss.NewStyle(),
+		selText:    lipgloss.NewStyle().Foreground(p.Text).Background(sel),
+		selBright:  lipgloss.NewStyle().Bold(true).Foreground(p.Bright).Background(sel),
+		selRow:     lipgloss.NewStyle().Background(sel),
+	}
 }

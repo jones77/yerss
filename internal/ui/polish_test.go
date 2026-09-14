@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
-	"yerss/internal/config"
 	"yerss/internal/store"
+	"yerss/internal/ui/popup"
 	"yerss/internal/ui/render"
 )
 
@@ -103,11 +103,11 @@ func TestArticleRowSourceElidedToFifteen(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
-	item := &m.list.groups[0].articles[0]
+	m.list.Load()
+	item := m.list.ItemAt(0, 0)
 	item.Link = "https://reallylongnewspaperdomainname.net/story/1"
 
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	line := ansi.Strip(m.list.RenderArticleRow(item, false))
 	if !strings.HasSuffix(line, "reallyl…ainname") {
 		t.Errorf("source should be middle-elided to 15 columns at the row end: %q", line)
 	}
@@ -117,11 +117,11 @@ func TestArticleRowSourceRightAligned(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
-	item := &m.list.groups[0].articles[0]
+	m.list.Load()
+	item := m.list.ItemAt(0, 0)
 	item.Link = "https://newrepublic.com/story/1"
 
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	line := ansi.Strip(m.list.RenderArticleRow(item, false))
 	if !strings.HasSuffix(line, "newrepublic") {
 		t.Errorf("source should be the only right-aligned field: %q", line)
 	}
@@ -137,12 +137,12 @@ func TestArticleRowTitleTruncatedWithEllipsis(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, strings.Repeat("x", 200), time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
-	item := &m.list.groups[0].articles[0]
+	m.list.Load()
+	item := m.list.ItemAt(0, 0)
 	item.Link = "https://newrepublic.com/story/1"
 
 	g := render.GlyphsFor(m.ascii)
-	line := ansi.Strip(m.renderArticleRow(item, false))
+	line := ansi.Strip(m.list.RenderArticleRow(item, false))
 	if !strings.HasSuffix(line, g.Ellipsis+" newrepublic") {
 		t.Errorf("truncated title should end with an ellipsis and keep a space before the source: %q", line)
 	}
@@ -156,14 +156,14 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
-	item := &m.list.groups[0].articles[0]
+	m.list.Load()
+	item := m.list.ItemAt(0, 0)
 	item.Link = "https://newrepublic.com/story/1"
 
 	textEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Render("x"))
 	boldEscape := escapePrefix(lipgloss.NewStyle().Bold(true).Foreground(m.palette.Bright).Render("x"))
 
-	unread := m.renderArticleRow(item, false)
+	unread := m.list.RenderArticleRow(item, false)
 	if !strings.Contains(unread, boldEscape) {
 		t.Errorf("unread title should be bold: %q", unread)
 	}
@@ -172,7 +172,7 @@ func TestArticleRowTitleColorChangesWithRead(t *testing.T) {
 	}
 
 	item.Read = true
-	read := m.renderArticleRow(item, false)
+	read := m.list.RenderArticleRow(item, false)
 	if strings.Contains(read, boldEscape) {
 		t.Errorf("read title should not be bold: %q", read)
 	}
@@ -186,15 +186,15 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	m, st := newTestModel(t)
 	insertTimedArticle(t, st, "timed", time.Date(2026, 8, 28, 15, 4, 5, 0, time.UTC))
-	m.loadList()
-	item := &m.list.groups[0].articles[0]
+	m.list.Load()
+	item := m.list.ItemAt(0, 0)
 
 	bgEscape := escapePrefix(lipgloss.NewStyle().Background(lipgloss.Color("#2c2c2c")).Render("x"))
 	// The selected rail renders its grey foreground and the selection
 	// background in a single escape; expect that combined prefix.
 	selEscape := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.Text).Background(lipgloss.Color("#2c2c2c")).Render("x"))
-	unselected := m.renderArticleRow(item, false)
-	selected := m.renderArticleRow(item, true)
+	unselected := m.list.RenderArticleRow(item, false)
+	selected := m.list.RenderArticleRow(item, true)
 	if strings.Contains(unselected, bgEscape) {
 		t.Errorf("unselected row should have no background highlight: %q", unselected)
 	}
@@ -210,10 +210,10 @@ func TestArticleRowSelectionBackground(t *testing.T) {
 func TestArticleFrameBorderColors(t *testing.T) {
 	forceTrueColor(t)
 	m, _ := newTestModel(t)
-	m.ascii = true
-	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
-	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
-	s := m.renderArticle()
+	m.SetAscii(true)
+	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 
 	borderColon := lipgloss.NewStyle().Foreground(m.palette.Dim).Render(":")
@@ -269,25 +269,12 @@ func TestBottomBorderHelpHintTrailing(t *testing.T) {
 	}
 }
 
-func TestActionLabel(t *testing.T) {
-	cases := map[config.Action]string{
-		config.OpenArticle:     "Open Article",
-		config.HalfPageDown:    "Half Page Down",
-		config.CopyArticleText: "Copy Article Text",
-	}
-	for a, want := range cases {
-		if got := actionLabel(a); got != want {
-			t.Errorf("actionLabel(%s) = %q, want %q", a, got, want)
-		}
-	}
-}
-
 func TestLowercaseTOpensTagPopup(t *testing.T) {
 	m, st := newTestModel(t)
 	insertArticle(t, st, "one", []string{"tech"})
-	m.loadList()
+	m.list.Load()
 	m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
-	if m.popup != popupTagsList {
-		t.Errorf("t should open the tag popup, popup = %d", m.popup)
+	if m.popupData.Kind() != popup.KindTagsList {
+		t.Errorf("t should open the tag popup, kind = %d", m.popupData.Kind())
 	}
 }

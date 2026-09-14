@@ -1,4 +1,4 @@
-package ui
+package render
 
 import "testing"
 
@@ -19,8 +19,8 @@ func TestFormatMB(t *testing.T) {
 		{320 * 1 << 20, "320MB"},
 	}
 	for _, c := range cases {
-		if got := formatMB(c.bytes); got != c.want {
-			t.Errorf("formatMB(%d) = %q, want %q", c.bytes, got, c.want)
+		if got := FormatMB(c.bytes); got != c.want {
+			t.Errorf("FormatMB(%d) = %q, want %q", c.bytes, got, c.want)
 		}
 	}
 }

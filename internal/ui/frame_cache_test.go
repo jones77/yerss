@@ -10,6 +10,7 @@ import (
 	"yerss/internal/store"
 
 	imgpkg "yerss/internal/image"
+	"yerss/internal/ui/articleview"
 )
 
 // TestFrameCacheSkipsNoOpBoundaryScrolls asserts the article frame cache: a
@@ -21,42 +22,42 @@ import (
 func TestFrameCacheSkipsNoOpBoundaryScrolls(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.view = viewArticle
-	m.article = m.newArticleState(store.Article{Title: "long", Content: "<p>x</p>"})
-	m.article.viewport.SetContent(strings.Join(make([]string, 70), "\n"))
-	m.article.viewport.GotoTop()
+	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
+	m.article.Viewport.GotoTop()
 
 	frameView(m) // fill the frame cache for the top offset
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 
 	// Wheel up at the very top cannot scroll further; no re-render allowed.
 	m.Update(mouseWheel(0, false))
 	m.View()
-	if m.article.viewport.YOffset != 0 {
-		t.Fatalf("wheel-up at top moved offset to %d, want 0", m.article.viewport.YOffset)
+	if m.article.Viewport.YOffset != 0 {
+		t.Fatalf("wheel-up at top moved offset to %d, want 0", m.article.Viewport.YOffset)
 	}
-	if m.frameRenderCount != 0 {
-		t.Fatalf("wheel-up at top rendered the frame %d times, want 0", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 0 {
+		t.Fatalf("wheel-up at top rendered the frame %d times, want 0", m.article.FrameRenderCount())
 	}
 
 	// A real one-line scroll down changes the offset and re-renders exactly once.
 	m.Update(mouseWheel(0, true))
 	m.View()
-	if m.article.viewport.YOffset != 1 {
-		t.Fatalf("wheel-down offset = %d, want 1", m.article.viewport.YOffset)
+	if m.article.Viewport.YOffset != 1 {
+		t.Fatalf("wheel-down offset = %d, want 1", m.article.Viewport.YOffset)
 	}
-	if m.frameRenderCount != 1 {
-		t.Fatalf("real wheel-down rendered the frame %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Fatalf("real wheel-down rendered the frame %d times, want exactly 1", m.article.FrameRenderCount())
 	}
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 
 	// Wheel down at the very bottom cannot scroll further; no re-render allowed.
-	m.article.viewport.GotoBottom()
+	m.article.Viewport.GotoBottom()
 	frameView(m) // fill the frame cache for the bottom offset
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 	m.Update(mouseWheel(0, true))
 	m.View()
-	if m.frameRenderCount != 0 {
-		t.Fatalf("wheel-down at bottom rendered the frame %d times, want 0", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 0 {
+		t.Fatalf("wheel-down at bottom rendered the frame %d times, want 0", m.article.FrameRenderCount())
 	}
 }
 
@@ -75,14 +76,14 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 	m, _ := newImageModel(t, nil)
 	m.sess.ImgNative.Protocol = imgpkg.ProtocolKitty
 	m.sess.ImgPhotos.Set(a.ImageURL, pngBytes(t, 40, 40))
-	m.linkExpand = true
+	m.SetLinkExpand(true)
 	nativeRenderLines(t, m, a)
-	m.article = m.newArticleState(a)
+	m.article = m.article.Recompose(a)
 	m.view = viewArticle
-	if !m.article.nativeImg {
+	if !m.article.NativeImg() {
 		t.Fatal("expected a native render")
 	}
-	leadID := m.article.imageBlocks[0].NativeID
+	leadID := m.article.ImageBlocks()[0].NativeID
 	if leadID == 0 {
 		t.Fatal("native block should record its kitty render id")
 	}
@@ -90,10 +91,10 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 	// Settle the native transmit state before the first frame: the terminal
 	// already holds the image under its render id, so every frame renders a
 	// placement reference and no snapshot change bumps nativeGen mid-sequence.
-	m.nativeSent[a.ImageURL] = leadID
+	m.images.SetNativeSent(a.ImageURL, leadID)
 
 	// A text selection over the first content line, so the highlight path runs.
-	m.article.sel = textSelection{active: true, tracking: false, anchorX: 5, anchorY: 0, curX: 20, curY: 0}
+	m.article.Sel = articleview.Selection{Active: true, Tracking: false, AnchorX: 5, AnchorY: 0, CurX: 20, CurY: 0}
 
 	f1 := frameView(m) // cache fill
 	if !strings.Contains(f1, "\x1b_Ga=p,i="+fmt.Sprint(leadID)) {
@@ -102,10 +103,10 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 	if strings.Contains(f1, "\x1b_Ga=T") {
 		t.Fatal("settled frame must not carry the full transmit")
 	}
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 	f2 := frameView(m) // must be served from the cache
-	if m.frameRenderCount != 0 {
-		t.Errorf("stable frame re-rendered %d times, want 0", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 0 {
+		t.Errorf("stable frame re-rendered %d times, want 0", m.article.FrameRenderCount())
 	}
 	if f2 != f1 {
 		t.Error("cached frame output differs from the first render")
@@ -113,33 +114,33 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 
 	// A forced cache miss (frameValid dropped) re-renders exactly once and
 	// produces byte-identical output.
-	m.frameValid = false
+	m.article.SetFrameValid(false)
 	f3 := frameView(m)
-	if m.frameRenderCount != 1 {
-		t.Errorf("forced cache miss rendered %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Errorf("forced cache miss rendered %d times, want exactly 1", m.article.FrameRenderCount())
 	}
 	if f3 != f1 {
 		t.Error("fresh uncached render differs from the cached output")
 	}
 
 	// A selection change is a render input: it invalidates the cache.
-	m.article.sel = textSelection{}
-	m.frameRenderCount = 0
+	m.article.Sel = articleview.Selection{}
+	m.article.SetFrameRenderCount(0)
 	frameView(m)
-	if m.frameRenderCount != 1 {
-		t.Errorf("selection change rendered %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Errorf("selection change rendered %d times, want exactly 1", m.article.FrameRenderCount())
 	}
 
 	// The link-mode toggle recomposes the article (contentGen bump) and must
 	// re-render; expanded mode shows the href as visible text, compact mode
 	// keeps only the clickable name (the href URL survives solely inside the
 	// name span's OSC 8 target, which ansi.Strip removes).
-	m.frameRenderCount = 0
-	m.linkExpand = false
+	m.article.SetFrameRenderCount(0)
+	m.SetLinkExpand(false)
 	m.recomposeArticle()
 	compact := frameView(m)
-	if m.frameRenderCount != 1 {
-		t.Errorf("link-mode toggle rendered %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Errorf("link-mode toggle rendered %d times, want exactly 1", m.article.FrameRenderCount())
 	}
 	if !strings.Contains(ansi.Strip(f1), "https://example.com/xx") {
 		t.Error("link-expanded frame should show the href as visible text")
@@ -150,17 +151,17 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 
 	// Toggling ascii mode changes the frame glyphs and must re-render; the
 	// ascii frame is then stable.
-	m.ascii = true
-	m.frameRenderCount = 0
+	m.SetAscii(true)
+	m.article.SetFrameRenderCount(0)
 	ascii := frameView(m)
-	if m.frameRenderCount != 1 {
-		t.Errorf("ascii-mode toggle rendered %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Errorf("ascii-mode toggle rendered %d times, want exactly 1", m.article.FrameRenderCount())
 	}
 	if ascii == f1 {
 		t.Error("ascii mode should change the frame (border glyphs)")
 	}
-	m.frameRenderCount = 0
-	if got := frameView(m); got != ascii || m.frameRenderCount != 0 {
+	m.article.SetFrameRenderCount(0)
+	if got := frameView(m); got != ascii || m.article.FrameRenderCount() != 0 {
 		t.Error("stable ascii frame should be served from the cache byte-identically")
 	}
 }
@@ -175,48 +176,48 @@ func TestFrameCacheByteIdenticalWithNativeSelectionLinkMode(t *testing.T) {
 func TestFrameCacheRecomposesOnImageLoadAtBoundary(t *testing.T) {
 	m, _ := newImageModel(t, nil)
 	m.sess.ImgCache = imgpkg.NewCache() // no image data yet
-	m.article = m.newArticleState(imageArticle())
+	m.article = m.article.Recompose(imageArticle())
 	m.view = viewArticle
-	if m.article.imgStart != -1 {
-		t.Fatalf("unloaded article should have no block, imgStart=%d", m.article.imgStart)
+	if m.article.ImgStart() != -1 {
+		t.Fatalf("unloaded article should have no block, imgStart=%d", m.article.ImgStart())
 	}
-	if m.article.viewport.YOffset != 0 {
-		t.Fatalf("expected the article at the top boundary, offset=%d", m.article.viewport.YOffset)
+	if m.article.Viewport.YOffset != 0 {
+		t.Fatalf("expected the article at the top boundary, offset=%d", m.article.Viewport.YOffset)
 	}
 
 	// A no-op wheel at the top is served from the cache before any image load.
 	frameView(m)
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 	m.Update(mouseWheel(0, false))
 	frameView(m)
-	if m.frameRenderCount != 0 {
-		t.Fatalf("no-op wheel at a boundary re-rendered %d times, want 0", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 0 {
+		t.Fatalf("no-op wheel at a boundary re-rendered %d times, want 0", m.article.FrameRenderCount())
 	}
 
 	// Delivering the block message recomposes the article (contentGen bump), so
 	// the next frame must re-render and show the loaded block, not the
 	// placeholder-free composition. The block lines are width-matched so compose
 	// serves them from the block cache.
-	contentW := m.article.viewport.Width
+	contentW := m.article.Viewport.Width
 	blockLines := []string{strings.Repeat("I", contentW), strings.Repeat("I", contentW)}
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 	m.Update(imgpkg.BlockMsg{Key: imageArticle().ImageURL, Lines: blockLines})
 	got := frameView(m)
-	if m.frameRenderCount != 1 {
-		t.Errorf("image-load recompose rendered %d times, want exactly 1", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 1 {
+		t.Errorf("image-load recompose rendered %d times, want exactly 1", m.article.FrameRenderCount())
 	}
-	if m.article.imgStart < 0 {
-		t.Fatalf("lead image block not composed after load: imgStart=%d", m.article.imgStart)
+	if m.article.ImgStart() < 0 {
+		t.Fatalf("lead image block not composed after load: imgStart=%d", m.article.ImgStart())
 	}
 	if !strings.Contains(got, strings.Repeat("I", contentW)) {
 		t.Errorf("frame after the load must show the new block: %q", got)
 	}
 
 	// The recomposed frame is cache-stable: another boundary no-op stays cached.
-	m.frameRenderCount = 0
+	m.article.SetFrameRenderCount(0)
 	m.Update(mouseWheel(0, false))
 	frameView(m)
-	if m.frameRenderCount != 0 {
-		t.Errorf("no-op wheel after recompose re-rendered %d times, want 0", m.frameRenderCount)
+	if m.article.FrameRenderCount() != 0 {
+		t.Errorf("no-op wheel after recompose re-rendered %d times, want 0", m.article.FrameRenderCount())
 	}
 }
