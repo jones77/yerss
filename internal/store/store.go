@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
-	"yerss/internal/textutil"
 	_ "github.com/glebarez/go-sqlite"
+	"yerss/internal/textutil"
 )
 
 // Article is a single stored feed item.
@@ -322,13 +322,23 @@ func (s *Store) LastRefreshedAt() (time.Time, error) {
 // restore the list cursor and, when applicable, the open article and its scroll
 // position. View is "list" or "article"; HeaderKey is the day-group key
 // ("20060102" or "undated") when the cursor sits on a day header, otherwise
-// ArticleID names the selected (or open) article and ArticleOffset is its
-// viewport scroll offset.
+// ArticleID names the selected (or open) article. ArticleOffset is the viewport
+// scroll offset at quit; because the raw offset is measured against the fully
+// composed layout and a restart re-composes from placeholders first, the
+// position is also pinned by content: ArticleBlock is the URL of the image
+// block the offset sits inside (photo or caption), or ArticleAnchor is the
+// leading text of the first content line at or below the offset with
+// ArticleGap the blank lines skipped before it. A restart relocates the block
+// URL or re-finds the anchor line in the fresh placeholder layout, where the
+// same content line lives at a different row.
 type LastSelection struct {
 	View          string `json:"view"`
 	ArticleID     int64  `json:"article_id,omitempty"`
 	HeaderKey     string `json:"header_key,omitempty"`
 	ArticleOffset int    `json:"article_offset,omitempty"`
+	ArticleBlock  string `json:"article_block,omitempty"`
+	ArticleAnchor string `json:"article_anchor,omitempty"`
+	ArticleGap    int    `json:"article_gap,omitempty"`
 }
 
 // SaveLastSelection persists the reader selection under a fixed key.
@@ -359,6 +369,41 @@ func (s *Store) LoadLastSelection() (LastSelection, error) {
 		return LastSelection{}, err
 	}
 	return sel, nil
+}
+
+// SaveLinkExpandMode persists the reader's link-expand choice under a fixed
+// state-table key.
+func (s *Store) SaveLinkExpandMode(expanded bool) error {
+	data, err := json.Marshal(struct {
+		Expanded bool `json:"expanded"`
+	}{Expanded: expanded})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+INSERT INTO state (key, value) VALUES ('link_expand_mode', ?)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value`, string(data))
+	return err
+}
+
+// LoadLinkExpandMode returns the previously saved link-expand choice, or false
+// (compact) when none has been saved.
+func (s *Store) LoadLinkExpandMode() (bool, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM state WHERE key = 'link_expand_mode'`).Scan(&v)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var val struct {
+		Expanded bool `json:"expanded"`
+	}
+	if err := json.Unmarshal([]byte(v), &val); err != nil {
+		return false, err
+	}
+	return val.Expanded, nil
 }
 
 // HasVerifiedFeed reports whether at least one feed has ever been successfully

@@ -2,13 +2,18 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal/app"
+	"yerss/internal/config"
 	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/compose"
@@ -608,5 +613,109 @@ func TestFitHeaderLinesIsMaxAcrossModes(t *testing.T) {
 	}
 	if got := m.article.FitHeaderLines(); got != want {
 		t.Errorf("fitHeaderLines = %d, want the tallest header across modes (%d)", got, want)
+	}
+}
+
+func TestLinkExpandModePersistsAcrossRestart(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	st := openSharedStore(t)
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "guid-persist",
+		Title:   "persist-title",
+		Link:    "https://example.com/article",
+		Content: `<p>hello [world](https://example.com/post) end</p>`,
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+
+	// Session 1: open the article, toggle to expanded, quit.
+	m1 := modelOn(t, st)
+	m1.article = m1.article.Recompose(a)
+	m1.view = viewArticle
+	m1.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if !strings.Contains(bodyText(m1), "example.com/post") {
+		t.Fatalf("expected expanded after x: %q", bodyText(m1))
+	}
+	m1.persistSelection()
+
+	// Session 2: a fresh model runs Init, which loads the saved mode before
+	// the selection restore, so the reopened article composes in expanded mode.
+	m2 := modelOn(t, st)
+	_ = m2.Init()
+	if m2.view != viewArticle {
+		t.Fatalf("expected article view after restart, got %d", m2.view)
+	}
+	if !m2.linkExpand {
+		t.Errorf("restored linkExpand = false, want true")
+	}
+	first := strings.TrimRight(ansi.Strip(m2.article.Lines()[0]), " ")
+	if !strings.Contains(first, "example.com/article") {
+		t.Errorf("first content line = %q, want the URL-above-title header", first)
+	}
+	if strings.Contains(first, "example.com/post") {
+		t.Errorf("first content line leaks the body link URL: %q", first)
+	}
+	if got := strings.TrimSpace(ansi.Strip(m2.article.Lines()[1])); got != "" {
+		t.Errorf("second content line = %q, want a single blank line", got)
+	}
+	if got := strings.TrimRight(ansi.Strip(m2.article.Lines()[2]), " "); got != "persist-title" {
+		t.Errorf("third content line = %q, want the title", got)
+	}
+}
+
+func TestLinkExpandToggleDoesNotTouchConfigFile(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	orig := "# sentinel config — no schema header, untouched by migrate\n[display]\ntheme = \"dark\"\n"
+	if err := os.WriteFile(cfgPath, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	m := New(app.New(cfg, st))
+	m.width = 80
+	m.height = 24
+
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "guid-config",
+		Title:   "cfg",
+		Content: `<p>hello [world](https://example.com/post) end</p>`,
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.article.Recompose(a)
+	m.view = viewArticle
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m.persistSelection()
+
+	got, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != orig {
+		t.Errorf("config file changed after toggle+quit:\n got: %q\nwant: %q", got, orig)
+	}
+
+	expanded, err := st.LoadLinkExpandMode()
+	if err != nil {
+		t.Fatalf("LoadLinkExpandMode: %v", err)
+	}
+	if !expanded {
+		t.Errorf("mode was not recorded in the state table after toggle+quit")
 	}
 }

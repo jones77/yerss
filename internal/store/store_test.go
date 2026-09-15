@@ -916,6 +916,40 @@ func TestLastSelectionRoundtrip(t *testing.T) {
 	}
 }
 
+func TestLinkExpandModeRoundtrip(t *testing.T) {
+	st := newTestStore(t)
+
+	zero, err := st.LoadLinkExpandMode()
+	if err != nil {
+		t.Fatalf("LoadLinkExpandMode on empty store: %v", err)
+	}
+	if zero {
+		t.Errorf("expected compact on empty store, got expanded")
+	}
+
+	if err := st.SaveLinkExpandMode(true); err != nil {
+		t.Fatalf("SaveLinkExpandMode(true): %v", err)
+	}
+	got, err := st.LoadLinkExpandMode()
+	if err != nil {
+		t.Fatalf("LoadLinkExpandMode after save true: %v", err)
+	}
+	if !got {
+		t.Errorf("roundtrip expanded = %v, want true", got)
+	}
+
+	if err := st.SaveLinkExpandMode(false); err != nil {
+		t.Fatalf("SaveLinkExpandMode(false): %v", err)
+	}
+	got, err = st.LoadLinkExpandMode()
+	if err != nil {
+		t.Fatalf("LoadLinkExpandMode after save false: %v", err)
+	}
+	if got {
+		t.Errorf("overwrite roundtrip expanded = %v, want false", got)
+	}
+}
+
 func TestUpsertArticleReturnedIDMatchesRow(t *testing.T) {
 	st := newTestStore(t)
 	a := sampleArticle()

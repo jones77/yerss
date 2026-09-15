@@ -53,8 +53,10 @@ URL open the link.
 The system SHALL provide an `x` key binding in the article view that toggles
 between compact and expanded link display. Pressing `x` SHALL immediately
 re-render the open article's links in the other mode without re-scrolling the
-reader. The chosen mode SHALL persist for the rest of the session across article
-switches, starting in compact mode.
+reader. The chosen mode SHALL persist across article switches within a session
+and SHALL be saved to the application's SQLite `state` table when the app quits,
+so a restart reopens in the same mode instead of falling back to compact. A
+first start with no saved mode SHALL begin in compact mode.
 
 The toggle SHALL preserve the reading position: the content line that was the
 first visible line in the viewport before the toggle SHALL remain the first
@@ -103,9 +105,14 @@ whose block is already composed at the current width.
 - **WHEN** the user toggles to expanded mode, closes the article, and opens another article
 - **THEN** the new article renders in expanded mode
 
-#### Scenario: Default state is compact
+#### Scenario: Mode persists across restarts
 
-- **WHEN** the application starts and the user opens an article without pressing `x`
+- **WHEN** the user toggles to expanded mode, quits the app, and starts it again
+- **THEN** the first article opened renders in expanded mode, without the user pressing `x`
+
+#### Scenario: Default state is compact on first start
+
+- **WHEN** the application starts with no saved link-expand mode in its `state` table and the user opens an article without pressing `x`
 - **THEN** the article renders in compact mode
 
 #### Scenario: Toggle keeps the first visible line anchored
@@ -192,3 +199,56 @@ punctuation) meets the following text.
 
 - **WHEN** a compact-mode link whose name ends in punctuation is hidden and the paragraph re-wraps
 - **THEN** no extra space appears between the punctuation and the following text
+
+### Requirement: Expanded header shows the article URL above the title
+
+In expanded link mode the reader's header SHALL render the article's URL as its
+first line, then a single blank line, then the title line that compact mode shows
+first. In compact mode the URL line SHALL be omitted entirely so the title is the
+first header line. The URL line SHALL be clickable (an OSC 8 hyperlink) and SHALL
+show the article's own link target, not a per-body-link URL. The one-blank-line
+separation SHALL be a single vertical space between the URL and the title.
+
+#### Scenario: Expanded header shows URL then title
+
+- **WHEN** the reader is in expanded mode and an article with a link is open
+- **THEN** the header renders the article's URL as its top line, followed by one blank line, then the title line
+
+#### Scenario: Compact header omits the URL line
+
+- **WHEN** the reader is in compact mode and an article with a link is open
+- **THEN** the header's first line is the article title, with no URL line above it
+
+#### Scenario: Restored expanded mode renders the URL-above-title header
+
+- **WHEN** the app restarts in expanded mode (the mode was persisted in the `state` table) and the user opens an article
+- **THEN** the article's header renders with the URL line above the title, with one blank line between them
+
+### Requirement: Link-expand mode is persisted as runtime state
+
+The system SHALL save the current compact/expanded choice to the SQLite `state`
+table when the app quits, in a key independent of the config file, and SHALL load
+it at startup before the first article composes so the saved mode drives the
+rendered header. The saved value SHALL be a runtime state: toggling `x` SHALL
+never write to the config file. When no saved value exists the app SHALL start in
+compact mode.
+
+#### Scenario: Quit saves the mode
+
+- **WHEN** the user toggles to expanded mode and quits the app
+- **THEN** the `state` table records expanded mode
+
+#### Scenario: Restart restores the saved mode
+
+- **WHEN** the app starts and the `state` table records expanded mode
+- **THEN** the reader operates in expanded mode for the whole session, including the first article opened, without pressing `x`
+
+#### Scenario: Toggling does not touch the config file
+
+- **WHEN** the user presses `x` to change mode and quits
+- **THEN** the mode is recorded only in the `state` table and no config file is written or modified
+
+#### Scenario: No saved mode means compact
+
+- **WHEN** the app starts with an empty `state` table entry for the mode
+- **THEN** the reader operates in compact mode

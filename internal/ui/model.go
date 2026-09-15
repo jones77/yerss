@@ -111,10 +111,14 @@ func (m *Model) SetLinkExpand(v bool) {
 
 // Init loads articles, restores the saved reader selection (firing the
 // restored article's lead-image load), and kicks off a startup refresh when
-// the gate allows.
+// the gate allows. The persisted link-expand mode is applied before the
+// selection is restored, so a reopened article composes in the saved mode.
 func (m *Model) Init() tea.Cmd {
 	if status := m.list.Load(); status != "" {
 		m.setStatus(status)
+	}
+	if expanded, err := m.sess.LoadLinkExpandMode(); err == nil {
+		m.SetLinkExpand(expanded)
 	}
 	imgLoad := m.restoreSelection()
 	last, err := m.sess.LastRefreshedAt()

@@ -20,6 +20,7 @@ func (m *Model) persistSelection() {
 		sel.ArticleID, sel.HeaderKey = m.list.SelectionForCursor()
 	}
 	_ = m.sess.SaveSelection(sel)
+	_ = m.sess.SaveLinkExpandMode(m.linkExpand)
 }
 
 // restoreSelection repositions the list cursor to the previously saved

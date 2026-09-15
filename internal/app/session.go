@@ -81,6 +81,17 @@ func (s *Session) LoadSelection() (store.LastSelection, error) {
 	return s.store.LoadLastSelection()
 }
 
+// SaveLinkExpandMode persists the reader's link-expand choice.
+func (s *Session) SaveLinkExpandMode(expanded bool) error {
+	return s.store.SaveLinkExpandMode(expanded)
+}
+
+// LoadLinkExpandMode restores the saved link-expand choice, false (compact)
+// when none has been saved.
+func (s *Session) LoadLinkExpandMode() (bool, error) {
+	return s.store.LoadLinkExpandMode()
+}
+
 // LastRefreshedAt delegates to the store.
 func (s *Session) LastRefreshedAt() (time.Time, error) { return s.store.LastRefreshedAt() }
 
