@@ -187,6 +187,13 @@ func (s *State) ToggleLinkExpand() bool {
 	}
 	s.LinkExpand = !s.LinkExpand
 	s.RecomposeInPlace()
+	// At the very top of the article, the toggle shows the article's new first
+	// line: expanding prepends the URL header above the title, so staying at
+	// offset 0 keeps the URL in view instead of re-anchoring on the title and
+	// scrolling it off. RecomposeInPlace already left the offset at 0 here.
+	if oldOffset == 0 {
+		return s.LinkExpand
+	}
 	if blockRow >= 0 {
 		for i := range s.imageBlocks {
 			if s.imageBlocks[i].URL == blockURL {

@@ -81,7 +81,12 @@ first start with no saved mode SHALL begin in compact mode.
 The toggle SHALL preserve the reading position: the content line that was the
 first visible line in the viewport before the toggle SHALL remain the first
 visible line after the toggle, even though compact and expanded modes occupy
-different numbers of lines for the same link. The system SHALL anchor on the
+different numbers of lines for the same link. When the viewport is at the very
+top of the article so the header (the title in compact mode, the URL line in
+expanded mode) is the first visible line, the toggle SHALL keep the viewport at
+the top: expanding prepends the URL header above the title, so the viewport
+SHALL show that new first line rather than re-anchoring on the title and
+scrolling the URL off. The system SHALL anchor on the
 first visible content line's text when re-finding its position after the
 re-render. When the first visible content line is blank (a paragraph separator)
 or a line whose visible text is a bare URL — neither of which survives a mode
@@ -139,6 +144,16 @@ whose block is already composed at the current width.
 
 - **WHEN** the user has scrolled so the first visible content line is a link line (or any line) partway down the article and presses `x`
 - **THEN** the same content line is the first visible line after the toggle, instead of the reader jumping to whatever offset the total line-count change implies
+
+#### Scenario: Toggle at the top shows the expanded URL header
+
+- **WHEN** the viewport is at the very top of the article so the title is the first visible line, and the user presses `x` to expand
+- **THEN** the viewport stays at the top and the newly-prepended URL header line is the first visible line, rather than the viewport re-anchoring on the title and scrolling the URL off
+
+#### Scenario: Toggle back to compact at the top shows the title
+
+- **WHEN** the viewport is at the very top of the article so the URL header is the first visible line in expanded mode, and the user presses `x` to collapse
+- **THEN** the viewport stays at the top and the title is the first visible line again
 
 #### Scenario: Toggle keeps the bottom pinned when the article shrinks
 

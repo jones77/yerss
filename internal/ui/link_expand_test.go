@@ -285,6 +285,72 @@ func anchorToggleFixture(t *testing.T, n int) (*Model, *store.Store) {
 	return openTestArticle(t, "anchor-toggle", html.String())
 }
 
+// toggleTopFixture builds an article with a Link so the expanded header adds
+// the URL line above the title, and scrolls to the very top.
+func toggleTopFixture(t *testing.T) (*Model, *store.Store) {
+	t.Helper()
+	var html strings.Builder
+	for i := 1; i <= 30; i++ {
+		fmt.Fprintf(&html, `<p>paragraph %d text anchor%d [j](%s)</p>`, i, i, wrapURL)
+	}
+	m, st := newTestModel(t)
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "g-toggle-top",
+		Title:   "top-title",
+		Link:    "https://example.com/article",
+		Content: html.String(),
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.article.Recompose(a)
+	m.article.Viewport.SetYOffset(0)
+	return m, st
+}
+
+func TestLinkExpandToggleAtTopShowsURLHeader(t *testing.T) {
+	// The title is the first visible line; expanding prepends the URL header
+	// above it, and the viewport must show that new first line — not re-anchor
+	// on the title and scroll the URL off.
+	m, _ := toggleTopFixture(t)
+	if got := strings.TrimRight(ansi.Strip(m.article.Lines()[0]), " "); got != "top-title" {
+		t.Fatalf("first line before toggle = %q, want the title", got)
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if m.article.Viewport.YOffset != 0 {
+		t.Errorf("after x at the top: offset = %d, want 0 so the URL line shows", m.article.Viewport.YOffset)
+	}
+	first := strings.TrimSpace(ansi.Strip(m.article.Lines()[m.article.Viewport.YOffset]))
+	if !strings.Contains(first, "example.com/article") {
+		t.Errorf("first visible line after x = %q, want the expanded URL header", first)
+	}
+	if got := strings.TrimSpace(ansi.Strip(m.article.Lines()[2])); got != "top-title" {
+		t.Errorf("title line = %q, want it below the URL header", got)
+	}
+}
+
+func TestLinkExpandToggleAtTopCollapseStaysAtTop(t *testing.T) {
+	m, _ := toggleTopFixture(t)
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if !strings.Contains(bodyText(m), "example.com/article") {
+		t.Fatalf("expected expanded after x: %q", bodyText(m))
+	}
+
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+
+	if m.article.Viewport.YOffset != 0 {
+		t.Errorf("after collapsing at the top: offset = %d, want 0", m.article.Viewport.YOffset)
+	}
+	if got := strings.TrimRight(ansi.Strip(m.article.Lines()[0]), " "); got != "top-title" {
+		t.Errorf("first visible line after collapse = %q, want the title back at the top", got)
+	}
+}
+
 func TestLinkExpandToggleKeepsFirstVisibleLine(t *testing.T) {
 	m, _ := anchorToggleFixture(t, 30)
 	if strings.Contains(bodyText(m), "example.com") {
