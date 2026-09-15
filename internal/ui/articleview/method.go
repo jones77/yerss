@@ -83,7 +83,17 @@ func (s *State) RecomposeInPlace() {
 				break
 			}
 		}
-		s.Viewport.SetYOffset(compose.SnapAfterRecompose(oldOffset+inserted, vpH, s.imageBlocks, s.leadShown))
+		newOffset := oldOffset + inserted
+		// A reader in the header/top region — where a photo below the header is
+		// the normal open state, not a scrolled-past image — must not snap
+		// forward to a block whose top materialized mid-window, which would
+		// scroll the header off. The snap only applies once the reader is past
+		// the header.
+		if oldOffset < s.headerLines {
+			s.Viewport.SetYOffset(newOffset)
+		} else {
+			s.Viewport.SetYOffset(compose.SnapAfterRecompose(newOffset, vpH, s.imageBlocks, s.leadShown))
+		}
 	} else {
 		s.Viewport.SetYOffset(0)
 	}
@@ -119,6 +129,16 @@ func (s *State) AnchorAt(offset int) (blockURL, anchor string, gap int) {
 // caller falls back to the raw offset.
 func (s *State) RestoreAt(sel store.LastSelection) bool {
 	vpH := s.Viewport.Height
+	// A reader who quit at the very top of the article lands exactly there: the
+	// top is unambiguous across reflows, and the anchor mechanism would land a
+	// line lower (the title row minus the expanded header's blank gap), which a
+	// photo load landing just afterwards would snap forward past and scroll the
+	// header off. Offset 0 also matches compact mode and the toggle's top
+	// protection, and it keeps the expanded URL header visible.
+	if sel.ArticleOffset == 0 {
+		s.Viewport.SetYOffset(0)
+		return true
+	}
 	if sel.ArticleBlock != "" {
 		if i := s.URLIndex(sel.ArticleBlock); i >= 0 {
 			if rows := s.AnchorRows(); i < len(rows) {

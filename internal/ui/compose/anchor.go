@@ -103,6 +103,16 @@ func FindAnchorLine(lines []string, text string) (int, bool) {
 	if found && bestLen >= len(firstWord) && bestLen > 0 {
 		return best, true
 	}
+	// A reflow can split the anchor text across a line break: its first word is
+	// pulled to the end of the previous line while the rest starts the next, so
+	// none of the passes above match. Fall back to the earlier line of the pair
+	// whose two consecutive lines reconstruct the text.
+	for i := 0; i+1 < len(lines); i++ {
+		pair := strings.TrimSpace(xansi.Strip(lines[i])) + " " + strings.TrimSpace(xansi.Strip(lines[i+1]))
+		if strings.Contains(pair, text) {
+			return i, true
+		}
+	}
 	return 0, false
 }
 

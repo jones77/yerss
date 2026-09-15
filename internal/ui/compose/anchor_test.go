@@ -55,3 +55,25 @@ func TestFindAnchorLine(t *testing.T) {
 		t.Errorf("no-match scan should report false")
 	}
 }
+
+func TestFindAnchorLineSplitAcrossReflow(t *testing.T) {
+	// The anchor text was a full line in the old layout; after a reflow its
+	// first word moved to the end of the previous line and the rest begins the
+	// next. None of the exact/prefix/common-run passes match, so the split pair
+	// must be found on the earlier line.
+	text := "plane above provided live video of the vessel and the 11 men on board."
+	lines := []string{
+		"title",
+		"",
+		"early last September. A plane",
+		"above provided live video of the vessel and the 11 men on board. In",
+		"the video, a uniformed officer",
+	}
+	if idx, ok := FindAnchorLine(lines, text); !ok || idx != 2 {
+		t.Errorf("split anchor: got (%d, %v), want (2, true)", idx, ok)
+	}
+	// A text that no pair reconstructs still reports false.
+	if _, ok := FindAnchorLine(lines, "no such words exist here at all"); ok {
+		t.Error("split scan should report false for an absent anchor")
+	}
+}

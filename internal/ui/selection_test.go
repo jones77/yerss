@@ -289,6 +289,103 @@ func TestRestoreSelectionSurvivesStartupResize(t *testing.T) {
 	}
 }
 
+func TestRestoreSelectionTopExpandedStaysAtTop(t *testing.T) {
+	withLocalZone(t, time.UTC)
+	st := openSharedStore(t)
+	// The reported bug: an expanded-mode article whose header is the URL line
+	// plus a long wrapping title, and whose lead photo also opens the body, so
+	// it composes as a suppressed-lead block after a few intro lines (not a
+	// lead directly under the header). Quitting at the very top and restarting
+	// must land back at the very top once the photo load lands — not snap the
+	// viewport forward to the photo and scroll the header off.
+	a := store.Article{
+		FeedURL:  "https://example.com/feed.xml",
+		GUID:     "g-restore-top-expanded",
+		Title:    "The U.S. Has Killed 227 Civilians in Boat Strikes During \u201cA Year of Murders\u201d",
+		Author:   "Nick Turse",
+		Link:     "https://theintercept.com/2026/09/02/military-boat-strikes-killings-year/",
+		ImageURL: "https://example.com/lead.jpg",
+		Content: "<p>American troops have long plied the waters off the coast of West Africa, " +
+			"hunting for arms smugglers, drug runners, and the shadowy networks that supply them. " +
+			"But in the year since the United States dramatically escalated its patrols, the boats " +
+			"that crews have fired on have killed more than two hundred civilians.</p>" +
+			`<figure><img src="https://example.com/lead.jpg"><figcaption>Photo: Nick Turse</figcaption></figure>` +
+			"<p>The investigation drew on interviews with dozens of people inside and outside the military. " +
+			"Officials described a campaign that has grown more aggressive with each passing month, " +
+			"even as the civilian toll has mounted.</p>" +
+			"<p>Read more: [theintercept.com/2026/09/02/military-boat-strikes-killings-year](https://theintercept.com/2026/09/02/military-boat-strikes-killings-year/).</p>",
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetArticleImage(id, store.ArticleImage{
+		Position: 0, URL: a.ImageURL, Photo: pngBytes(t, 440, 440),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	full, err := st.GetArticle(id)
+	if err != nil || full == nil {
+		t.Fatalf("GetArticle(%d): %v", id, err)
+	}
+
+	// Session 1: expanded, photo loaded, sitting at the very top.
+	const realW, realH = 76, 22
+	m1 := modelOn(t, st)
+	m1.SetLinkExpand(true)
+	m1.article.SetSize(realW, realH)
+	m1.article = m1.article.Recompose(*full)
+	m1.view = viewArticle
+	drain(m1, m1.images.FireImageLoad(*full, &m1.article))
+	// The fixture must be the suppressed-lead geometry the bug needs: a single
+	// photo block that materializes BELOW the header, not a lead under it.
+	blocks := m1.article.ImageBlocks()
+	if len(blocks) != 1 {
+		t.Fatalf("expected one photo block, got %d", len(blocks))
+	}
+	if blocks[0].ImgStart <= m1.article.HeaderLines() {
+		t.Fatalf("fixture photo block starts at %d (header %d); want it below the header", blocks[0].ImgStart, m1.article.HeaderLines())
+	}
+	if blocks[0].ImgStart >= realH {
+		t.Fatalf("fixture photo block starts at %d; want it inside the 22-row window so the snap case applies", blocks[0].ImgStart)
+	}
+	m1.article.Viewport.SetYOffset(0)
+	m1.persistSelection()
+	sel, err := st.LoadLastSelection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel.ArticleOffset != 0 {
+		t.Fatalf("persisted offset = %d, want 0 (the top)", sel.ArticleOffset)
+	}
+
+	// Session 2: fresh model restores the expanded mode, restoreSelection runs
+	// at the hardcoded default size, the terminal reports its real size BEFORE
+	// the photo load lands (the real app's message ordering), then the load
+	// lands. The viewport must stay at the top through all of it.
+	m2 := modelOn(t, st)
+	m2.list.Load()
+	if expanded, err := m2.sess.LoadLinkExpandMode(); err == nil {
+		m2.SetLinkExpand(expanded)
+	}
+	imgLoad := m2.restoreSelection()
+	if m2.view != viewArticle {
+		t.Fatalf("expected article view after restore, got %d", m2.view)
+	}
+	_, cmd := m2.Update(tea.WindowSizeMsg{Width: realW, Height: realH})
+	drain(m2, imgLoad) // the photo load lands after the resize
+	drain(m2, cmd)
+	drain(m2, nil)
+
+	if got := m2.article.Viewport.YOffset; got != 0 {
+		t.Errorf("after restart at the top: offset = %d, want 0 so the header stays visible", got)
+	}
+	first := strings.TrimSpace(ansi.Strip(m2.article.Lines()[m2.article.Viewport.YOffset]))
+	if !strings.Contains(first, "theintercept.com/2026/09/02") {
+		t.Errorf("first visible line = %q, want the expanded URL header line", first)
+	}
+}
+
 func TestRestoreSelectionFallsBackWhenArticleGone(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	st := openSharedStore(t)
