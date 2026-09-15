@@ -10,6 +10,7 @@ import (
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/image"
+	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/imageview"
 	"yerss/internal/ui/listview"
@@ -48,6 +49,14 @@ type Model struct {
 	// switches, and keys the derivation cache so toggling recomposes. The
 	// articleview.State mirrors it in its own LinkExpand field for derivation.
 	linkExpand bool
+
+	// pendingRestore holds the saved article selection that was restored at the
+	// default size until the terminal's real size arrives. restoreSelection runs
+	// during Init at the hardcoded 80x24 geometry; the first WindowSizeMsg
+	// recomposes at the true size, and re-applying the anchor there (instead of
+	// preserving the numeric offset, which is meaningless across a width change)
+	// is what actually lands the reader on the saved line.
+	pendingRestore *store.LastSelection
 
 	feedOutcomes []feed.FeedOutcome
 
@@ -156,10 +165,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.article.SetSize(msg.Width, msg.Height)
 		var load tea.Cmd
 		if m.view == viewArticle {
-			offset := m.article.Viewport.YOffset
 			a := *m.article.Article()
+			offset := m.article.Viewport.YOffset
 			m.article = m.article.Recompose(a)
-			m.article.Viewport.SetYOffset(offset)
+			if sel := m.pendingRestore; sel != nil {
+				m.pendingRestore = nil
+				if !m.article.RestoreAt(*sel) {
+					m.article.Viewport.SetYOffset(sel.ArticleOffset)
+				}
+			} else {
+				m.article.Viewport.SetYOffset(offset)
+			}
 			load = m.images.EnsureImageSource(a, &m.article)
 		}
 		return m, load

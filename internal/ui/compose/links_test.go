@@ -188,3 +188,30 @@ func TestStripLinkHrefsLinklessPassesThrough(t *testing.T) {
 		t.Errorf("link-less text was modified:\n in: %q\nout: %q", in, out)
 	}
 }
+
+func TestStripLinkHrefsWrappedHrefLeavesNoWhitespaceOnlyLine(t *testing.T) {
+	// A link whose name ends a line while the href wraps to the next lines:
+	// the strip must consume the href's trailing fill padding and wrap
+	// newline, or a whitespace-only residual line survives and splits the
+	// paragraph during reflow (the compact-mode "Hegseth told" bug).
+	const w = 70
+	url := "https://example.com/very/long/path/that/exceeds/the/content/width/and/wraps/again"
+	md := "Hegseth [told](" + url + ") coalition partners that the new task force would continue the targeting and killing"
+	in := renderLink(t, md, w)
+	if !strings.Contains(in, "\n") {
+		t.Skip("width did not force a wrap")
+	}
+	stripped := StripLinkHrefs(in)
+	for i, l := range strings.Split(stripped, "\n") {
+		if strings.TrimSpace(ansi.Strip(l)) == "" {
+			t.Errorf("stripped output left whitespace-only line %d (href fill residual): %q", i, ansi.Strip(l))
+		}
+	}
+	if got := strings.Contains(ansi.Strip(stripped), url); got {
+		t.Errorf("URL text leaked into the visible output: %q", ansi.Strip(stripped))
+	}
+	out := strings.Join(strings.Fields(ansi.Strip(ReflowShortLines(stripped, w))), " ")
+	if !strings.Contains(out, "Hegseth told coalition partners") {
+		t.Errorf("name and following text not joined on one flow: %q", out)
+	}
+}

@@ -15,6 +15,7 @@ func (m *Model) persistSelection() {
 		if m.article.Article() != nil {
 			sel.ArticleID = m.article.ID()
 			sel.ArticleOffset = m.article.Viewport.YOffset
+			sel.ArticleBlock, sel.ArticleAnchor, sel.ArticleGap = m.article.AnchorAt(sel.ArticleOffset)
 		}
 	} else {
 		sel.ArticleID, sel.HeaderKey = m.list.SelectionForCursor()
@@ -39,7 +40,13 @@ func (m *Model) restoreSelection() tea.Cmd {
 	if sel.View == "article" && sel.ArticleID != 0 {
 		if full, err := m.sess.GetArticle(sel.ArticleID); err == nil && full != nil {
 			m.article = m.article.Recompose(*full)
-			m.article.Viewport.SetYOffset(sel.ArticleOffset)
+			if !m.article.RestoreAt(sel) {
+				m.article.Viewport.SetYOffset(sel.ArticleOffset)
+			}
+			// The first WindowSizeMsg re-applies the anchor at the terminal's
+			// real size; restoring at the default 80x24 geometry here is only a
+			// stopgap until that arrives.
+			m.pendingRestore = &sel
 			m.view = viewArticle
 			return m.images.FireImageLoad(*full, &m.article)
 		}

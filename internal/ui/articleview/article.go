@@ -217,6 +217,14 @@ func (s *State) computeDerivation(a store.Article, contentW int) Derivation {
 		for i, seg := range segments {
 			segments[i] = compose.ReflowShortLines(seg, contentW)
 		}
+	} else {
+		// Expanded mode keeps the URLs, but glamour pushes a URL that does not
+		// fit next to its name onto its own line, leaving the name line half
+		// empty. Re-flow such paragraphs so the URL starts on the name line
+		// and wraps at the content width, keeping each wrapped line clickable.
+		for i, seg := range segments {
+			segments[i] = compose.InlineLinkURLs(seg, contentW)
+		}
 	}
 	return Derivation{
 		content:        a.Content,

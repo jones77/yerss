@@ -3,6 +3,7 @@ package articleview
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 )
 
@@ -39,11 +40,13 @@ func (s *State) FlushRecompose(active bool) tea.Cmd {
 }
 
 // RecomposeInPlace re-composes the open article, preserving the user's reading
-// position: if the offset was already past the insertion point (the top of the
-// content), it is bumped by the number of inserted image lines and then snapped
-// so a load that landed while the user was reading at its position cannot leave
-// the offset inside a photo range or with an image's top materialized
-// mid-window.
+// position: the offset is bumped only by the lines the recompose inserted above
+// the viewport top — a block whose placeholder row sits below the current top
+// (a load that landed past the fold while the user read above it, or one below
+// the restored position on a restart) does not move the reading position — and
+// then snapped so a load that landed while the user was reading at its position
+// cannot leave the offset inside a photo range or with an image's top
+// materialized mid-window.
 func (s *State) RecomposeInPlace() {
 	s.recomposeCount++
 	oldOffset := s.Viewport.YOffset
@@ -56,6 +59,7 @@ func (s *State) RecomposeInPlace() {
 	// below already tracks the bottom through the inserted lines; the snap
 	// would be the only thing to move it.
 	atBottom := oldOffset > 0 && oldOffset >= oldLen-vpH
+	oldAnchors := s.anchorRows
 	a := *s.article
 	ns := s.Recompose(a)
 	*s = ns
@@ -63,12 +67,85 @@ func (s *State) RecomposeInPlace() {
 		s.Viewport.GotoBottom()
 		return
 	}
-	inserted := len(s.lines) - oldLen
 	if oldOffset > 0 {
+		// Insertions above the viewport top: the recompose shifts the reading
+		// position by however many lines were added above it. The first image
+		// whose old anchor row is at or below the old offset marks the
+		// boundary — everything above it was inserted above the top (its own
+		// anchor moving by exactly that sum), everything from it down was not.
+		// Without such an image the whole delta is above the top.
+		inserted := len(s.lines) - oldLen
+		for i, a := range oldAnchors {
+			if a >= oldOffset {
+				if i < len(s.anchorRows) {
+					inserted = s.anchorRows[i] - a
+				}
+				break
+			}
+		}
 		s.Viewport.SetYOffset(compose.SnapAfterRecompose(oldOffset+inserted, vpH, s.imageBlocks, s.leadShown))
 	} else {
 		s.Viewport.SetYOffset(0)
 	}
+}
+
+// AnchorAt captures the reading position at offset as content a restart can
+// relocate: when the offset sits inside a composed block's span (photo or
+// caption rows), the block's URL anchors it as a unit; otherwise the leading
+// text of the first content line at or below the offset, with the blank lines
+// skipped before it. It mirrors ToggleLinkExpand's anchor selection, so the
+// same position can be re-found in a fresh placeholder layout whose image
+// blocks have not materialized.
+func (s *State) AnchorAt(offset int) (blockURL, anchor string, gap int) {
+	if offset < 0 || offset >= len(s.lines) {
+		return "", "", 0
+	}
+	for i := range s.imageBlocks {
+		b := &s.imageBlocks[i]
+		if offset >= b.ImgStart && offset <= b.ImgEnd {
+			return b.URL, "", 0
+		}
+	}
+	anchor, gap, _ = compose.AnchorableLine(s.lines, URLsOf(s.links), offset)
+	return "", anchor, gap
+}
+
+// RestoreAt repositions a freshly re-composed article to the saved content
+// anchor: an image block anchors to the placeholder row the article reserves
+// for its URL (its top materializes at the viewport top when the block loads),
+// and a text anchor is re-found in the new placeholder layout and clamped back
+// by the saved gap. It returns false when the saved selection carries no usable
+// anchor — an offset-only selection saved before anchors existed — so the
+// caller falls back to the raw offset.
+func (s *State) RestoreAt(sel store.LastSelection) bool {
+	vpH := s.Viewport.Height
+	if sel.ArticleBlock != "" {
+		if i := s.URLIndex(sel.ArticleBlock); i >= 0 {
+			if rows := s.AnchorRows(); i < len(rows) {
+				if idx := rows[i]; idx >= 0 && idx <= len(s.lines)-vpH {
+					s.Viewport.SetYOffset(idx)
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if sel.ArticleAnchor == "" {
+		return false
+	}
+	idx, ok := compose.FindAnchorLine(s.lines, sel.ArticleAnchor)
+	if !ok {
+		return false
+	}
+	idx -= sel.ArticleGap
+	if maxOffset := len(s.lines) - vpH; idx > maxOffset {
+		idx = maxOffset
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	s.Viewport.SetYOffset(idx)
+	return true
 }
 
 // ToggleLinkExpand flips the compact/expanded link mode and re-composes the

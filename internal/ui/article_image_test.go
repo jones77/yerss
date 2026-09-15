@@ -213,10 +213,11 @@ func TestImageLoadRecomposesAndPreservesScroll(t *testing.T) {
 	if m.article.ImgStart() <= 0 {
 		t.Fatalf("image block not composed after load: imgStart=%d", m.article.ImgStart())
 	}
-	// The bumped offset (past the insertion point) lands inside the lead
-	// photo range, so the recompose snap moves it onto the caption.
-	if want := m.article.CapStart(); m.article.Viewport.YOffset != want {
-		t.Errorf("offset = %d, want %d (bumped then snapped onto the caption)", m.article.Viewport.YOffset, want)
+	// The block materializes below the viewport top, so the recompose keeps
+	// the reading position: the offset is bumped only by lines inserted above
+	// the top, and this block's anchor row sits below it.
+	if m.article.Viewport.YOffset != oldOffset {
+		t.Errorf("offset = %d, want %d (load below viewport top must not shift)", m.article.Viewport.YOffset, oldOffset)
 	}
 	_ = fr
 }
@@ -3211,7 +3212,7 @@ func TestOpenLoadsOnlyImagesNearViewport(t *testing.T) {
 		t.Fatalf("anchorRows = %d, want 4 (lead + 3 inline)", len(m.article.AnchorRows()))
 	}
 
-	cmd := m.images.FireImageLoad(a,&m.article)
+	cmd := m.images.FireImageLoad(a, &m.article)
 	if cmd == nil {
 		t.Fatal("open should fire loads for the images in or near the viewport")
 	}
@@ -3235,7 +3236,7 @@ func TestScrollAdvancesFrontierLoadsNextImages(t *testing.T) {
 	m.sess.ImgCache = imgpkg.NewCache()
 	m.article = m.article.Recompose(a)
 	m.view = viewArticle
-	_ = m.images.FireImageLoad(a,&m.article)
+	_ = m.images.FireImageLoad(a, &m.article)
 
 	// Scroll so inline2's block is within the lookahead margin below the
 	// fold: its load fires, while inline3 — still farther down — does not.
@@ -3271,7 +3272,7 @@ func TestBoundaryScrollIsNoop(t *testing.T) {
 	m.sess.ImgCache = imgpkg.NewCache()
 	m.article = m.article.Recompose(a)
 	m.view = viewArticle
-	_ = m.images.FireImageLoad(a,&m.article)
+	_ = m.images.FireImageLoad(a, &m.article)
 
 	// At the very top, pressing up again moves nothing and fires nothing.
 	if got := m.article.Viewport.YOffset; got != 0 {
@@ -3312,7 +3313,7 @@ func TestDeferredNativeRenderFiresWhenScrolledIntoView(t *testing.T) {
 	m.sess.ImgPhotos = imgpkg.NewPhotos()
 	m.article = m.article.Recompose(a)
 	m.view = viewArticle
-	_ = m.images.FireImageLoad(a,&m.article)
+	_ = m.images.FireImageLoad(a, &m.article)
 
 	// Scroll so inline2's load is fired, then back to the top so its block is
 	// beyond the lookahead margin again before the photo arrives.

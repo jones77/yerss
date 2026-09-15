@@ -29,9 +29,82 @@ type linkSpan struct {
 // whole: its leading space and every wrapped continuation line.
 func StripLinkHrefs(s string) string {
 	segs := ScanANSI(s)
+	order, byTarget := collectLinkSpans(s, segs)
+	units := groupLinkUnits(s, segs, order, byTarget)
 
-	// Collect one span per OSC 8 hyperlink open, grouped by target in
-	// occurrence order.
+	var drops [][2]int
+	for _, u := range order {
+		for _, un := range units[u] {
+			if !un.drop {
+				continue
+			}
+			first, last := byTarget[u][un.first], byTarget[u][un.last]
+			// Extend the drop back over the href unit's leading space: the
+			// nearest preceding text runs, provided each is pure whitespace on
+			// a single line (glamour's styled separator and line-fill padding).
+			// A run carrying a newline is a wrap boundary, so a wrapped href
+			// starts at its OSC 8 open; a run with real text ends the walk.
+			dropStart := first.openStart
+			for k := first.openSeg - 1; k >= 0; k-- {
+				if segs[k].Kind != SegText {
+					continue
+				}
+				t := s[segs[k].Start:segs[k].End]
+				if !strings.Contains(t, "\n") && strings.TrimSpace(t) == "" {
+					dropStart = segs[k].Start
+					continue
+				}
+				break
+			}
+			// The drop runs through the href unit's closing OSC 8 (or to the
+			// end of the string when unterminated), and — when nothing but
+			// styled whitespace separates the close from the line's newline —
+			// through that fill padding and the wrap newline too. Without the
+			// extension a wrapped href that ends mid-line leaves a
+			// whitespace-only residual line that later splits the paragraph.
+			// Real text after the close on the same line (a same-line href
+			// followed by more words) must survive, so the extension is
+			// limited to the first newline.
+			dropEnd := last.closeEnd
+			if dropEnd < len(s) {
+				end := len(s)
+				if nl := strings.IndexByte(s[dropEnd:], '\n'); nl >= 0 {
+					end = dropEnd + nl
+				}
+				if strings.TrimSpace(textBetween(s, segs, dropEnd, end)) == "" {
+					dropEnd = end
+					if dropEnd < len(s) {
+						dropEnd++ // swallow the wrap newline
+					}
+				}
+			}
+			drops = append(drops, [2]int{dropStart, dropEnd})
+		}
+	}
+
+	if len(drops) == 0 {
+		return s
+	}
+	sort.Slice(drops, func(a, b int) bool { return drops[a][0] < drops[b][0] })
+	var out strings.Builder
+	pos := 0
+	for _, d := range drops {
+		if d[1] <= d[0] || d[0] < pos {
+			continue
+		}
+		out.WriteString(s[pos:d[0]])
+		pos = d[1]
+	}
+	out.WriteString(s[pos:])
+	return out.String()
+}
+
+// collectLinkSpans returns the distinct OSC 8 hyperlink targets in occurrence
+// order and one span per open, grouped by target. A span covers the segment
+// index and byte offset of its open, the byte offset just past its closing
+// OSC 8 (or the end of the string when unterminated), and the visible text it
+// wraps.
+func collectLinkSpans(s string, segs []ScanSeg) ([]string, map[string][]linkSpan) {
 	var order []string
 	byTarget := map[string][]linkSpan{}
 	for i := 0; i < len(segs); i++ {
@@ -66,69 +139,36 @@ func StripLinkHrefs(s string) string {
 		}
 		byTarget[u] = append(byTarget[u], sp)
 	}
+	return order, byTarget
+}
 
-	// Group each target's spans into units: within a unit, consecutive spans
-	// are wrapped continuation lines (they render as one link part); a real
-	// space between spans — glamour's href prefix on the same line, or text
-	// like " and " between two links — ends the unit. Units alternate name,
-	// href, name, href … per target.
-	var drops [][2]int
+// linkUnit groups a target's spans into one logical link part: within a unit,
+// consecutive spans are wrapped continuation lines (they render as one link
+// part); a real space between spans — glamour's href prefix on the same line,
+// or text like " and " between two links — ends the unit. Units alternate
+// name, href, name, href … per target; the drop flag marks the href units.
+type linkUnit struct {
+	drop        bool
+	first, last int
+}
+
+// groupLinkUnits partitions each target's spans into name/href units in
+// occurrence order.
+func groupLinkUnits(s string, segs []ScanSeg, order []string, byTarget map[string][]linkSpan) map[string][]linkUnit {
+	units := make(map[string][]linkUnit, len(order))
 	for _, u := range order {
 		spans := byTarget[u]
-		type unit struct {
-			drop       bool
-			first, last int
-		}
-		units := []unit{{first: 0, last: 0}}
+		us := []linkUnit{{first: 0, last: 0}}
 		for k := 1; k < len(spans); k++ {
-			if joinsUnit(s, segs, spans[k-1], spans[k], u, units[len(units)-1].drop) {
-				units[len(units)-1].last = k
+			if joinsUnit(s, segs, spans[k-1], spans[k], u, us[len(us)-1].drop) {
+				us[len(us)-1].last = k
 			} else {
-				units = append(units, unit{drop: !units[len(units)-1].drop, first: k, last: k})
+				us = append(us, linkUnit{drop: !us[len(us)-1].drop, first: k, last: k})
 			}
 		}
-		for _, un := range units {
-			if !un.drop {
-				continue
-			}
-			first, last := spans[un.first], spans[un.last]
-			// Extend the drop back over the href unit's leading space: the
-			// nearest preceding text run, provided it is pure whitespace on a
-			// single line (glamour's styled separator). A run carrying a
-			// newline is a wrap boundary, so a wrapped href starts at its
-			// OSC 8 open and the name's fill padding survives.
-			dropStart := first.openStart
-			for k := first.openSeg - 1; k >= 0; k-- {
-				if segs[k].Kind != SegText {
-					continue
-				}
-				t := s[segs[k].Start:segs[k].End]
-				if !strings.Contains(t, "\n") && strings.TrimSpace(t) == "" {
-					dropStart = segs[k].Start
-				}
-				break
-			}
-			// The drop runs through the href unit's closing OSC 8, or to the
-			// end of the string when unterminated.
-			drops = append(drops, [2]int{dropStart, last.closeEnd})
-		}
+		units[u] = us
 	}
-
-	if len(drops) == 0 {
-		return s
-	}
-	sort.Slice(drops, func(a, b int) bool { return drops[a][0] < drops[b][0] })
-	var out strings.Builder
-	pos := 0
-	for _, d := range drops {
-		if d[1] <= d[0] || d[0] < pos {
-			continue
-		}
-		out.WriteString(s[pos:d[0]])
-		pos = d[1]
-	}
-	out.WriteString(s[pos:])
-	return out.String()
+	return units
 }
 
 // joinsUnit reports whether span cur continues the same link part as prev
