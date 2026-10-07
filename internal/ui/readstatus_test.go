@@ -32,7 +32,7 @@ func TestShortArticleMarkedReadOnOpen(t *testing.T) {
 	}
 }
 
-func TestLongArticleNotMarkedOnOpen(t *testing.T) {
+func TestLongArticleNotMarkedReadOnOpen(t *testing.T) {
 	m, st := newTestModel(t)
 	content := strings.Repeat("<p>a long line of text to scroll through</p>\n", 200)
 	a := store.Article{
@@ -54,56 +54,59 @@ func TestLongArticleNotMarkedOnOpen(t *testing.T) {
 	if got.Read {
 		t.Fatal("long article should NOT be marked read on open")
 	}
+}
 
-	// First downward scroll (down arrow) marks it read.
-	m.updateArticle(tea.KeyMsg{Type: tea.KeyDown})
-	got, err = st.GetArticle(id)
-	if err != nil {
-		t.Fatal(err)
+func TestFirstMovementInEachDirectionMarksRead(t *testing.T) {
+	keys := map[string]tea.KeyMsg{
+		"up":    {Type: tea.KeyUp},
+		"down":  {Type: tea.KeyDown},
+		"pgup":  {Type: tea.KeyPgUp},
+		"pgdn":  {Type: tea.KeyPgDown},
+		"halfup":  {Type: tea.KeyCtrlU},
+		"halfdn":  {Type: tea.KeyCtrlD},
+		"top":   {Type: tea.KeyRunes, Runes: []rune("1")},
+		"bottom": {Type: tea.KeyRunes, Runes: []rune("G")},
 	}
-	if !got.Read {
-		t.Error("long article should be marked read on first downward scroll")
+	for dir, key := range keys {
+		name := dir
+		key := key
+		t.Run(name, func(t *testing.T) {
+			m, st := newTestModel(t)
+			content := strings.Repeat("<p>scrolling text content here</p>\n", 200)
+			a := store.Article{
+				FeedURL: "https://example.com/feed.xml",
+				GUID:    "g-move-" + name,
+				Title:   "move-" + name,
+				Content: content,
+			}
+			id, err := st.UpsertArticle(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.ID = id
+			m.article = m.article.Recompose(a)
+			if got, _ := st.GetArticle(id); got.Read {
+				t.Fatal("precondition: article should start unread")
+			}
+			m.updateArticle(key)
+			got, err := st.GetArticle(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Read {
+				t.Errorf("first %s movement should mark a long article read", name)
+			}
+		})
 	}
 }
 
-func TestDownwardScrollKeysMarkRead(t *testing.T) {
+func TestMovementMarksReadWhenPositionUnchanged(t *testing.T) {
 	m, st := newTestModel(t)
-	content := strings.Repeat("<p>more scrolling text content here</p>\n", 200)
-	a := store.Article{
-		FeedURL: "https://example.com/feed.xml",
-		GUID:    "g3",
-		Title:   "scroll",
-		Content: content,
-	}
-	id, err := st.UpsertArticle(a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.ID = id
-
-	for _, key := range []tea.KeyMsg{
-		{Type: tea.KeyPgDown},
-		{Type: tea.KeyCtrlF},
-		{Type: tea.KeyCtrlD},
-		{Type: tea.KeySpace},
-	} {
-		_ = st.SetRead(id, false)
-		m.article = m.article.Recompose(a)
-		m.updateArticle(key)
-		got, _ := st.GetArticle(id)
-		if !got.Read {
-			t.Errorf("key %s should mark read on downward scroll", key)
-		}
-	}
-}
-
-func TestUpwardScrollDoesNotMarkRead(t *testing.T) {
-	m, st := newTestModel(t)
-	content := strings.Repeat("<p>upward text content</p>\n", 200)
+	content := strings.Repeat("<p>text at the top of a long article</p>\n", 200)
 	a := store.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g4",
-		Title:   "up",
+		Title:   "top",
 		Content: content,
 	}
 	id, err := st.UpsertArticle(a)
@@ -112,10 +115,86 @@ func TestUpwardScrollDoesNotMarkRead(t *testing.T) {
 	}
 	a.ID = id
 	m.article = m.article.Recompose(a)
-	m.article.Viewport.ScrollDown(2)
+	if m.article.Viewport.YOffset != 0 {
+		t.Fatal("precondition: article should start at the top")
+	}
 	m.updateArticle(tea.KeyMsg{Type: tea.KeyUp})
-	got, _ := st.GetArticle(id)
+	if got, err := st.GetArticle(id); err != nil {
+		t.Fatal(err)
+	} else if !got.Read {
+		t.Error("a movement should mark read even when the position does not change")
+	}
+}
+
+func TestFurtherMovementKeepsArticleRead(t *testing.T) {
+	m, st := newTestModel(t)
+	content := strings.Repeat("<p>more scrolling text content here</p>\n", 200)
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "g5",
+		Title:   "read",
+		Content: content,
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+	m.article = m.article.Recompose(a)
+	m.updateArticle(tea.KeyMsg{Type: tea.KeyDown})
+	if got, err := st.GetArticle(id); err != nil {
+		t.Fatal(err)
+	} else if !got.Read {
+		t.Fatal("precondition: first movement should mark read")
+	}
+	for _, key := range []tea.KeyMsg{
+		{Type: tea.KeyDown},
+		{Type: tea.KeyPgDown},
+		{Type: tea.KeyUp},
+	} {
+		m.updateArticle(key)
+		got, err := st.GetArticle(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Read {
+			t.Errorf("key %s should leave an already-read article read", key)
+		}
+	}
+}
+
+func TestRestoreSavedOffsetDoesNotMarkRead(t *testing.T) {
+	st := openSharedStore(t)
+	a := store.Article{
+		FeedURL: "https://example.com/feed.xml",
+		GUID:    "g6",
+		Title:   "restore",
+		Content: strings.Repeat("<p>a long line to restore a saved offset over</p>\n", 200),
+	}
+	id, err := st.UpsertArticle(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = id
+
+	m1 := modelOn(t, st)
+	m1.article = m1.article.Recompose(a)
+	m1.view = viewArticle
+	m1.article.Viewport.ScrollDown(7)
+	m1.persistSelection()
+	// The session ended before the offset restore; the article is still unread.
+	if err := st.SetRead(id, false); err != nil {
+		t.Fatal(err)
+	}
+
+	m2 := modelOn(t, st)
+	m2.list.Load()
+	m2.restoreSelection()
+	got, err := st.GetArticle(id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.Read {
-		t.Error("upward scroll should not mark read")
+		t.Error("restoring a saved offset should not mark read")
 	}
 }

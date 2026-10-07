@@ -604,9 +604,17 @@ according to the compact or expanded link mode.
 - **WHEN** an article body contains `<a href="https://example.com/post">world</a>` in compact mode
 - **THEN** the body renders the styled link name `world` in the status-bar blue role without the URL; in expanded mode it renders `world https://example.com/post`
 
-### Requirement: Read-status on open and scroll
+### Requirement: Read-status on open and movement
 
-The system SHALL mark an article as read when it is opened and the entire article content fits within the viewport. If the article does not fit entirely within the viewport, the system SHALL NOT mark it read upon opening; instead, any single downward scroll action (down arrow, `j`, PgDn, Ctrl-F, Ctrl-D, Space) SHALL mark the article as read instantly.
+The system SHALL mark an article as read when the user opens it and the entire
+article content fits within the viewport, since no scrolling is possible. If
+the article content does not fit entirely within the viewport, the system SHALL
+mark it read upon the user's first scroll or jump action through the article —
+a line, page, or half-page scroll in either direction, a jump to the top or
+bottom, or a mouse-wheel scroll in either direction — regardless of whether the
+action actually changes the scroll position. Once marked read, further movement
+SHALL NOT change the read status. Restoring a previously saved scroll offset
+when an article is re-opened SHALL NOT count as movement.
 
 #### Scenario: Short article marked read on open
 
@@ -618,10 +626,27 @@ The system SHALL mark an article as read when it is opened and the entire articl
 - **WHEN** the user opens an article whose content exceeds the viewport height
 - **THEN** the article's read status remains false
 
-#### Scenario: Long article marked read on first downward scroll
+#### Scenario: Long article marked read on first movement
 
-- **WHEN** a partially viewed article is displayed and the user presses down arrow, `j`, PgDn, Ctrl-F, Ctrl-D, or Space
+- **WHEN** a long article is open and the user scrolls in either direction, or
+  jumps to the top or bottom
 - **THEN** the article's read status is set to true immediately
+
+#### Scenario: A scroll action marks read regardless of position change
+
+- **WHEN** the user issues a scroll action while reading a long article
+- **THEN** the article is marked read even if the scroll position does not
+  actually change
+
+#### Scenario: Restoring a saved offset is not movement
+
+- **WHEN** the app re-opens an article at a previously saved scroll offset
+- **THEN** the article is not marked read until the user scrolls or jumps
+
+#### Scenario: Further movement does not change read status
+
+- **WHEN** an article is already read and the user scrolls it
+- **THEN** the article remains read
 
 ### Requirement: Tag popup on list view
 

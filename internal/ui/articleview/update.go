@@ -28,11 +28,12 @@ const (
 	ActionHelp
 )
 
-// UpdateKey routes an article-view key message. Scrolls are applied to the
-// viewport through the image machinery and downward moves mark the article
-// read; actions that need Model-level state (popups, quit, back, link-expand
-// toggle) are returned for the caller to dispatch. The returned tea.Cmd is the
-// URL-open or copy command when the key maps to one.
+// UpdateKey routes an article-view key message. Scrolls and jumps are applied
+// to the viewport through the image machinery and mark the article read (the
+// first movement through a non-fitting article marks it); actions that need
+// Model-level state (popups, quit, back, link-expand toggle) are returned for
+// the caller to dispatch. The returned tea.Cmd is the URL-open or copy command
+// when the key maps to one.
 func (s *State) UpdateKey(msg tea.KeyMsg, keys map[string]config.Action) (Action, tea.Cmd) {
 	act, ok := keys[msg.String()]
 	if !ok {
@@ -51,20 +52,25 @@ func (s *State) UpdateKey(msg tea.KeyMsg, keys map[string]config.Action) (Action
 		s.MarkRead(s.sess.Store())
 	case config.MoveUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.ScrollUp(1) }, true)
+		s.MarkRead(s.sess.Store())
 	case config.PageDown:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.PageDown() }, false)
 		s.MarkRead(s.sess.Store())
 	case config.PageUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.PageUp() }, false)
+		s.MarkRead(s.sess.Store())
 	case config.HalfPageDown:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.HalfPageDown() }, false)
 		s.MarkRead(s.sess.Store())
 	case config.HalfPageUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.HalfPageUp() }, false)
+		s.MarkRead(s.sess.Store())
 	case config.Top:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.GotoTop() }, false)
+		s.MarkRead(s.sess.Store())
 	case config.Bottom:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.GotoBottom() }, false)
+		s.MarkRead(s.sess.Store())
 	case config.OpenURL:
 		if s.article.Link != "" {
 			return ActionOpenURL, OpenURLCmd(s.article.Link)
@@ -86,7 +92,8 @@ func (s *State) UpdateKey(msg tea.KeyMsg, keys map[string]config.Action) (Action
 }
 
 // UpdateMouse routes an article-view mouse message. Wheel scrolls the viewport
-// through the image machinery (downward wheel marks read); a right press
+// through the image machinery and mark the article read (in either direction);
+// a right press
 // returns ActionBack for the Model to navigate back to the list; left press
 // starts a text selection or opens a link under the cursor; drag and release
 // extend and copy the selection. It returns a copy/open command when the
@@ -95,6 +102,7 @@ func (s *State) UpdateMouse(msg tea.MouseMsg) (Action, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		cmd := s.images.ScrollArticle(s, func() { s.Viewport.ScrollUp(1) }, true)
+		s.MarkRead(s.sess.Store())
 		return ActionNone, cmd
 	case tea.MouseButtonWheelDown:
 		cmd := s.images.ScrollArticle(s, func() { s.Viewport.ScrollDown(1) }, true)

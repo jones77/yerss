@@ -140,3 +140,10 @@ Changes are committed at OpenSpec archive time. When archiving, stage the archiv
 change directory, the synced `openspec/specs/` paths, and the change's
 implementation files explicitly (not `git add -A`) and commit them in one message
 following the policy above.
+
+## TODO
+
+- Light theme is not fully implemented. In the light palette `Text` and `Bright`
+  are both ANSI 0, so read vs. unread list titles are distinguished only by bold
+  (unread bold, read plain), which some terminals render indistinctly. Assume the
+  user is on dark mode until a light-mode OpenSpec proposal addresses this.
