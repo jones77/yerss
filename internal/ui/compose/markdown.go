@@ -120,6 +120,14 @@ var listItemLineRe = regexp.MustCompile(`^[ \t]*(?:[•‣▪*+\-]|\d+[.)])[ \t]
 // word wraps right before it (e.g. the "”" of "on.”").
 var trailingPunctRe = regexp.MustCompile(`^[”’»\]\)\},;:!?….-]+$`)
 
+// leadingClosingPunctRe matches a line whose visible text starts with closing
+// punctuation that never takes a preceding space. Stripping a wrapped href can
+// leave such a line: glamour puts the href on its own line and the markdown
+// comma (or other punctuation) right after it, so once the href is dropped the
+// line begins with ", for …". Re-flow must butt it against the link name
+// rather than insert a space ("$195,869.52 ,").
+var leadingClosingPunctRe = regexp.MustCompile(`^[”’»\]\},;:!?…]`)
+
 // CellWidth returns the display width of a single rune, using the
 // grapheme-aware ANSI width primitive shared across the article rendering path so
 // visible-cell measurement is consistent everywhere it is needed.

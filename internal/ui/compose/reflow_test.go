@@ -108,6 +108,28 @@ func TestReflowAfterStripMissingSpace(t *testing.T) {
 	}
 }
 
+func TestReflowAfterStripLeadingComma(t *testing.T) {
+	// A link name ends a line, the href wraps to the next line, and the markdown
+	// comma is stranded right after the href: stripping the href leaves a line
+	// starting with ", for a grand …". Re-flow must butt the comma against the
+	// name ("$195,869.52,"), never insert a space before it.
+	url := "https://media.freedom.press/media/documents/2026-3443_cost_estimate_4.pdf"
+	md := "A public records request for similar records concerning a former police officer, Eric Klinko, was met with a comparatively modest estimate of [$195,869.52](" + url + "), for a grand total of nearly $2.7 million for both requests.)"
+	const w = 90
+
+	stripped := StripLinkHrefs(renderLink(t, md, w))
+	if strings.Contains(ansi.Strip(stripped), "freedom.press") {
+		t.Fatalf("href not stripped:\n%q", ansi.Strip(stripped))
+	}
+	out := ansi.Strip(ReflowShortLines(stripped, w))
+	if strings.Contains(out, " ,") {
+		t.Errorf("reflow left a space before the comma: %q", out)
+	}
+	if !strings.Contains(out, "$195,869.52, for a grand total") {
+		t.Errorf("comma not butted against the link name: %q", out)
+	}
+}
+
 func TestTrimStyledWSKeepsTrailingEscapes(t *testing.T) {
 	line := "\x1b[37mhello\x1b[m\x1b[37m   \x1b[m"
 	got := trimStyledWS(line)

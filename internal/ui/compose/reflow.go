@@ -72,7 +72,8 @@ func reflowParagraph(para []string, contentW int) []string {
 	for i, line := range para {
 		trimmed := trimStyledWS(line)
 		if i > 0 {
-			if trailingPunctRe.MatchString(strings.TrimSpace(xansi.Strip(trimmed))) {
+			vis := strings.TrimSpace(xansi.Strip(trimmed))
+			if trailingPunctRe.MatchString(vis) || leadingClosingPunctRe.MatchString(vis) {
 				b.WriteString(trimmed)
 				continue
 			}
