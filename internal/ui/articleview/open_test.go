@@ -4,7 +4,35 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"yerss/internal/store"
 )
+
+func TestDebugInfoSnapshot(t *testing.T) {
+	s, _ := newTestState(t)
+	s.width = 106
+	s.height = 31
+	s.Viewport.YOffset = 7
+	s.lines = make([]string, 200)
+	s.ascii = true
+	s.LinkExpand = true
+	s.article = &store.Article{ID: 42, Title: "Hello World", Link: "https://example.com/x"}
+
+	got := debugInfoSnapshot(&s)
+	for _, want := range []string{
+		"size: 106x31",
+		"scroll: 7/200",
+		"id: 42",
+		"title: Hello World",
+		"url: https://example.com/x",
+		"ascii: true",
+		"link_expand: true",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("snapshot missing %q:\n%s", want, got)
+		}
+	}
+}
 
 func TestOpenURLCmdArgumentSafety(t *testing.T) {
 	url := "https://example.com/a&calc" // metacharacters cmd.exe would interpret

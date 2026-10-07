@@ -1,11 +1,13 @@
 package articleview
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // URLActionMsg reports the outcome of an open/copy command.
@@ -65,4 +67,29 @@ func CopyTextCmd(text, label string) tea.Cmd {
 // copyURLCmd copies url to the system clipboard via a tea.Cmd.
 func CopyURLCmd(url string) tea.Cmd {
 	return CopyTextCmd(url, "copied URL")
+}
+
+// debugInfoSnapshot assembles the diagnostic block copied by Copy Debug Info.
+// The fixed key: value structure captures the terminal geometry, the article's
+// scroll position and rendered length, the article identity, and the rendering
+// mode flags needed to reproduce layout bugs.
+func debugInfoSnapshot(s *State) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "app: yerss\n")
+	fmt.Fprintf(&b, "size: %dx%d\n", s.width, s.height)
+	fmt.Fprintf(&b, "scroll: %d/%d\n", s.Viewport.YOffset, len(s.lines))
+	if s.article != nil {
+		fmt.Fprintf(&b, "id: %d\n", s.article.ID)
+		fmt.Fprintf(&b, "title: %s\n", ansi.Strip(s.article.Title))
+		fmt.Fprintf(&b, "url: %s\n", s.article.Link)
+	}
+	fmt.Fprintf(&b, "ascii: %t\n", s.ascii)
+	fmt.Fprintf(&b, "link_expand: %t\n", s.LinkExpand)
+	return b.String()
+}
+
+// CopyDebugInfoCmd copies a diagnostic snapshot of the article session to the
+// system clipboard via a tea.Cmd.
+func CopyDebugInfoCmd(s *State) tea.Cmd {
+	return CopyTextCmd(debugInfoSnapshot(s), "copied debug info")
 }

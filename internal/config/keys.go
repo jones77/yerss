@@ -32,6 +32,7 @@ const (
 	OpenURL          Action = "open_url"
 	CopyURL          Action = "copy_url"
 	CopyArticleText  Action = "copy_article_text"
+	CopyDebugInfo    Action = "copy_debug_info"
 	Help             Action = "help"
 )
 
@@ -81,6 +82,7 @@ var catalog = []actionSpec{
 	{OpenURL, []string{"o"}, []View{ViewArticle, ViewPopup}},
 	{CopyURL, []string{"c"}, []View{ViewArticle}},
 	{CopyArticleText, []string{"C"}, []View{ViewArticle}},
+	{CopyDebugInfo, []string{"D"}, []View{ViewArticle}},
 	{Help, []string{"?"}, []View{ViewList, ViewArticle, ViewPopup}},
 }
 

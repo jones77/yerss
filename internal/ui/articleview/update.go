@@ -23,6 +23,7 @@ const (
 	ActionOpenURL
 	ActionCopyURL
 	ActionCopyText
+	ActionCopyDebugInfo
 	ActionToggleLinkExpand
 	ActionHelp
 )
@@ -72,6 +73,8 @@ func (s *State) UpdateKey(msg tea.KeyMsg, keys map[string]config.Action) (Action
 		return ActionCopyURL, CopyURLCmd(s.article.Link)
 	case config.CopyArticleText:
 		return ActionCopyText, CopyTextCmd(ansi.Strip(strings.Join(s.lines, "\n")), "copied article text")
+	case config.CopyDebugInfo:
+		return ActionCopyDebugInfo, CopyDebugInfoCmd(s)
 	case config.TagPopup:
 		return ActionOpenTagPopup, nil
 	case config.LinkExpandToggle:
