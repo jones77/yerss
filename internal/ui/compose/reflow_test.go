@@ -84,6 +84,30 @@ func TestReflowAfterStripPunctuatedLinkName(t *testing.T) {
 	}
 }
 
+func TestReflowAfterStripMissingSpace(t *testing.T) {
+	// A link name that shares its line with the href while the following word
+	// wraps to the next line: stripping must not fuse the name with the word
+	// (the compact-mode "claimedsearching" bug).
+	url := "https://media.freedom.press/media/documents/2026-3444_cost_estimate_2.pdf"
+	md := "The city\u2019s response is beyond belief. In its response to the request on Monday, the Eugene Police Department [claimed](" + url + ") searching for records and processing the request would take at least 44,816 hours of staff time and cost approximately $2,484,599.04."
+	const w = 100
+
+	stripped := StripLinkHrefs(renderLink(t, md, w))
+	if strings.Contains(ansi.Strip(stripped), "freedom.press") {
+		t.Fatalf("href not stripped:\n%q", ansi.Strip(stripped))
+	}
+	out := ansi.Strip(ReflowShortLines(stripped, w))
+	if strings.Contains(out, "claimedsearching") {
+		t.Errorf("link name fused with following word: %q", out)
+	}
+	if strings.Contains(out, "claimed  searching") {
+		t.Errorf("reflow left a double space: %q", out)
+	}
+	if !strings.Contains(out, "claimed searching") {
+		t.Errorf("link name and following text not joined with a single space: %q", out)
+	}
+}
+
 func TestTrimStyledWSKeepsTrailingEscapes(t *testing.T) {
 	line := "\x1b[37mhello\x1b[m\x1b[37m   \x1b[m"
 	got := trimStyledWS(line)

@@ -73,7 +73,13 @@ func StripLinkHrefs(s string) string {
 				}
 				if strings.TrimSpace(textBetween(s, segs, dropEnd, end)) == "" {
 					dropEnd = end
-					if dropEnd < len(s) {
+					// Swallow the wrap newline only when the href is the sole
+					// non-whitespace content on its opening line. When real text
+					// precedes the dropped href on that line ("... claimed"), the
+					// newline is the only word separator left, so it must stay and
+					// let the re-wrap re-join the two with a single space.
+					lineStart := strings.LastIndexByte(s[:dropStart], '\n') + 1
+					if strings.TrimSpace(textBetween(s, segs, lineStart, dropStart)) == "" && dropEnd < len(s) {
 						dropEnd++ // swallow the wrap newline
 					}
 				}
