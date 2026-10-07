@@ -78,6 +78,11 @@ func decodeCapped(data []byte) (image.Image, error) {
 	return img, nil
 }
 
+// DecodeCapped decodes photo bytes and applies the same width cap the caching
+// paths use, so a caller that holds raw photo bytes but no decoded bitmap can
+// obtain the identical decoded image (and cache it) for a preview or render.
+func DecodeCapped(data []byte) (image.Image, error) { return decodeCapped(data) }
+
 // fetchTimeout bounds a single image download. It is a variable so tests can
 // shorten it.
 var fetchTimeout = 15 * time.Second

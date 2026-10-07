@@ -2828,6 +2828,73 @@ func TestClippedNativePreviewRendersOnce(t *testing.T) {
 	}
 }
 
+func TestClippedNativePhotoWithoutDecodedCacheShowsPreview(t *testing.T) {
+	// The native path serves a width-matched stored halfblock and reads the raw
+	// photo without ever decoding it into the image cache, so a clipped photo
+	// can have raw bytes but no decoded bitmap. The visible rows must still show
+	// a preview (the bytes are decoded on demand), never a blank strip.
+	a := imageArticle()
+	a.ImageURL = "" // no lead, so the inline is the only image block
+	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 60)
+	m, _ := newImageModel(t, []string{"PREVIEW1", "PREVIEW2"})
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}
+	m.view = viewArticle
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	tall := make([]string, vpH+40)
+	esc := "\x1b_Ga=T,f=100,q=1,i=7,p=7,c=2,r=2;AAAA\x1b\\"
+	tall[0] = esc + "  "
+	for i := 1; i < len(tall); i++ {
+		tall[i] = "  "
+	}
+	m.sess.ImgNatives.Set(imgpkg.NativeKey("inline.jpg", contentW, vpH), tall)
+	m.sess.ImgPhotos.Set("inline.jpg", pngBytes(t, 40, 20))
+	m.article = m.article.Recompose(a)
+	inline := m.article.ImageBlocks()[0]
+	if !inline.NativeImg {
+		t.Fatal("inline block should be flagged native")
+	}
+	if _, ok := m.sess.ImgCache.Get("inline.jpg"); ok {
+		t.Fatal("precondition: decoded image must not be in the image cache")
+	}
+
+	m.article.Viewport.SetYOffset(inline.ImgStart)
+	view := frameView(m)
+	if !strings.Contains(view, "PREVIEW1") {
+		t.Errorf("clipped native photo with raw bytes but no decoded cache should show a preview, got: %q", view)
+	}
+}
+
+func TestNativePhotoFullyVisibleStaysNative(t *testing.T) {
+	// A native photo that fits entirely within the viewport keeps its native
+	// transmit; no preview is substituted even when the raw bytes are present.
+	a := imageArticle()
+	a.ImageURL = ""
+	a.Content = `<p>intro</p><p><img src="inline.jpg" alt="A"></p>` +
+		strings.Repeat("<p>long paragraph body text</p>", 60)
+	m, _ := newImageModel(t, []string{"PREVIEWX"})
+	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}
+	m.view = viewArticle
+	contentW, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
+	short := []string{"\x1b_Ga=T,f=100,q=1,i=7,p=7,c=2,r=2;AAAA\x1b\\  ", "  "}
+	m.sess.ImgNatives.Set(imgpkg.NativeKey("inline.jpg", contentW, vpH), short)
+	m.sess.ImgPhotos.Set("inline.jpg", pngBytes(t, 40, 20))
+	m.article = m.article.Recompose(a)
+	inline := m.article.ImageBlocks()[0]
+	if !inline.NativeImg {
+		t.Fatal("inline block should be flagged native")
+	}
+
+	m.article.Viewport.SetYOffset(inline.ImgStart)
+	view := frameView(m)
+	if strings.Contains(view, "PREVIEWX") {
+		t.Errorf("fully visible native photo must not show a preview, got: %q", view)
+	}
+	if !strings.Contains(view, "\x1b_Ga=T") {
+		t.Errorf("fully visible native photo should keep its transmit, got: %q", view)
+	}
+}
+
 func TestNativeImageClearDeletesScrolledOutByID(t *testing.T) {
 	m, _ := newImageModel(t, []string{"IMG1", "IMG2"})
 	m.sess.ImgNative = imgpkg.NativeRenderer{Protocol: imgpkg.ProtocolKitty}

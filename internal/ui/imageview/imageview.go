@@ -360,12 +360,23 @@ func (v *ImageView) SuppressClippedNativeTransmits(lines []string, view ArticleV
 // partially visible image is rendered at most once rather than once per frame
 // while the reader scrolls it through the fold — the synchronous UI-thread
 // render stays bounded by the image count, not by frame count. When the decoded
-// image is not cached the rows stay blank.
+// image is not cached it is decoded from the raw photo bytes on demand (and the
+// result cached), because the native path serves a width-matched stored block
+// and reads the raw photo without ever decoding it into the image cache; only
+// when neither is available do the rows stay blank.
 func (v *ImageView) previewClippedImage(lines []string, b compose.ImageBlock, view ArticleView) {
 	vp := view.ViewportY()
 	vpH := view.ViewportHeight()
 	vpW := view.ViewportWidth()
 	img, ok := v.sess.ImgCache.Get(b.URL)
+	if !ok {
+		if data, dok := v.sess.ImgPhotos.Get(b.URL); dok {
+			if decoded, derr := image.DecodeCapped(data); derr == nil {
+				v.sess.ImgCache.Set(b.URL, decoded)
+				img, ok = decoded, true
+			}
+		}
+	}
 	if !ok {
 		return
 	}

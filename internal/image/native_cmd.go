@@ -52,7 +52,9 @@ func NativeCmd(cache *Cache, native NativeRenderer, photos *Photos, natives *Nat
 // the source bytes are never re-decoded per candidate. When the halfblock path
 // already decoded the photo into cache the cached decoded image is reused and
 // the source bytes are not decoded again; only on a cache miss are they
-// decoded (via the same width cap the halfblock path applies). The attribution
+// decoded (via the same width cap the halfblock path applies) and the result
+// stored back into cache so the halfblock preview and later renders share the
+// one decode. The attribution
 // wraps at captionW, the standard caption width. It returns the fitted native
 // lines (image rows only; the UI centers them and appends the attribution).
 // Any render error propagates to the caller.
@@ -64,6 +66,7 @@ func renderNativeFitted(native NativeRenderer, cache *Cache, data []byte, url st
 		if err != nil {
 			return nil, err
 		}
+		cache.Set(url, src)
 	}
 	base := maxHeight - headerLines - 3
 	maxH := max(1, base-1)
