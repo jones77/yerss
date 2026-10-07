@@ -1807,7 +1807,7 @@ func TestSnapYOffsetAdjacentBlocksSkipGap(t *testing.T) {
 				// The inline is not adjacent: text occupies the separator, and
 				// the short image is fully visible so the bottom snap does not
 				// preempt the unchanged outcome.
-				bs = []compose.ImageBlock{lead, compose.ImageBlock{URL: "inline", ImgStart: 30, CapStart: 34, ImgEnd: 34}}
+				bs = []compose.ImageBlock{lead, {URL: "inline", ImgStart: 30, CapStart: 34, ImgEnd: 34}}
 			}
 			if got := compose.SnapYOffset(c.offset, c.vpH, c.before, bs, c.direction, false, true); got != c.want {
 				t.Errorf("compose.SnapYOffset(%d,%d,%d) = %d, want %d", c.offset, c.vpH, c.before, got, c.want)

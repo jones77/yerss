@@ -510,7 +510,11 @@ func TestLinkExpandToggleReflowReanchorsFirstWord(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		fmt.Fprintf(&html, "<p>filler paragraph %d with some words</p>", i)
 	}
-	html.WriteString(`<p>before [` + name + `](` + wrapURL + `) after</p>`)
+	html.WriteString(`<p>before [`)
+	html.WriteString(name)
+	html.WriteString(`](`)
+	html.WriteString(wrapURL)
+	html.WriteString(`) after</p>`)
 	for i := 0; i < 20; i++ {
 		fmt.Fprintf(&html, "<p>trailing paragraph %d with some words</p>", i)
 	}
