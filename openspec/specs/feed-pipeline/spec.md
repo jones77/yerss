@@ -191,7 +191,7 @@ The system SHALL store all articles in a SQLite database at `$XDG_DATA_HOME/yers
 
 ### Requirement: Article persistence across restarts
 
-The system SHALL persist every downloaded article in the SQLite database. Articles SHALL survive application restarts. Read status SHALL be persisted and restored on the next launch. Each article SHALL persist a nullable lead image URL captured from the article's `<enclosure>` or `media:thumbnail` metadata when present; articles without such metadata SHALL store a null image URL. When an article's lead image is fetched for display, the system SHALL persist the raw image bytes in the database so that subsequent opens and application restarts render the image without re-fetching from the network.
+The system SHALL persist every downloaded article in the SQLite database. Articles SHALL survive application restarts. Read status SHALL be persisted and restored on the next launch. Each article SHALL persist a nullable lead image URL captured from the article's `<enclosure>` or `media:thumbnail` metadata when present; articles without such metadata SHALL store a null image URL. Persistence of the fetched image's rendered block and photo bytes is specified by the `image-loading` capability, not here.
 
 #### Scenario: Articles survive restart
 
@@ -236,20 +236,6 @@ During feed parsing, the system SHALL extract a lead image URL for each article 
 
 - **WHEN** a feed item has no enclosure or media thumbnail but its HTML content contains `<img src="https://cdn.example.com/track.png">`
 - **THEN** the article has no lead image URL
-
-### Requirement: Additive schema migration for image columns
-
-The system SHALL add two nullable columns to the `articles` table: `image_url TEXT` (the publisher-attached image URL) and `image_data BLOB` (the fetched image bytes). The migration SHALL be idempotent: it SHALL check the existing column set before adding each column so that re-running the migration on an already-migrated database is a no-op. The migration SHALL not drop or alter existing columns or data.
-
-#### Scenario: Columns added on first migration
-
-- **WHEN** the database is opened and the `articles` table does not have an `image_url` or `image_data` column
-- **THEN** both columns are added as nullable (`TEXT` and `BLOB` respectively) and existing rows retain their data with null image URLs and image data
-
-#### Scenario: Migration idempotent on already-migrated database
-
-- **WHEN** the database is opened and the `articles` table already has both `image_url` and `image_data` columns
-- **THEN** the migration makes no changes to the schema
 
 ### Requirement: Automatic tagging from feed categories
 
