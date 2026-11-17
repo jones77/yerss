@@ -21,7 +21,7 @@ day is suffixed with an English ordinal (`1st`, `2nd`, `3rd`, `4th`, …). The
 header for the current local calendar day SHALL be prefixed with `today, ` and
 the header for the previous local calendar day SHALL be prefixed with
 `yesterday, `; older days and the `Undated` group SHALL be unprefixed. Day
-headers SHALL render entirely in the blue role: the rail corner, the dash
+headers SHALL render entirely in the teal role: the rail corner, the dash
 connector, and the date label. Each
 article row SHALL show the publication time at the start of the row in the
 user's local timezone (`--:--` when undated), as `HH:MM` by default and as
@@ -91,10 +91,10 @@ expanded articles).
 - **WHEN** the article list is displayed and articles exist on more than one day
 - **THEN** each day's articles are listed beneath a header for that day, with the most recent day first and articles reverse chronological within the day
 
-#### Scenario: Day header renders in the blue role
+#### Scenario: Day header renders in the teal role
 
 - **WHEN** a day header is rendered in dark mode
-- **THEN** the rail corner, the dash connector, and the date label render in ANSI color 12 (bright blue), and in ANSI color 4 (blue) in light mode
+- **THEN** the rail corner, the dash connector, and the date label render in ANSI color 14 (bright cyan), and in ANSI color 6 (cyan) in light mode
 
 #### Scenario: Article row shows time and title without bullets
 
@@ -568,7 +568,7 @@ equal-popularity tags ordered alphabetically (case-insensitive, so `apple`
 sorts before `Zoo`). The
 source-domain group SHALL be introduced by a non-selectable `Sources` subtitle
 and the category group by a non-selectable `Tags` subtitle, each shown only
-when its group is non-empty, rendered in the status-bar blue role (non-bold),
+when its group is non-empty, rendered in the status-bar teal role (non-bold),
 and occupying a single in-column grid cell, centered within its column, laid
 out in the same column-major
 flow as the tags so a subtitle never carries the selection cursor and the
@@ -638,7 +638,7 @@ popular, last occupied row of the last column).
 #### Scenario: Sources subtitle groups the news organizations
 
 - **WHEN** the tag popup displays source-domain tags alongside category tags
-- **THEN** a `Sources` subtitle renders above the source-domain tags and a `Tags` subtitle above the category tags, both in the non-bold status-bar blue role, centered in a single in-column grid cell
+- **THEN** a `Sources` subtitle renders above the source-domain tags and a `Tags` subtitle above the category tags, both in the non-bold status-bar teal role, centered in a single in-column grid cell
 
 #### Scenario: Subtitle only shown for a non-empty group
 
@@ -822,7 +822,7 @@ valid in all views and those valid in both the list and article views — SHALL
 be listed under Global. Actions valid only in the list view SHALL be listed
 under List view, and actions valid only in the article view SHALL be listed
 under Article view. Within each section the actions SHALL appear in catalog
-order, and each section heading SHALL be rendered in the blue role. The List
+order, and each section heading SHALL be rendered in the teal role. The List
 view and Article view sections SHALL be laid out in a second column to the
 right of the Global section, and the popup including its border SHALL NOT
 exceed 70 columns wide.
@@ -847,10 +847,10 @@ exceed 70 columns wide.
 - **WHEN** the Global section is rendered
 - **THEN** it lists every action that is not specific to a single view, including actions valid in all views (such as Quit, Back, Move Up, Move Down, Help) and navigation shared by the list and article views (such as Page Up, Page Down, Top, Bottom, Tag Popup)
 
-#### Scenario: Section headings use the blue role
+#### Scenario: Section headings use the teal role
 
 - **WHEN** a section heading is rendered
-- **THEN** it renders in the blue role (ANSI 12 in dark mode, ANSI 4 in light mode)
+- **THEN** it renders in the teal role (ANSI 14 in dark mode, ANSI 6 in light mode)
 
 #### Scenario: List and article sections form a second column
 
@@ -1340,8 +1340,8 @@ apply across the list, reader, and popup views:
 - **grey/dim role** — the colour `#707070` in both dark and light modes:
   the article border, rails, bullets, scrollbar track, image
   attribution, and muted popup text (such as plain tag counts and link URLs).
-- **blue role** — ANSI color 12 (bright blue) in dark mode and ANSI color 4
-  (blue) in light mode: the status bar, day headers, the inline text in the
+- **teal role** — ANSI color 14 (bright cyan) in dark mode and ANSI color 6
+  (cyan) in light mode: the status bar, day headers, the inline text in the
   article border (date, title, help hint, position indicator), the scrollbar
   thumb, and popup titles and popup borders.
 - **text role** — ANSI color 7 (white) in dark mode and ANSI color 0 (black)
@@ -1361,12 +1361,12 @@ modes (white on `#242424`, black on `#d3d3d3`).
 - **THEN** the article border, rails, bullets, scrollbar track,
   image attribution, and popup URLs render in `#707070`
 
-#### Scenario: Status, day headers, inline border text, scrollbar thumb, and popup chrome use the blue role
+#### Scenario: Status, day headers, inline border text, scrollbar thumb, and popup chrome use the teal role
 
 - **WHEN** the status bar, a day header, the article border's inline text, the scrollbar
   thumb, or a popup's title or border is rendered in dark mode
-- **THEN** it renders in ANSI color 12 (bright blue), and in ANSI color 4
-  (blue) in light mode
+- **THEN** it renders in ANSI color 14 (bright cyan), and in ANSI color 6
+  (cyan) in light mode
 
 #### Scenario: Unread titles use the bright role
 

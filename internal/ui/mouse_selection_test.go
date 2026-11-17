@@ -196,7 +196,7 @@ func TestSelectionHighlightRendering(t *testing.T) {
 func TestSelectionHighlightSpansLink(t *testing.T) {
 	// A selection crossing the link's SGR reset must re-assert reverse video
 	// instead of letting the link's reset end the highlight early.
-	line := "\x1b[37mbefore \x1b[m\x1b]8;;https://example.com/x\x07\x1b[94;1mlink\x1b[m\x1b]8;;\x07\x1b[37m after\x1b[m"
+	line := "\x1b[37mbefore \x1b[m\x1b]8;;https://example.com/x\x07\x1b[96;1mlink\x1b[m\x1b]8;;\x07\x1b[37m after\x1b[m"
 	sel := articleview.Selection{Active: true, AnchorX: 3, AnchorY: 0, CurX: 13, CurY: 0}
 	out := articleview.HighlightSelection([]string{line}, sel)
 	if len(out) != 1 {

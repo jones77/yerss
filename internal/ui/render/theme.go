@@ -16,8 +16,8 @@ import (
 //     (#707070 in both modes).
 //   - Selection: the selected-row background highlight, theme-aware
 //     (#242424 in dark mode, #d3d3d3 in light mode).
-//   - StatusBar: the blue role covering the status bar, border inline text,
-//     scrollbar thumb, and popup chrome (ANSI 12 bright blue / 4 blue).
+//   - StatusBar: the teal role covering the status bar, border inline text,
+//     scrollbar thumb, and popup chrome (ANSI 14 bright cyan / 6 cyan).
 type Palette struct {
 	Text      lipgloss.Color
 	Bright    lipgloss.Color
@@ -33,7 +33,7 @@ func DarkPalette() Palette {
 		Bright:    lipgloss.Color("15"),
 		Dim:       lipgloss.Color("#707070"),
 		Selection: lipgloss.Color("#2c2c2c"),
-		StatusBar: lipgloss.Color("12"),
+		StatusBar: lipgloss.Color("14"),
 	}
 }
 
@@ -44,7 +44,7 @@ func LightPalette() Palette {
 		Bright:    lipgloss.Color("0"),
 		Dim:       lipgloss.Color("#707070"),
 		Selection: lipgloss.Color("#565656"),
-		StatusBar: lipgloss.Color("4"),
+		StatusBar: lipgloss.Color("6"),
 	}
 }
 

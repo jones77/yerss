@@ -10,7 +10,7 @@ import (
 
 // styledLine is a line with plain text, a styled hyperlink, and more plain
 // text: "before link after" with the link wrapped in OSC 8 and a color.
-const styledLine = "\x1b[37mbefore \x1b[m\x1b]8;;https://example.com/x\x07\x1b[94;1mlink\x1b[m\x1b]8;;\x07\x1b[37m after\x1b[m"
+const styledLine = "\x1b[37mbefore \x1b[m\x1b]8;;https://example.com/x\x07\x1b[96;1mlink\x1b[m\x1b]8;;\x07\x1b[37m after\x1b[m"
 
 // reverseColumns walks a rendered line and reports, per display column, whether
 // reverse video is active when the column is drawn. It interprets just the SGR

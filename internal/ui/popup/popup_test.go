@@ -949,11 +949,11 @@ func TestHelpKeysStandOutInBright(t *testing.T) {
 	if !strings.Contains(help, "\x1b[97mctrl+c\x1b[0m") {
 		t.Errorf("keys should render in the bright role (ANSI 15): %q", help)
 	}
-	if !strings.Contains(help, "\x1b[1;94m Key Bindings \x1b[0m") {
-		t.Errorf("Key Bindings title should render bold in the chrome role (ANSI 12): %q", help)
+	if !strings.Contains(help, "\x1b[1;96m Key Bindings \x1b[0m") {
+		t.Errorf("Key Bindings title should render bold in the chrome role (ANSI 14): %q", help)
 	}
 	// Section headings stay in the chrome role but are no longer bold.
-	if !strings.Contains(help, "\x1b[94mGlobal\x1b[0m") {
+	if !strings.Contains(help, "\x1b[96mGlobal\x1b[0m") {
 		t.Errorf("section headings should render plain in the chrome role: %q", help)
 	}
 	for _, l := range strings.Split(help, "\n") {

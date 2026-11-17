@@ -37,14 +37,14 @@ func visible(s string) string {
 	return strings.TrimSpace(ansi.Strip(s))
 }
 
-func TestLinkColorsBlueInBothThemes(t *testing.T) {
+func TestLinkColorsTealInBothThemes(t *testing.T) {
 	cases := []struct {
 		style   string
 		nameSGR string
 		hrefSGR string
 	}{
-		{"dark", "\x1b[94;1m", "\x1b[94m"},
-		{"light", "\x1b[34;1m", "\x1b[34m"},
+		{"dark", "\x1b[96;1m", "\x1b[96m"},
+		{"light", "\x1b[36;1m", "\x1b[36m"},
 	}
 	for _, c := range cases {
 		out := renderLinkStyle(t, "[world](https://example.com/post)", 100, c.style)
@@ -117,9 +117,9 @@ func TestStripLinkHrefsESCTerminator(t *testing.T) {
 	// ESC-backslash terminator. Build the name/href pair by hand.
 	open := ansi.SetHyperlink("https://example.com/post")
 	closeSeq := "\x1b]8;;\x1b\\"
-	in := open + "\x1b[94;1mworld\x1b[m" + closeSeq +
+	in := open + "\x1b[96;1mworld\x1b[m" + closeSeq +
 		"\x1b[37m \x1b[m" +
-		"\x1b[94m" + open + "https://example.com/post" + closeSeq + "\x1b[m"
+		"\x1b[96m" + open + "https://example.com/post" + closeSeq + "\x1b[m"
 	out := StripLinkHrefs(in)
 	if got := visible(out); got != "world" {
 		t.Errorf("stripped = %q, want %q", got, "world")

@@ -9,7 +9,7 @@ see just the clickable link name by default and reveal the full URLs on demand.
 
 The article reader SHALL render body hyperlinks in compact mode by default: the
 styled link name only, without the visible URL text. The link name SHALL render
-in the status-bar blue role and SHALL be wrapped in OSC 8 escape sequences
+in the status-bar teal role and SHALL be wrapped in OSC 8 escape sequences
 carrying the link's URL, so the link remains clickable in both a supporting
 terminal (Cmd/Ctrl-click) and through the application's left-click hit-testing.
 The visible URL text SHALL NOT be shown in compact mode.
@@ -17,7 +17,7 @@ The visible URL text SHALL NOT be shown in compact mode.
 #### Scenario: Body link shows only the name
 
 - **WHEN** an article body contains `<a href="https://example.com/post">world</a>` and the reader is in compact mode
-- **THEN** the rendered text shows only `world` in the status-bar blue role, without `https://example.com/post`, and the name is wrapped in OSC 8 sequences carrying the URL
+- **THEN** the rendered text shows only `world` in the status-bar teal role, without `https://example.com/post`, and the name is wrapped in OSC 8 sequences carrying the URL
 
 #### Scenario: Compact link is still clickable
 

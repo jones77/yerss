@@ -56,12 +56,12 @@ func GlamourStyleConfig(style string) ansi.StyleConfig {
 	truePtr := true
 	falsePtr := false
 	cfg.Link.Underline = &falsePtr
-	// Pin link text and the visible href to the status-bar blue role (ANSI 12
-	// bright blue in dark mode, ANSI 4 blue in light mode), so body links read
+	// Pin link text and the visible href to the status-bar teal role (ANSI 14
+	// bright cyan in dark mode, ANSI 6 cyan in light mode), so body links read
 	// as one colored unit matching the status bar and the reader header URL.
-	linkColor := "12"
+	linkColor := "14"
 	if style == "light" {
-		linkColor = "4"
+		linkColor = "6"
 	}
 	cfg.Link.Color = &linkColor
 	cfg.LinkText.Color = &linkColor
