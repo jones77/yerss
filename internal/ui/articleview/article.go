@@ -234,7 +234,7 @@ func (s *State) computeDerivation(a internal.Article, contentW int) Derivation {
 		segments:       segments,
 		inline:         inline,
 		imageURLs:      imageURLs,
-		links:          HarvestArticleLinks(a),
+		links:          HarvestArticleLinks(a, s.ascii),
 		captions:       captions,
 		leadURL:        leadURL,
 	}

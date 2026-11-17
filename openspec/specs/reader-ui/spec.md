@@ -1283,7 +1283,11 @@ The system SHALL provide a links popup in the article view, opened by pressing
 `l` or the right arrow key. The popup SHALL list every hyperlink rendered in
 the article body (the article's own URL is not listed) in document order,
 deduplicated by URL. Each row SHALL show the link text followed by the URL
-rendered in the dim style and truncated to the popup width. Navigation SHALL
+rendered in the dim style and truncated to the popup width. A link that wraps
+an inline image with no other label text (a photo linked to itself, as Substack
+figures are) SHALL show the wrapped photo's caption — the same attribution the
+article view composes beneath the photo — as its link text, elided to at most
+40 columns with the middle replaced by the glyph-mode ellipsis. Navigation SHALL
 use `j`/`k` and the arrow keys and SHALL wrap around at both ends. Enter SHALL
 open the selected URL in the system browser using the same non-shell
 single-argument opener used for other URL opens. While the links popup is open,
@@ -1302,6 +1306,11 @@ Enter SHALL continue to close the article view and return to the list.
 
 - **WHEN** the article contains `<a href="https://example.com/post">world</a>` and the links popup is open
 - **THEN** the popup shows a row with the text `world` followed by the URL `https://example.com/post` in the dim style, truncated to the popup width
+
+#### Scenario: A self-linked photo borrows its caption as link text
+
+- **WHEN** an inline image linked to a photo URL has no label text (a figure like `<a href=".../a-detail"><img src=".../a"></a>` under a long `figcaption`) and the links popup is open
+- **THEN** the row's label is the photo's caption shortened to at most 40 columns — its start and end joined by `…` (`...` in ASCII glyph mode) — followed by the wrapped URL
 
 #### Scenario: Article's own URL is not listed
 

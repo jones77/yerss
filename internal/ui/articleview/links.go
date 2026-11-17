@@ -8,6 +8,7 @@ import (
 	"yerss/internal"
 	"yerss/internal/convert"
 	"yerss/internal/ui/compose"
+	"yerss/internal/ui/render"
 )
 
 // Link is one hyperlink harvested from the article's markdown source.
@@ -44,14 +45,23 @@ func HarvestLinks(md string) []Link {
 	return out
 }
 
+// linkCaptionMax is the widest link text an image link without label text
+// borrows from the wrapped photo's caption; longer captions are elided in
+// the middle so the row keeps its label readable without crowding the URL.
+const linkCaptionMax = 40
+
 // harvestArticleLinks collects every hyperlink rendered in the article body —
 // the markdown links, not the article's own header URL — deduplicated by URL,
 // with relative destinations resolved to absolute against the article's origin
 // so the links popup and open-url work. It scans the same marked markdown the
 // body renders (ConvertImages), so a link that wraps an inline image (promo
 // banners render as a linked image) is harvested like any other, with the
-// image sentinel stripped from the link text.
-func HarvestArticleLinks(a internal.Article) []Link {
+// image sentinel stripped from the link text. A link whose text is nothing
+// but the sentinel (a photo linked to itself, as Substack photos are) borrows
+// the wrapped photo's caption as its label — the same attribution the article
+// view composes beneath the photo — elided to at most linkCaptionMax columns
+// with the middle replaced by the glyph-appropriate ellipsis.
+func HarvestArticleLinks(a internal.Article, ascii bool) []Link {
 	seen := map[string]bool{}
 	var out []Link
 	add := func(text, url string) {
@@ -61,9 +71,21 @@ func HarvestArticleLinks(a internal.Article) []Link {
 		seen[url] = true
 		out = append(out, Link{Text: text, URL: url})
 	}
-	md, _ := convert.ConvertImages(a.Content)
+	md, inline := convert.ConvertImages(a.Content)
+	altOf := make(map[string]string, len(inline))
+	for _, im := range inline {
+		altOf[im.URL] = im.Alt
+	}
 	for _, l := range HarvestLinks(md) {
-		add(compose.CleanLinkText(compose.SentinelRe.ReplaceAllString(l.Text, "")), ResolveLink(a, l.URL))
+		text := compose.CleanLinkText(compose.SentinelRe.ReplaceAllString(l.Text, ""))
+		if text == "" {
+			if m := compose.SentinelRe.FindStringSubmatch(l.Text); m != nil {
+				if caption := compose.ResolveImageAttribution(a, m[1], altOf[m[1]], "", false); caption != "" {
+					text = render.ElideMiddle(caption, linkCaptionMax, render.GlyphsFor(ascii).Ellipsis)
+				}
+			}
+		}
+		add(text, ResolveLink(a, l.URL))
 	}
 	return out
 }

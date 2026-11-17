@@ -63,7 +63,7 @@ func TestHarvestArticleLinksResolvesRelativeTargets(t *testing.T) {
 		Link:    "https://theintercept.com/2026/08/31/iran-war/",
 		Content: `<p><a href="/tomdispatch">TomDispatch</a></p>`,
 	}
-	links := articleview.HarvestArticleLinks(a)
+	links := articleview.HarvestArticleLinks(a, false)
 	if len(links) != 1 || links[0].URL != "https://theintercept.com/tomdispatch" {
 		t.Errorf("links = %+v, want the relative target resolved to https://theintercept.com/tomdispatch", links)
 	}
@@ -80,7 +80,7 @@ func TestHarvestArticleLinksLinkedImageBanner(t *testing.T) {
 			`<div class="promote-banner__text"><p class="promote-banner__eyebrow">Read Our Complete Coverage</p>` +
 			`<h2 class="promote-banner__title">TomDispatch</h2></div></a></aside>`,
 	}
-	links := articleview.HarvestArticleLinks(a)
+	links := articleview.HarvestArticleLinks(a, false)
 	if len(links) != 1 {
 		t.Fatalf("links = %+v, want the banner link", links)
 	}
@@ -206,5 +206,95 @@ func TestTagPopupListOOpensNothing(t *testing.T) {
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	if cmd != nil {
 		t.Errorf("o over the list tag popup should not open anything, got %T", cmd)
+	}
+}
+
+// selfLinkedPhotoArticle is a Substack-style article whose photo is a figure
+// image wrapped in a link to a CDN transform of itself, with an editorial
+// figcaption and no other link text.
+func selfLinkedPhotoArticle() (internal.Article, string) {
+	const caption = "A Palm Beach Sheriff's deputy walks through the parking garage during the public comments portion of a county commission meeting in West Palm Beach, Florida"
+	a := internal.Article{
+		Title: "Self-linked photo",
+		Link:  "https://www.dropsitenews.com/p/palm-beach-county-israel-bonds",
+		Content: `<figure><a href="https://substackcdn.com/image/fetch/f_auto,q_auto:good/https%3A%2F%2Fphoto.example%2Fa.jpeg">` +
+			`<img src="https://photo.example/a.jpeg" alt=""></a>` +
+			`<figcaption>` + caption + `</figcaption></figure>`,
+	}
+	return a, caption
+}
+
+func TestHarvestArticleLinksBorrowsPhotoCaption(t *testing.T) {
+	a, caption := selfLinkedPhotoArticle()
+	links := articleview.HarvestArticleLinks(a, false)
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want the photo link", links)
+	}
+	if links[0].URL != "https://substackcdn.com/image/fetch/f_auto,q_auto:good/https%3A%2F%2Fphoto.example%2Fa.jpeg" {
+		t.Errorf("photo link url = %q, want the wrapped href", links[0].URL)
+	}
+	want := caption[:20] + "…" + caption[len(caption)-19:]
+	if links[0].Text != want {
+		t.Errorf("photo link text = %q, want caption elided to %q", links[0].Text, want)
+	}
+}
+
+func TestHarvestArticleLinksBorrowsPhotoCaptionAscii(t *testing.T) {
+	a, caption := selfLinkedPhotoArticle()
+	links := articleview.HarvestArticleLinks(a, true)
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want the photo link", links)
+	}
+	want := caption[:19] + "..." + caption[len(caption)-18:]
+	if links[0].Text != want {
+		t.Errorf("photo link text = %q, want caption elided to %q", links[0].Text, want)
+	}
+	if strings.Contains(links[0].Text, "…") {
+		t.Errorf("ascii link text %q must not use the unicode ellipsis", links[0].Text)
+	}
+}
+
+func TestHarvestArticleLinksShortCaptionUnelided(t *testing.T) {
+	a := internal.Article{
+		Link: "https://example.com/post",
+		Content: `<figure><a href="https://photo.example/self"><img src="https://photo.example/small.jpeg" alt=""></a>` +
+			`<figcaption>A short caption</figcaption></figure>`,
+	}
+	links := articleview.HarvestArticleLinks(a, false)
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want the photo link", links)
+	}
+	if links[0].Text != "A short caption" {
+		t.Errorf("photo link text = %q, want the caption untouched", links[0].Text)
+	}
+}
+
+func TestHarvestArticleLinksEmptyPlainLinkStaysEmpty(t *testing.T) {
+	a := internal.Article{
+		Link:    "https://example.com/post",
+		Content: `<p><a href="https://example.com/x"></a></p>`,
+	}
+	links := articleview.HarvestArticleLinks(a, false)
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want the empty link", links)
+	}
+	if links[0].Text != "" {
+		t.Errorf("empty plain link text = %q, want it left empty", links[0].Text)
+	}
+}
+
+func TestLinkPopupShowsPhotoCaptionText(t *testing.T) {
+	a, caption := selfLinkedPhotoArticle()
+	m, _ := newTestModel(t)
+	m.article = m.article.Recompose(a)
+	m.view = viewArticle
+	m.openLinksPopup()
+	links := m.popupData.Links()
+	if len(links) != 1 {
+		t.Fatalf("popup links = %+v, want the photo link", links)
+	}
+	want := caption[:20] + "…" + caption[len(caption)-19:]
+	if links[0].Text != want {
+		t.Errorf("popup link text = %q, want caption elided to %q", links[0].Text, want)
 	}
 }
