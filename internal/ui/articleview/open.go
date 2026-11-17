@@ -2,6 +2,7 @@ package articleview
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -41,20 +42,67 @@ func OpenURLCmd(url string) tea.Cmd {
 	}
 }
 
+// wslInterop reports whether this is a Windows Subsystem for Linux session,
+// where the Windows clipboard is reachable through the clip.exe interop
+// binary. It is a package variable so tests can override the probe.
+var wslInterop = func() bool {
+	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return false
+	}
+	s := strings.ToLower(string(b))
+	return strings.Contains(s, "microsoft") || strings.Contains(s, "wsl")
+}
+
+// clipboardCmds returns the platform clipboard helper commands in
+// preference order. Linux picks the session's helper first — wl-copy on a
+// Wayland session, xclip otherwise — and appends clip.exe when WSL interop
+// makes the Windows clipboard reachable, so the first helper installed on
+// PATH wins.
+func clipboardCmds() []*exec.Cmd {
+	switch runtime.GOOS {
+	case "darwin":
+		return []*exec.Cmd{exec.Command("pbcopy")}
+	case "windows":
+		return []*exec.Cmd{exec.Command("clip")}
+	}
+	var cmds []*exec.Cmd
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		cmds = append(cmds, exec.Command("wl-copy"))
+	}
+	cmds = append(cmds, exec.Command("xclip", "-selection", "clipboard"))
+	if wslInterop() {
+		cmds = append(cmds, exec.Command("clip.exe"))
+	}
+	return cmds
+}
+
+// lookPath resolves a helper name to its executable path; it is a package
+// variable so tests can stub helper availability.
+var lookPath = exec.LookPath
+
+// clipboardHelper returns the first of cmds found on PATH, or nil when none
+// is available, along with the candidate names for the diagnostic message.
+func clipboardHelper(cmds []*exec.Cmd) (*exec.Cmd, string) {
+	var names []string
+	for _, c := range cmds {
+		names = append(names, c.Path)
+		if _, err := lookPath(c.Path); err == nil {
+			return c, strings.Join(names, ", ")
+		}
+	}
+	return nil, strings.Join(names, ", ")
+}
+
 // copyTextCmd copies text to the system clipboard via a tea.Cmd. The text is
-// piped to the platform clipboard helper's standard input without a shell, so
-// feed-controlled content cannot inject commands. label is the success status
-// line (e.g. "copied article text").
+// piped to the first available platform clipboard helper's standard input
+// without a shell, so feed-controlled content cannot inject commands. label
+// is the success status line (e.g. "copied article text").
 func CopyTextCmd(text, label string) tea.Cmd {
 	return func() tea.Msg {
-		var cmd *exec.Cmd
-		switch runtime.GOOS {
-		case "darwin":
-			cmd = exec.Command("pbcopy")
-		case "windows":
-			cmd = exec.Command("clip")
-		default:
-			cmd = exec.Command("xclip", "-selection", "clipboard")
+		cmd, tried := clipboardHelper(clipboardCmds())
+		if cmd == nil {
+			return URLActionMsg{Action: "copy", Err: fmt.Errorf("no clipboard helper found (tried %s)", tried)}
 		}
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err != nil {
@@ -64,7 +112,7 @@ func CopyTextCmd(text, label string) tea.Cmd {
 	}
 }
 
-// copyURLCmd copies url to the system clipboard via a tea.Cmd.
+// CopyURLCmd copies url to the system clipboard via a tea.Cmd.
 func CopyURLCmd(url string) tea.Cmd {
 	return CopyTextCmd(url, "copied URL")
 }

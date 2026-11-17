@@ -1,6 +1,9 @@
 package articleview
 
 import (
+	"errors"
+	"os/exec"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -64,5 +67,73 @@ func TestOpenURLCmdArgumentSafety(t *testing.T) {
 		if cmd.Args[0] != "xdg-open" {
 			t.Errorf("linux opener should be xdg-open, got %q", cmd.Args[0])
 		}
+	}
+}
+
+func cmdPaths(cmds []*exec.Cmd) []string {
+	names := make([]string, len(cmds))
+	for i, c := range cmds {
+		names[i] = strings.Join(c.Args, " ")
+	}
+	return names
+}
+
+func TestClipboardCmdsLinuxChain(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only helper chain")
+	}
+	orig := wslInterop
+	defer func() { wslInterop = orig }()
+
+	t.Setenv("WAYLAND_DISPLAY", "")
+	wslInterop = func() bool { return false }
+	if got := cmdPaths(clipboardCmds()); !reflect.DeepEqual(got, []string{"xclip -selection clipboard"}) {
+		t.Errorf("x11 helpers = %v", got)
+	}
+
+	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+	wslInterop = func() bool { return false }
+	if got := cmdPaths(clipboardCmds()); !reflect.DeepEqual(got, []string{"wl-copy", "xclip -selection clipboard"}) {
+		t.Errorf("wayland helpers = %v", got)
+	}
+
+	t.Setenv("WAYLAND_DISPLAY", "")
+	wslInterop = func() bool { return true }
+	if got := cmdPaths(clipboardCmds()); !reflect.DeepEqual(got, []string{"xclip -selection clipboard", "clip.exe"}) {
+		t.Errorf("wsl helpers = %v", got)
+	}
+}
+
+func TestClipboardHelperPicksFirstAvailable(t *testing.T) {
+	orig := lookPath
+	defer func() { lookPath = orig }()
+	lookPath = func(name string) (string, error) {
+		if name == "xclip" {
+			return "/usr/bin/xclip", nil
+		}
+		return "", errors.New("not found")
+	}
+	cmd, _ := clipboardHelper([]*exec.Cmd{
+		exec.Command("wl-copy"),
+		exec.Command("xclip", "-selection", "clipboard"),
+	})
+	if cmd == nil {
+		t.Fatal("expected the available helper to be picked")
+	}
+	if got := strings.Join(cmd.Args, " "); got != "xclip -selection clipboard" {
+		t.Errorf("picked helper = %q", got)
+	}
+}
+
+func TestClipboardHelperNoneAvailable(t *testing.T) {
+	orig := lookPath
+	defer func() { lookPath = orig }()
+	lookPath = func(string) (string, error) { return "", errors.New("not found") }
+	cmd, tried := clipboardHelper([]*exec.Cmd{exec.Command("wl-copy"), exec.Command("xclip")})
+	if cmd != nil {
+		t.Fatalf("want nil helper, got %q", cmd.Path)
+	}
+	if tried != "wl-copy, xclip" {
+		t.Errorf("tried list = %q, want %q", tried, "wl-copy, xclip")
 	}
 }
