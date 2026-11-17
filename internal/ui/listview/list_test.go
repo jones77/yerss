@@ -106,8 +106,8 @@ func TestBucketDayGroupsOrdering(t *testing.T) {
 	}
 	day := func(d int) time.Time { return time.Date(2026, 8, d, 0, 0, 0, 0, time.UTC) }
 	wantLabels := []string{
-		"today, " + internal.LongDate(day(28)),
-		"yesterday, " + internal.LongDate(day(27)),
+		internal.LongDate(day(28)) + ", today",
+		internal.LongDate(day(27)) + ", yesterday",
 		internal.LongDate(day(26)),
 		"Undated",
 	}
@@ -299,7 +299,7 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	s.Status.LastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
 	s.cursor = 1 // the single article
 	got = s.renderStatusBar()
-	if !strings.Contains(got, "15:04 Friday 28th August, 2026 last refresh") {
+	if !strings.Contains(got, "15:04 Friday 28th August 2026 last refresh") {
 		t.Errorf("status bar = %q, want last refresh time with long date", got)
 	}
 	if !strings.Contains(got, "DB "+render.FormatMB(s.dbSize)) {
@@ -462,7 +462,7 @@ func TestStatusBarShowsSecondsWhenEnabled(t *testing.T) {
 	s.cursor = 1
 
 	got := s.renderStatusBar()
-	if !strings.Contains(got, "15:04:05 Friday 28th August, 2026 last refresh") {
+	if !strings.Contains(got, "15:04:05 Friday 28th August 2026 last refresh") {
 		t.Errorf("status bar = %q, want seconds in the last refresh time", got)
 	}
 }

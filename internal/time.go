@@ -57,25 +57,25 @@ func DayKey(t time.Time) string {
 	return DayStart(t).Format(LayoutDayKey)
 }
 
-// DayLabel renders a day group's header label: the long local date, prefixed
-// with "today, " or "yesterday, " when the day is the reference day or the one
+// DayLabel renders a day group's header label: the long local date, suffixed
+// with ", today" or ", yesterday" when the day is the reference day or the one
 // before it.
 func DayLabel(date, now time.Time) string {
 	today := DayStart(now)
 	switch date {
 	case today:
-		return "today, " + LongDate(date)
+		return LongDate(date) + ", today"
 	case today.AddDate(0, 0, -1):
-		return "yesterday, " + LongDate(date)
+		return LongDate(date) + ", yesterday"
 	}
 	return LongDate(date)
 }
 
-// LongDate renders a local calendar day as `Weekday Day-ordinal Month, Year`,
-// for example "Saturday 28th August, 2026".
+// LongDate renders a local calendar day as `Weekday Day-ordinal Month Year`,
+// for example "Saturday 28th August 2026".
 func LongDate(t time.Time) string {
 	d := t.Day()
-	return t.Format("Monday ") + fmt.Sprintf("%d%s ", d, ordinal(d)) + t.Format("January, 2006")
+	return t.Format("Monday ") + fmt.Sprintf("%d%s ", d, ordinal(d)) + t.Format("January 2006")
 }
 
 // ordinal returns the English ordinal suffix for n. The suffix is "th" for

@@ -15,12 +15,12 @@ last day group with `└` (ASCII `+`), and every other day group with `├`
 a single space. Article rows SHALL NOT carry a
 tree glyph; the publication time SHALL start the row. Day
 headers SHALL NOT display fold markers. Each day header SHALL display the long
-date in the form `Weekday Day-ordinal Month, Year` (for example
-`Saturday 20th August, 2025`), computed in the user's local timezone, where the
+date in the form `Weekday Day-ordinal Month Year` (for example
+`Saturday 20th August 2025`), computed in the user's local timezone, where the
 day is suffixed with an English ordinal (`1st`, `2nd`, `3rd`, `4th`, …). The
-header for the current local calendar day SHALL be prefixed with `today, ` and
-the header for the previous local calendar day SHALL be prefixed with
-`yesterday, `; older days and the `Undated` group SHALL be unprefixed. Day
+header for the current local calendar day SHALL be suffixed with `, today` and
+the header for the previous local calendar day SHALL be suffixed with
+`, yesterday`; older days and the `Undated` group SHALL be unprefixed. Day
 headers SHALL render entirely in the teal role: the rail corner, the dash
 connector, and the date label. Each
 article row SHALL show the publication time at the start of the row in the
@@ -74,17 +74,17 @@ expanded articles).
 #### Scenario: Day header shows the long local date
 
 - **WHEN** a day header is rendered for a date with day-of-month 20 in August 2025 that is neither today nor yesterday
-- **THEN** the header displays the long date with weekday, an ordinal day number, month, and year (for example `Wednesday 20th August, 2025`) in the user's local timezone
+- **THEN** the header displays the long date with weekday, an ordinal day number, month, and year (for example `Wednesday 20th August 2025`) in the user's local timezone
 
-#### Scenario: Current day is prefixed with today
+#### Scenario: Current day is suffixed with today
 
 - **WHEN** a day header is rendered for the current local calendar day
-- **THEN** the label is `today, ` followed by the long date (for example `today, Saturday 20th August, 2025`)
+- **THEN** the label is the long date followed by `, today` (for example `Saturday 20th August 2025, today`)
 
-#### Scenario: Previous day is prefixed with yesterday
+#### Scenario: Previous day is suffixed with yesterday
 
 - **WHEN** a day header is rendered for the previous local calendar day
-- **THEN** the label is `yesterday, ` followed by the long date (for example `yesterday, Friday 19th August, 2025`)
+- **THEN** the label is the long date followed by `, yesterday` (for example `Friday 19th August 2025, yesterday`)
 
 #### Scenario: Articles grouped under a day header
 
@@ -165,9 +165,9 @@ expanded articles).
 
 The system SHALL display a status bar at the bottom of the list view. The
 left-most elements SHALL be the time and long-form date the feeds were last
-refreshed, formatted as `HH:MM Weekday Day-ordinal Month, Year last refresh`
-(for example `14:30 Saturday 29th August, 2026 last refresh`), or
-`HH:MM:SS Weekday Day-ordinal Month, Year last refresh` when the `show_seconds`
+refreshed, formatted as `HH:MM Weekday Day-ordinal Month Year last refresh`
+(for example `14:30 Saturday 29th August 2026 last refresh`), or
+`HH:MM:SS Weekday Day-ordinal Month Year last refresh` when the `show_seconds`
 display option is enabled, with the
 `last refresh` label rendered in the dim role (#707070), or the text
 `never refreshed` when no refresh has occurred. The right-most elements SHALL
@@ -194,14 +194,14 @@ the active filter name.
 
 - **WHEN** the list view is displayed
 - **THEN** the status bar shows the last-refresh time and date on the left as
-  `HH:MM Weekday Day-ordinal Month, Year last refresh` and, on the right, the
+  `HH:MM Weekday Day-ordinal Month Year last refresh` and, on the right, the
   database size as `DB <n>MB`, the percentage, and the `<n>/<total>` position
   joined by ` • `
 
 #### Scenario: Status bar shows seconds when enabled
 
 - **WHEN** the `show_seconds` display option is enabled and the list view is displayed
-- **THEN** the status bar shows the last-refresh time on the left as `HH:MM:SS Weekday Day-ordinal Month, Year last refresh`
+- **THEN** the status bar shows the last-refresh time on the left as `HH:MM:SS Weekday Day-ordinal Month Year last refresh`
 
 #### Scenario: Status bar uses dim bullets and dim refresh label
 

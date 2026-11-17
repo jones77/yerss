@@ -40,8 +40,8 @@ func TestDayLabel(t *testing.T) {
 		date time.Time
 		want string
 	}{
-		{"today", day(28), "today, " + LongDate(day(28))},
-		{"yesterday", day(27), "yesterday, " + LongDate(day(27))},
+		{"today", day(28), LongDate(day(28)) + ", today"},
+		{"yesterday", day(27), LongDate(day(27)) + ", yesterday"},
 		{"older", day(26), LongDate(day(26))},
 	}
 	for _, c := range cases {
@@ -67,7 +67,7 @@ func TestLongDateOrdinals(t *testing.T) {
 		if !strings.Contains(got, c.want) {
 			t.Errorf("LongDate(%d) = %q, missing ordinal %q", c.day, got, c.want)
 		}
-		if !strings.Contains(got, "August, 2026") {
+		if !strings.Contains(got, "August 2026") {
 			t.Errorf("LongDate(%d) = %q, missing month/year", c.day, got)
 		}
 		if !strings.Contains(got, " ") {
