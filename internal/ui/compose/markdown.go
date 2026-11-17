@@ -64,7 +64,9 @@ func GlamourStyleConfig(style string) ansi.StyleConfig {
 		linkColor = "6"
 	}
 	cfg.Link.Color = &linkColor
+	cfg.Link.Bold = &falsePtr
 	cfg.LinkText.Color = &linkColor
+	cfg.LinkText.Bold = &falsePtr
 	// Drop the visible "#"/"##"/"###" markers that glamour's built-in heading
 	// styles prepend to each level, so article subtitles render as clean
 	// highlighted lines instead of raw markdown. The heading text keeps its

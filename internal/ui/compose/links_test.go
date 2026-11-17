@@ -43,8 +43,8 @@ func TestLinkColorsTealInBothThemes(t *testing.T) {
 		nameSGR string
 		hrefSGR string
 	}{
-		{"dark", "\x1b[96;1m", "\x1b[96m"},
-		{"light", "\x1b[36;1m", "\x1b[36m"},
+		{"dark", "\x1b[96m", "\x1b[96m"},
+		{"light", "\x1b[36m", "\x1b[36m"},
 	}
 	for _, c := range cases {
 		out := renderLinkStyle(t, "[world](https://example.com/post)", 100, c.style)
