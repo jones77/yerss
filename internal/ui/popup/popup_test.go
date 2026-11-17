@@ -836,6 +836,67 @@ func TestLinkPopupRowsShowTextAndDimURL(t *testing.T) {
 	}
 }
 
+func TestLinkPopupShrinksToLinkCount(t *testing.T) {
+	s, _ := newTestState(t)
+	s.SetKind(KindLinks)
+	s.SetLinks([]Link{
+		{Text: "one", URL: "https://example.com/one"},
+		{Text: "two", URL: "https://example.com/two"},
+	})
+	out := s.renderLinksPopup()
+	// Top border + one row per link + bottom border.
+	if lines := strings.Split(out, "\n"); len(lines) != len(s.links)+2 {
+		t.Errorf("popup height = %d lines, want %d (links plus borders)", len(lines), len(s.links)+2)
+	}
+}
+
+func TestLinkPopupCapsHeightAndKeepsBottomBorder(t *testing.T) {
+	s, _ := newTestState(t)
+	links := make([]Link, 35)
+	for i := range links {
+		links[i] = Link{Text: fmt.Sprintf("link%02d", i), URL: "https://example.com"}
+	}
+	s.SetKind(KindLinks)
+	s.SetLinks(links)
+	lines := strings.Split(ansi.Strip(s.renderLinksPopup()), "\n")
+	// 80x24 test terminal: max interior height is 24*6/10 = 14 rows, plus the
+	// top and bottom borders.
+	if want := 14 + 2; len(lines) != want {
+		t.Fatalf("popup height = %d lines, want capped %d", len(lines), want)
+	}
+	last := lines[len(lines)-1]
+	if !strings.HasPrefix(last, "└") || !strings.HasSuffix(last, "┘") {
+		t.Errorf("bottom border missing from tall popup: %q", last)
+	}
+}
+
+func TestLinkPopupScrollsCursorIntoView(t *testing.T) {
+	s, _ := newTestState(t)
+	s.sess.Config().Display.Scrollbar = "double"
+	links := make([]Link, 35)
+	for i := range links {
+		links[i] = Link{Text: fmt.Sprintf("link%02d", i), URL: "https://example.com"}
+	}
+	s.SetKind(KindLinks)
+	s.SetLinks(links)
+	s.SetCursor(34)
+
+	out := ansi.Strip(s.renderLinksPopup())
+	if !strings.Contains(out, "link34") {
+		t.Errorf("popup should scroll to show the selected link: %q", out)
+	}
+	if strings.Contains(out, "link00") {
+		t.Errorf("popup should not show the first link after scrolling to the end: %q", out)
+	}
+	// The thumb is sized to the visible fraction of the list, not the full
+	// rail: 80x24 gives 14 interior rows for 35 links.
+	h := 14
+	_, wantThumb := (render.ScrollState{TotalH: len(links), ViewportH: h, Offset: len(links) - h}).Thumb(h)
+	if got := strings.Count(out, "║"); got != wantThumb {
+		t.Errorf("scrollbar thumb rows = %d, want %d", got, wantThumb)
+	}
+}
+
 func TestLinkPopupNavigationWraps(t *testing.T) {
 	s, _ := newTestState(t)
 	s.SetKind(KindLinks)
@@ -873,14 +934,13 @@ func TestLinkPopupIgnoresGridKeys(t *testing.T) {
 	})
 	s.SetCursor(1)
 	keys := popupKeys(t)
+	// The links popup is a single column, so the horizontal grid keys have no
+	// target and leave the cursor alone.
 	gridKeys := []tea.KeyMsg{
 		{Type: tea.KeyLeft},
 		{Type: tea.KeyRight},
 		{Type: tea.KeyRunes, Runes: []rune("h")},
 		{Type: tea.KeyRunes, Runes: []rune("l")},
-		{Type: tea.KeyRunes, Runes: []rune("1")},
-		{Type: tea.KeyRunes, Runes: []rune("g")},
-		{Type: tea.KeyRunes, Runes: []rune("G")},
 	}
 	for _, key := range gridKeys {
 		s.Update(key, keys)
@@ -896,6 +956,57 @@ func TestLinkPopupIgnoresGridKeys(t *testing.T) {
 	s.Update(tea.KeyMsg{Type: tea.KeyUp}, keys)
 	if s.cursor != 1 {
 		t.Errorf("up should move the links cursor back to 1, got %d", s.cursor)
+	}
+}
+
+func TestLinkPopupPageAndJumpKeys(t *testing.T) {
+	s, _ := newTestState(t) // 80x24 → 14 visible rows per page
+	links := make([]Link, 40)
+	for i := range links {
+		links[i] = Link{Text: fmt.Sprintf("link%02d", i), URL: "https://example.com"}
+	}
+	s.SetKind(KindLinks)
+	s.SetLinks(links)
+	keys := popupKeys(t)
+
+	pageDown := tea.KeyMsg{Type: tea.KeyPgDown}
+	pageUp := tea.KeyMsg{Type: tea.KeyPgUp}
+
+	s.Update(pageDown, keys)
+	if s.cursor != 14 {
+		t.Errorf("page down: cursor = %d, want 14", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyCtrlF}, keys)
+	if s.cursor != 28 {
+		t.Errorf("ctrl+f page down: cursor = %d, want 28", s.cursor)
+	}
+	s.Update(pageDown, keys)
+	if s.cursor != 39 {
+		t.Errorf("page down should clamp at the last link: cursor = %d, want 39", s.cursor)
+	}
+	s.Update(pageUp, keys)
+	if s.cursor != 25 {
+		t.Errorf("page up: cursor = %d, want 25", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyCtrlD}, keys)
+	if s.cursor != 32 {
+		t.Errorf("half page down: cursor = %d, want 32", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyCtrlU}, keys)
+	if s.cursor != 25 {
+		t.Errorf("half page up: cursor = %d, want 25", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")}, keys)
+	if s.cursor != 0 {
+		t.Errorf("top: cursor = %d, want 0", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")}, keys)
+	if s.cursor != 39 {
+		t.Errorf("bottom: cursor = %d, want 39", s.cursor)
+	}
+	s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")}, keys)
+	if s.cursor != 39 {
+		t.Errorf("space is page down and should clamp at the end: cursor = %d, want 39", s.cursor)
 	}
 }
 

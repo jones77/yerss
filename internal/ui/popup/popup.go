@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal"
@@ -64,10 +63,11 @@ type State struct {
 	width  int
 	height int
 
-	tags      []internal.TagCount
-	links     []Link
-	cursor    int
-	scrollCol int
+	tags       []internal.TagCount
+	links      []Link
+	cursor     int
+	scrollCol  int
+	linkScroll int
 }
 
 // New builds a popup State bound to a session.
@@ -140,6 +140,8 @@ func (s *State) OpenTags(kind Kind, categories []string) string {
 func (s *State) OpenLinks(links []Link) {
 	s.kind = KindLinks
 	s.links = links
+	s.cursor = 0
+	s.linkScroll = 0
 }
 
 // SelectedTag returns the tag at the cursor, if any.
@@ -204,13 +206,33 @@ func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
 		if s.isTagPopup() {
 			s.moveTagCursorHorizontal(1)
 		}
+	case config.PageUp:
+		if s.kind == KindLinks {
+			s.moveLinkCursor(-s.linksPageSize())
+		}
+	case config.PageDown:
+		if s.kind == KindLinks {
+			s.moveLinkCursor(s.linksPageSize())
+		}
+	case config.HalfPageUp:
+		if s.kind == KindLinks {
+			s.moveLinkCursor(-s.linksPageSize() / 2)
+		}
+	case config.HalfPageDown:
+		if s.kind == KindLinks {
+			s.moveLinkCursor(s.linksPageSize() / 2)
+		}
 	case config.Top:
 		if s.isTagPopup() {
 			s.jumpTagCursor(true)
+		} else if s.kind == KindLinks && len(s.links) > 0 {
+			s.cursor = 0
 		}
 	case config.Bottom:
 		if s.isTagPopup() {
 			s.jumpTagCursor(false)
+		} else if s.kind == KindLinks && len(s.links) > 0 {
+			s.cursor = len(s.links) - 1
 		}
 	case config.OpenURL:
 		if s.kind == KindLinks || s.kind == KindTagsArticle {
@@ -242,6 +264,22 @@ func (s *State) movePopupCursor(delta int) {
 		return
 	}
 	s.cursor = render.WrapIndex(s.cursor, delta, n)
+}
+
+// linksPageSize returns the maximum number of link rows the popup viewport
+// shows, the step used by the page and half-page movement keys.
+func (s *State) linksPageSize() int {
+	h := s.height * 6 / 10
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// moveLinkCursor moves the links cursor by delta, clamping at the list bounds:
+// page movement stops at the ends rather than wrapping like single steps.
+func (s *State) moveLinkCursor(delta int) {
+	s.cursor = render.ClampIndex(s.cursor+delta, len(s.links))
 }
 
 // isTagPopup reports whether the current popup is one of the tag popups, which
@@ -684,38 +722,73 @@ func (s *State) tagBottomBorder(w int, g render.BorderGlyphs) string {
 }
 
 // renderLinksPopup renders the article links popup: each row shows the link
-// text followed by the URL in the dim style, truncated to the box width.
+// text followed by the URL in the dim style, truncated to the box width. The
+// title is inlined into the top border like the other popups.
 func (s *State) renderLinksPopup() string {
-	h := s.height * 6 / 10
+	h := s.linksPageSize()
 	w := s.width * 8 / 10
-	if h < 3 {
-		h = 3
+	// Shrink to the links when they fit in less than the maximum height; the
+	// overlay centers the shorter box vertically.
+	if len(s.links) < h {
+		h = len(s.links)
+	}
+	if h < 1 {
+		h = 1
 	}
 	if w < 12 {
 		w = 12
 	}
 
-	var lines []string
-	lines = append(lines, s.styles.statusBold.Render("Links"))
-	dim := s.styles.dim
-	for i, l := range s.links {
-		cursor := "  "
-		if i == s.cursor {
-			cursor = "> "
-		}
-		// text + separator + dim URL, truncated to the interior width.
-		innerW := w - 6
-		url := ansi.Truncate(l.URL, max(1, innerW-ansi.StringWidth(l.Text)-3), s.glyphs().Ellipsis)
-		line := l.Text + dim.Render(" · "+url)
-		lines = append(lines, cursor+ansi.Truncate(line, innerW, ""))
+	g := s.glyphs()
+	style := s.styles.status
+	v := style.Render(g.V)
+	pad := " "
+
+	boxW := w + 4
+	textW := w
+
+	// Keep the cursor inside the visible window, then clamp the stored offset
+	// so a shrunken list (a new article) cannot leave it past the end.
+	maxScroll := max(0, len(s.links)-h)
+	if s.cursor < s.linkScroll {
+		s.linkScroll = s.cursor
+	} else if s.cursor >= s.linkScroll+h {
+		s.linkScroll = s.cursor - h + 1
 	}
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.palette.StatusBar).
-		Width(w).
-		Height(h).
-		Padding(0, 1)
-	return box.Render(strings.Join(lines, "\n"))
+	s.linkScroll = min(max(s.linkScroll, 0), maxScroll)
+
+	sc := render.ScrollState{TotalH: len(s.links), ViewportH: h, Offset: s.linkScroll}
+	thumbTop, thumbH := sc.Thumb(h)
+
+	dim := s.styles.dim
+	body := make([]string, 0, h)
+	for row := 0; row < h; row++ {
+		i := s.linkScroll + row
+		var line string
+		if i < len(s.links) {
+			l := s.links[i]
+			cursor := "  "
+			if i == s.cursor {
+				cursor = "> "
+			}
+			// text + separator + dim URL, truncated to the interior width.
+			innerW := max(1, textW-2)
+			url := ansi.Truncate(l.URL, max(1, innerW-ansi.StringWidth(l.Text)-3), g.Ellipsis)
+			line = cursor + ansi.Truncate(l.Text+dim.Render(" · "+url), innerW, "")
+		}
+		// The teal border rail doubles as the scrollbar track; the thumb is a
+		// grey segment scaled to the visible fraction of the list.
+		rail := v
+		if !sc.FitsViewport() && row >= thumbTop && row < thumbTop+thumbH {
+			rail = dim.Render(g.Fill)
+		}
+		body = append(body, v+pad+render.PadRight(render.Truncate(line, textW), textW)+pad+rail)
+	}
+
+	out := []string{inlineTitleBorder("Links", boxW, g, s.palette)}
+	out = append(out, body...)
+	out = append(out, style.Render(g.BL+strings.Repeat(g.H, boxW-2)+g.BR))
+	return strings.Join(out, "\n")
 }
 
 // tagCountText splits the tag count display into a plain and a bold portion.
