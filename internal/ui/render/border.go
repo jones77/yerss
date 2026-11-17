@@ -30,7 +30,7 @@ func GlyphsFor(ascii bool) BorderGlyphs {
 	if ascii {
 		return BorderGlyphs{TL: "+", BL: "+", TR: "+", BR: "+", Tee: "+", H: "-", V: ":", Fill: "|", Unfill: ":", Ellipsis: "...", Bullet: ".", Half: "1/2"}
 	}
-	return BorderGlyphs{TL: "┌", BL: "└", TR: "┐", BR: "┘", Tee: "├", H: "─", V: "│", Fill: "│", Unfill: "│", Ellipsis: "…", Bullet: "·", Half: "½"}
+	return BorderGlyphs{TL: "┌", BL: "└", TR: "┐", BR: "┘", Tee: "├", H: "─", V: "│", Fill: "│", Unfill: "│", Ellipsis: "…", Bullet: "•", Half: "½"}
 }
 
 // ClampPadY clamps the vertical content padding so the article frame (top +
@@ -166,7 +166,7 @@ func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
 // BottomBorder renders the article frame's bottom edge as `leftCorner +
 // horizontal line + core + horizontal line + rightCorner`, mirroring the top
 // border. The core is a left-aligned `o: open article in browser` hint and a
-// right-aligned `?: help · <percent>% · <bottomLine>/<totalLines>` position
+// right-aligned `?: help • <percent>% • <bottomLine>/<totalLines>` position
 // indicator (the help affordance first), each inset one space from the
 // horizontal line (like the top border's date and title) and separated from
 // the dash fill by a space. The bullets separating the affordance, percent,

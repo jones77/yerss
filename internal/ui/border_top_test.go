@@ -97,7 +97,7 @@ func TestTopBorderEmptyDate(t *testing.T) {
 	if w := runewidth.StringWidth(line); w != 40 {
 		t.Errorf("top border width = %d, want 40: %q", w, line)
 	}
-	if strings.Contains(line, "·") {
+	if strings.Contains(line, "•") {
 		t.Errorf("no dangling separator expected when date is empty: %q", line)
 	}
 	if !strings.Contains(line, " x ") {

@@ -21,7 +21,7 @@ func TestGlyphsForASCIIAndUnicodePairs(t *testing.T) {
 	if a.H != "-" || a.Bullet != "." || a.Ellipsis != "..." || a.Half != "1/2" {
 		t.Errorf("ascii misc glyphs = %q %q %q %q, want - . ... 1/2", a.H, a.Bullet, a.Ellipsis, a.Half)
 	}
-	if u.H != "─" || u.Bullet != "·" || u.Ellipsis != "…" || u.Half != "½" {
+	if u.H != "─" || u.Bullet != "•" || u.Ellipsis != "…" || u.Half != "½" {
 		t.Errorf("unicode misc glyphs = %q %q %q %q", u.H, u.Bullet, u.Ellipsis, u.Half)
 	}
 }

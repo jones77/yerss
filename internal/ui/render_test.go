@@ -59,7 +59,7 @@ func TestRenderArticleBorder(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-1], "o: open article in browser") {
 		t.Errorf("bottom border missing help hint: %q", lines[len(lines)-1])
 	}
-	if !strings.Contains(lines[len(lines)-1], "100% · 5/5") {
+	if !strings.Contains(lines[len(lines)-1], "100% • 5/5") {
 		t.Errorf("bottom border missing line indicator: %q", lines[len(lines)-1])
 	}
 }

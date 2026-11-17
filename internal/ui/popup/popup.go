@@ -13,9 +13,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -646,7 +646,7 @@ func (s *State) renderTagPopup() string {
 }
 
 // tagBottomBorder renders the tag popup's bottom edge, right-aligning the
-// position indicator `<percent>% · <nth>/<total>` — the selected tag's place
+// position indicator `<percent>% • <nth>/<total>` — the selected tag's place
 // among all tags — mirroring the article view's bottom border and the list
 // view's status bar, with dash fill to the left. The line and the indicator
 // render in the same chrome role as the rest of the popup border.

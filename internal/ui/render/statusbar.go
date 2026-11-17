@@ -34,7 +34,7 @@ func StatusBarLeft(base, dim lipgloss.Style, g BorderGlyphs, statusMsg string, s
 }
 
 // StatusBarRight builds the status bar's right segment, which runs
-// `?: help · DB <n>MB · <percent>% · <n>/<total>`: the help hint first, then
+// `?: help • DB <n>MB • <percent>% • <n>/<total>`: the help hint first, then
 // the on-disk database size (DB) as a whole number of megabytes, then the
 // scroll percentage and position. Each element is prepended so the first
 // right-aligned element is `?: help`.

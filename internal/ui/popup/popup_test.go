@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -793,7 +793,7 @@ func TestTagPopupBottomBorderPosition(t *testing.T) {
 	s.SetCursor(19) // 20th of 40 → 50%
 	lines := strings.Split(ansi.Strip(s.renderTagPopup()), "\n")
 	last := lines[len(lines)-1]
-	if !strings.Contains(last, "50% · 20/40") {
+	if !strings.Contains(last, "50% • 20/40") {
 		t.Errorf("bottom border should show the position indicator: %q", last)
 	}
 	// The dashes run continuously from the corner; no gap that would align

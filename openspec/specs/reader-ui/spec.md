@@ -176,8 +176,8 @@ article database as `DB <n>MB`, the scroll position percentage, and the article
 count as `<n>/<total>` — where the database size is rendered as a whole number
 of megabytes (floored to an integer, with no space between the number and `MB`)
 and `<total>` is the total number of articles in the database — joined by the
-middle-dot bullet (`·`, ASCII `.`) (for example
-`?: help · DB 320MB · 100% · 2/2`). The `DB` value SHALL be the on-disk database
+bullet (`•`, ASCII `.`) (for example
+`?: help • DB 320MB • 100% • 2/2`). The `DB` value SHALL be the on-disk database
 size including the WAL sidecar file when one is present. Values below one
 megabyte SHALL render as `0MB`. The bullets and the `last refresh` label SHALL
 render in the dim role (#707070); the remaining status bar text SHALL render in
@@ -187,7 +187,7 @@ the active filter name.
 #### Scenario: Status bar leads the right side with the help hint
 
 - **WHEN** the list view is displayed
-- **THEN** the status bar's right side reads `?: help · DB <n>MB · <percent>% ·
+- **THEN** the status bar's right side reads `?: help • DB <n>MB • <percent>% •
   <n>/<total>`, with `?: help` as the first right-aligned element
 
 #### Scenario: Status bar shows refresh time, size, percentage, and position
@@ -196,7 +196,7 @@ the active filter name.
 - **THEN** the status bar shows the last-refresh time and date on the left as
   `HH:MM Weekday Day-ordinal Month, Year last refresh` and, on the right, the
   database size as `DB <n>MB`, the percentage, and the `<n>/<total>` position
-  joined by ` · `
+  joined by ` • `
 
 #### Scenario: Status bar shows seconds when enabled
 
@@ -258,14 +258,14 @@ track on a scrollable article, so it always reads as a movable indicator. The
 bottom border SHALL display a left-aligned permanent help hint `o: open
 article in browser` and, on the right, a position indicator led by a literal
 `?: help` hint in the form
-`?: help · <percent>% · <bottomLine>/<totalLines>`, where `<percent>` is the
+`?: help • <percent>% • <bottomLine>/<totalLines>`, where `<percent>` is the
 scroll percentage, `<bottomLine>` is the line number of the last visible
 viewport line clamped to the total, and `<totalLines>` is the article's total
 line count; horizontal dashes fill the space between the hint and the indicator
 (for example at the very bottom:
-`o: open article in browser ───── ?: help · 100% · 120/120`). The bullets used
+`o: open article in browser ───── ?: help • 100% • 120/120`). The bullets used
 between the help affordance and the percent and between the percent and the
-line ratio SHALL be the same middle-dot bullet used in the top border (`·`,
+line ratio SHALL be the same bullet used in the top border (`•`,
 ASCII `.`). The content area SHALL have two spaces of
 horizontal padding on each side and one space of vertical padding above and
 below the content, so a permanent one-row margin separates the content
@@ -278,12 +278,12 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 #### Scenario: Short article fully visible
 
 - **WHEN** an article is opened that fits entirely within the viewport
-- **THEN** the top border displays the date and title, the right border is fully filled with the bright single-line glyph, and the bottom border displays the help hint on the left and `100% · <n>/<n>` on the right where `<n>` is the total line count
+- **THEN** the top border displays the date and title, the right border is fully filled with the bright single-line glyph, and the bottom border displays the help hint on the left and `100% • <n>/<n>` on the right where `<n>` is the total line count
 
 #### Scenario: Scrollbar visible on open
 
 - **WHEN** a scrollable article (content taller than the viewport) is opened and the scroll offset is zero
-- **THEN** the right border renders a bright single-line thumb at least one row tall at the top of the track, with the remainder of the track as a grey single line, and the bottom border displays `0% · <viewportHeight>/<totalLines>`
+- **THEN** the right border renders a bright single-line thumb at least one row tall at the top of the track, with the remainder of the track as a grey single line, and the bottom border displays `0% • <viewportHeight>/<totalLines>`
 
 #### Scenario: Thumb moves with scroll
 
@@ -298,7 +298,7 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 #### Scenario: Thumb reaches the bottom at full scroll
 
 - **WHEN** a scrollable article is displayed and the user has scrolled to the very bottom (100% of the scrollable range)
-- **THEN** the thumb sits at the bottom of the track as a bright single-line, with the rest of the track as a grey single line, and the bottom border displays `100% · <totalLines>/<totalLines>`
+- **THEN** the thumb sits at the bottom of the track as a bright single-line, with the rest of the track as a grey single line, and the bottom border displays `100% • <totalLines>/<totalLines>`
 
 #### Scenario: Configurable scrollbar style
 
@@ -313,13 +313,13 @@ glyph and the bottom border SHALL display `100%` with `<bottomLine>` equal to
 #### Scenario: Bottom border leads the right side with the help hint
 
 - **WHEN** the article view is rendered
-- **THEN** the bottom border's right side reads `?: help · <percent>% ·
+- **THEN** the bottom border's right side reads `?: help • <percent>% •
   <bottomLine>/<totalLines>`, with `?: help` as the first right-aligned element
 
 #### Scenario: Bottom border shows help hint and line indicator
 
 - **WHEN** the article view is rendered
-- **THEN** the bottom border shows `o: open article in browser` left-aligned and `<percent>% · <bottomLine>/<totalLines>` right-aligned, with fill dashes between them
+- **THEN** the bottom border shows `o: open article in browser` left-aligned and `<percent>% • <bottomLine>/<totalLines>` right-aligned, with fill dashes between them
 
 #### Scenario: ASCII fallback border
 
@@ -332,8 +332,8 @@ The system SHALL render the article's date and title inline with the top border
 with the date always fully visible and the title left-aligned after the date.
 The date prefix SHALL be `YYYY-MM-DD HH:MM` showing the publication date and
 time in the user's local timezone by default, or `YYYY-MM-DD HH:MM:SS` when the
-`show_seconds` display option is enabled, followed by the middle-dot bullet
-(`·`, ASCII
+`show_seconds` display option is enabled, followed by the bullet
+(`•`, ASCII
 `.`) and the title. When the title does not fit the available width, the system
 SHALL truncate the title and end it with an ellipsis glyph — `…` in Unicode mode
 and `...` in ASCII fallback mode — and SHALL place a single horizontal dash
@@ -350,12 +350,12 @@ append an ellipsis.
 #### Scenario: Long title is truncated with an ellipsis
 
 - **WHEN** the article title does not fit the top border
-- **THEN** the date-and-time prefix remains fully visible, the title is truncated and ends with `…`, and a single dash precedes the right corner (for example `┌─ 2026-01-02 15:04 · Hello world artic… ─╖`)
+- **THEN** the date-and-time prefix remains fully visible, the title is truncated and ends with `…`, and a single dash precedes the right corner (for example `┌─ 2026-01-02 15:04 • Hello world artic… ─╖`)
 
 #### Scenario: Top border shows seconds when enabled
 
 - **WHEN** the `show_seconds` display option is enabled and an article is displayed
-- **THEN** the top border date prefix renders as `YYYY-MM-DD HH:MM:SS` (for example `┌─ 2026-01-02 15:04:05 · Hello world artic… ─╖`)
+- **THEN** the top border date prefix renders as `YYYY-MM-DD HH:MM:SS` (for example `┌─ 2026-01-02 15:04:05 • Hello world artic… ─╖`)
 
 #### Scenario: ASCII fallback ellipsis
 
@@ -557,7 +557,7 @@ title SHALL be `Tags & Sources`, inlined into the center of the top border
 rather than rendered
 as a body line, and the box SHALL keep a single space of padding on the left
 and right with no top or bottom padding. The bottom border SHALL right-align a
-position indicator in the form `<percent>% · <nth>/<total>` — the selected
+position indicator in the form `<percent>% • <nth>/<total>` — the selected
 tag's place among all tags — mirroring the article view's bottom border and
 the list view's status bar; the bottom border line and its bullet SHALL
 render in the same chrome role as the rest of the popup border. The popup
@@ -653,7 +653,7 @@ popular, last occupied row of the last column).
 #### Scenario: Bottom border shows the position indicator
 
 - **WHEN** the tag popup is displayed with the 20th tag of 40 selected
-- **THEN** the bottom border right-aligns `50% · 20/40`, the selected tag's place among all tags, with the border line and bullet rendered in the same chrome role as the rest of the popup border
+- **THEN** the bottom border right-aligns `50% • 20/40`, the selected tag's place among all tags, with the border line and bullet rendered in the same chrome role as the rest of the popup border
 
 #### Scenario: Selection is a background highlight
 

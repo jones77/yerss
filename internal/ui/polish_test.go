@@ -33,15 +33,15 @@ func forceTrueColor(t *testing.T) {
 
 func TestTopBorderBulletGlyph(t *testing.T) {
 	u := stripTop(t, render.TopBorder(40, render.GlyphsFor(false), render.DarkPalette(), "2026-01-02 15:04:05", "short"))
-	if !strings.Contains(u, "·") {
-		t.Errorf("unicode top border missing · bullet: %q", u)
+	if !strings.Contains(u, "•") {
+		t.Errorf("unicode top border missing • bullet: %q", u)
 	}
 	a := stripTop(t, render.TopBorder(40, render.GlyphsFor(true), render.DarkPalette(), "2026-01-02 15:04:05", "short"))
 	if !strings.Contains(a, "2026-01-02 15:04:05 . ") {
 		t.Errorf("ascii top border missing . bullet: %q", a)
 	}
-	if strings.Contains(a, "·") {
-		t.Errorf("ascii top border should not contain ·: %q", a)
+	if strings.Contains(a, "•") {
+		t.Errorf("ascii top border should not contain •: %q", a)
 	}
 }
 
@@ -236,7 +236,7 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	if !strings.HasPrefix(line, "└─ o: open article in browser") {
 		t.Errorf("hint should be inset past a horizontal line: %q", line)
 	}
-	if !strings.HasSuffix(line, "100% · 120/120 ─┘") {
+	if !strings.HasSuffix(line, "100% • 120/120 ─┘") {
 		t.Errorf("indicator should be inset past a horizontal line: %q", line)
 	}
 	if !strings.Contains(line, "browser ─") {
@@ -250,17 +250,17 @@ func TestBottomBorderHelpHintAndIndicator(t *testing.T) {
 	}
 
 	fits := stripTop(t, render.BottomBorder(80, g, render.DarkPalette(), render.ScrollState{TotalH: 4, ViewportH: 20, Offset: 0}))
-	if !strings.Contains(fits, "100% · 4/4") {
-		t.Errorf("short article indicator should be 100%% · 4/4: %q", fits)
+	if !strings.Contains(fits, "100% • 4/4") {
+		t.Errorf("short article indicator should be 100%% • 4/4: %q", fits)
 	}
 }
 
 func TestBottomBorderHelpHintTrailing(t *testing.T) {
 	g := render.GlyphsFor(false)
 	line := stripTop(t, render.BottomBorder(80, g, render.DarkPalette(), render.ScrollState{TotalH: 120, ViewportH: 20, Offset: 100}))
-	// hint = "o: open article in browser" (26), indicator = "?: help · 100% ·
+	// hint = "o: open article in browser" (26), indicator = "?: help • 100% •
 	// 120/120" (24); fill = 80-2-6-26-24 = 22.
-	want := "└─ o: open article in browser " + strings.Repeat("─", 22) + " ?: help · 100% · 120/120 ─┘"
+	want := "└─ o: open article in browser " + strings.Repeat("─", 22) + " ?: help • 100% • 120/120 ─┘"
 	if line != want {
 		t.Errorf("bottom border = %q, want %q", line, want)
 	}
