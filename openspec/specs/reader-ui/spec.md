@@ -909,12 +909,19 @@ not depend on any prior clamping having occurred.
 
 ### Requirement: Quit and utility keys
 
-The system SHALL quit on `q` or Ctrl-C from any view. The system SHALL provide `m` to toggle read/unread status, `a` to mark all articles in the current view as read, `o` to open the article URL in the system browser, `c` to copy the article URL to the clipboard, `C` to copy the article text to the clipboard, and `?` to display a help popup showing the current keymap.
+The system SHALL quit on `q` or Ctrl-C from the list and article views. When a
+popup is open, `q` SHALL close the popup and return to the underlying view
+instead of quitting, while Ctrl-C still quits from inside a popup. The system SHALL provide `m` to toggle read/unread status, `a` to mark all articles in the current view as read, `o` to open the article URL in the system browser, `c` to copy the article URL to the clipboard, `C` to copy the article text to the clipboard, and `?` to display a help popup showing the current keymap.
 
 #### Scenario: Quit from any view
 
-- **WHEN** the user presses `q` or Ctrl-C in any view
+- **WHEN** the user presses `q` or Ctrl-C in the list or article view
 - **THEN** the application exits
+
+#### Scenario: Q closes an open popup
+
+- **WHEN** the user presses `q` while a popup is open over the list or article view
+- **THEN** the popup closes, the underlying view remains, and the application does not exit
 
 #### Scenario: Toggle read status
 
@@ -1281,7 +1288,7 @@ use `j`/`k` and the arrow keys and SHALL wrap around at both ends. Enter SHALL
 open the selected URL in the system browser using the same non-shell
 single-argument opener used for other URL opens. While the links popup is open,
 `o` SHALL still open the article's own URL in the system browser without closing
-the popup. Esc SHALL close the popup
+the popup. Esc or `q` SHALL close the popup
 without navigating. When the article contains no links, the popup SHALL open
 with an empty list and Enter SHALL do nothing. While the popup is closed,
 Enter SHALL continue to close the article view and return to the list.

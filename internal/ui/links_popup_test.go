@@ -150,6 +150,27 @@ func TestLinkPopupEscClosesWithoutNavigating(t *testing.T) {
 	}
 }
 
+func TestLinkPopupQClosesWithoutQuitting(t *testing.T) {
+	m := articleWithLinks(t)
+	m.openLinksPopup()
+	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		t.Errorf("q should close the popup, not quit, got %T", cmd)
+	}
+	if m.popupData.Kind() != popup.KindNone || m.view != viewArticle {
+		t.Errorf("q should close the popup and stay in the article, kind = %d view = %d", m.popupData.Kind(), m.view)
+	}
+}
+
+func TestPopupCtrlCStillQuits(t *testing.T) {
+	m := articleWithLinks(t)
+	m.openLinksPopup()
+	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Error("ctrl+c with a popup open should still quit the app")
+	}
+}
+
 func TestLinkPopupEmptyArticle(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.article = m.article.Recompose(internal.Article{Title: "bare", Content: "<p>no links</p>"})

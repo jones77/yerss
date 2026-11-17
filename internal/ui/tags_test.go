@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
@@ -104,6 +106,18 @@ func TestTagPopupGroupsSourcesFirst(t *testing.T) {
 			t.Errorf("popup tag order = %v, want %v (sources first)", names, want)
 			break
 		}
+	}
+}
+
+func TestTagPopupQClosesPopup(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.openTagPopup(popup.KindTagsList)
+	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		t.Errorf("q in a popup should close the popup, not quit, got %T", cmd)
+	}
+	if m.popupData.Kind() != popup.KindNone {
+		t.Errorf("q should close the tag popup, kind = %d", m.popupData.Kind())
 	}
 }
 

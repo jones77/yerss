@@ -181,6 +181,13 @@ func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
 	}
 	switch act {
 	case config.Quit:
+		// The q key closes the popup instead of quitting the app, the same
+		// way the help popup treats it; ctrl+c (the other default quit
+		// binding) still quits from inside a popup.
+		if msg.String() == "q" {
+			s.kind = KindNone
+			return ActionBack
+		}
 		return ActionQuit
 	case config.Back:
 		s.kind = KindNone
