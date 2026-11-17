@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/config"
-	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 )
 
@@ -51,7 +51,7 @@ func clipboardMsgLabel(t *testing.T, cmd tea.Cmd) string {
 func articleMouseModel(t *testing.T) *Model {
 	t.Helper()
 	m, _ := newTestModel(t)
-	m.article = m.article.Recompose(store.Article{Title: "t", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "t", Content: "<p>x</p>"})
 	return m
 }
 
@@ -248,7 +248,7 @@ func TestSelectedTextZeroWidth(t *testing.T) {
 
 func TestCKeyCopiesArticleText(t *testing.T) {
 	m, _ := newTestModel(t)
-	a := store.Article{Title: "headline", Link: "https://example.com/a", Content: "<p>body text</p>"}
+	a := internal.Article{Title: "headline", Link: "https://example.com/a", Content: "<p>body text</p>"}
 	m.article = m.article.Recompose(a)
 
 	_, cmd := m.updateArticle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("C")})

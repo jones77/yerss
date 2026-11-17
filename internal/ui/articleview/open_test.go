@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 func TestDebugInfoSnapshot(t *testing.T) {
@@ -16,7 +16,7 @@ func TestDebugInfoSnapshot(t *testing.T) {
 	s.lines = make([]string, 200)
 	s.ascii = true
 	s.LinkExpand = true
-	s.article = &store.Article{ID: 42, Title: "Hello World", Link: "https://example.com/x"}
+	s.article = &internal.Article{ID: 42, Title: "Hello World", Link: "https://example.com/x"}
 
 	got := debugInfoSnapshot(&s)
 	for _, want := range []string{

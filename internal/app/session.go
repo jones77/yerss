@@ -7,10 +7,10 @@ package app
 import (
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/image"
-	"yerss/internal/store"
 )
 
 // Session holds the store, config, and image caches for one run. The TUI
@@ -18,7 +18,7 @@ import (
 // place behind a single dependency.
 type Session struct {
 	cfg   *config.Config
-	store *store.Store
+	store *internal.Store
 
 	ImgRenderer image.Renderer
 	ImgCache    *image.Cache
@@ -29,7 +29,7 @@ type Session struct {
 }
 
 // New builds a Session bound to a config and store.
-func New(cfg *config.Config, st *store.Store) *Session {
+func New(cfg *config.Config, st *internal.Store) *Session {
 	return &Session{
 		cfg:         cfg,
 		store:       st,
@@ -46,16 +46,16 @@ func New(cfg *config.Config, st *store.Store) *Session {
 func (s *Session) Config() *config.Config { return s.cfg }
 
 // Store returns the session's store.
-func (s *Session) Store() *store.Store { return s.store }
+func (s *Session) Store() *internal.Store { return s.store }
 
 // ListArticles delegates to the store.
-func (s *Session) ListArticles(filterTag string) ([]store.Article, error) {
+func (s *Session) ListArticles(filterTag string) ([]internal.Article, error) {
 	return s.store.ListArticles(filterTag)
 }
 
 // ListArticlesLite delegates to the store's slim list query, which selects
 // only the columns the list view renders (no article body).
-func (s *Session) ListArticlesLite(filterTag string) ([]store.Article, error) {
+func (s *Session) ListArticlesLite(filterTag string) ([]internal.Article, error) {
 	return s.store.ListArticlesLite(filterTag)
 }
 
@@ -69,15 +69,15 @@ func (s *Session) DBSize() (int64, error) { return s.store.DBSize() }
 func (s *Session) SetRead(id int64, read bool) error { return s.store.SetRead(id, read) }
 
 // GetArticle delegates to the store.
-func (s *Session) GetArticle(id int64) (*store.Article, error) { return s.store.GetArticle(id) }
+func (s *Session) GetArticle(id int64) (*internal.Article, error) { return s.store.GetArticle(id) }
 
 // SaveSelection persists the reader selection.
-func (s *Session) SaveSelection(sel store.LastSelection) error {
+func (s *Session) SaveSelection(sel internal.LastSelection) error {
 	return s.store.SaveLastSelection(sel)
 }
 
 // LoadSelection restores the saved reader selection.
-func (s *Session) LoadSelection() (store.LastSelection, error) {
+func (s *Session) LoadSelection() (internal.LastSelection, error) {
 	return s.store.LoadLastSelection()
 }
 
@@ -101,7 +101,7 @@ func (s *Session) VerifiedFeedURLs() (map[string]bool, error) {
 }
 
 // ListTags delegates to the store.
-func (s *Session) ListTags() ([]store.TagCount, error) { return s.store.ListTags() }
+func (s *Session) ListTags() ([]internal.TagCount, error) { return s.store.ListTags() }
 
 // FetchFeeds runs a refresh pass against the session's store and returns the
 // pass summary.

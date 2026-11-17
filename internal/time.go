@@ -1,6 +1,6 @@
-// Package timeutil holds the calendar-day and date-format helpers shared by the
-// list view, article view, and JSON export.
-package timeutil
+// Calendar-day and date-format helpers shared by the list view, article view,
+// and JSON export.
+package internal
 
 import (
 	"fmt"

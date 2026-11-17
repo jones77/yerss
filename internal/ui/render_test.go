@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/popup"
 	"yerss/internal/ui/render"
 )
@@ -28,7 +28,7 @@ func TestRenderList(t *testing.T) {
 
 func TestRenderArticleBorder(t *testing.T) {
 	m, st := newTestModel(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        "g1",
 		Title:       "Hello world article title",
@@ -67,7 +67,7 @@ func TestRenderArticleBorder(t *testing.T) {
 func TestRenderArticleBorderShowSeconds(t *testing.T) {
 	m, st := newTestModel(t)
 	m.sess.Config().Display.ShowSeconds = true
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        "g-seconds",
 		Title:       "Seconds title",
@@ -92,7 +92,7 @@ func TestRenderArticleBorderShowSeconds(t *testing.T) {
 func TestRenderArticleBorderASCII(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetAscii(true)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g2",
 		Title:   "ascii",
@@ -109,7 +109,7 @@ func TestRenderArticleBorderASCII(t *testing.T) {
 func TestRenderArticleBorderInteriorPadding(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetAscii(true)
-	m.article = m.article.Recompose(store.Article{
+	m.article = m.article.Recompose(internal.Article{
 		Title:   "Hello world article title",
 		Content: "<p>a short paragraph</p>",
 	})
@@ -148,7 +148,7 @@ func trackGlyphs(t *testing.T, s string) string {
 func TestRenderArticleThumbPosition(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetAscii(true)
-	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "long", Content: "<p>x</p>"})
 	// 70 content lines vs viewport height 20 (height 24, padY 1 above and
 	// below): scrollable range 50, track height 22, thumb height 22*20/70 = 6.
 	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
@@ -179,7 +179,7 @@ func TestRenderArticleThumbPosition(t *testing.T) {
 func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetAscii(true)
-	m.article = m.article.Recompose(store.Article{Title: "short", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "short", Content: "<p>x</p>"})
 	s := m.article.Render()
 	lines := strings.Split(s, "\n")
 	if got := trackGlyphs(t, s); got != strings.Repeat(":", 22) {
@@ -193,7 +193,7 @@ func TestRenderArticleShortArticleNoThumb(t *testing.T) {
 func TestRenderTagPopup(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.popupData.SetKind(popup.KindTagsList)
-	m.popupData.SetTags([]store.TagCount{{Name: "tech", Total: 3, Unread: 1}})
+	m.popupData.SetTags([]internal.TagCount{{Name: "tech", Total: 3, Unread: 1}})
 	s := m.popupData.Render()
 	if !strings.Contains(s, "tech") {
 		t.Errorf("popup missing tag: %q", s)

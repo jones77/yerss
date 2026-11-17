@@ -3,7 +3,7 @@ package articleview
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/compose"
 )
 
@@ -127,7 +127,7 @@ func (s *State) AnchorAt(offset int) (blockURL, anchor string, gap int) {
 // by the saved gap. It returns false when the saved selection carries no usable
 // anchor — an offset-only selection saved before anchors existed — so the
 // caller falls back to the raw offset.
-func (s *State) RestoreAt(sel store.LastSelection) bool {
+func (s *State) RestoreAt(sel internal.LastSelection) bool {
 	vpH := s.Viewport.Height
 	// A reader who quit at the very top of the article lands exactly there: the
 	// top is unambiguous across reflows, and the anchor mechanism would land a

@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/popup"
 	"yerss/internal/ui/render"
 )
@@ -74,8 +74,8 @@ func TestSourceID(t *testing.T) {
 		{"", "", ""},
 	}
 	for _, c := range cases {
-		if got := store.SourceLabel(c.link, c.feed); got != c.want {
-			t.Errorf("store.SourceLabel(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
+		if got := internal.SourceLabel(c.link, c.feed); got != c.want {
+			t.Errorf("internal.SourceLabel(%q, %q) = %q, want %q", c.link, c.feed, got, c.want)
 		}
 	}
 }
@@ -211,7 +211,7 @@ func TestArticleFrameBorderColors(t *testing.T) {
 	forceTrueColor(t)
 	m, _ := newTestModel(t)
 	m.SetAscii(true)
-	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "long", Content: "<p>x</p>"})
 	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 	s := m.article.Render()
 	lines := strings.Split(s, "\n")

@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/image"
-	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
@@ -529,7 +529,7 @@ func (v *ImageView) composeBlock(rendered []string, attr string, contentW int) [
 // when image rendering is enabled, with one in-flight guard per URL. Images
 // beyond the frontier are not fetched, decoded, or rendered until the reader
 // scrolls toward them.
-func (v *ImageView) FireImageLoad(a store.Article, view ArticleView) tea.Cmd {
+func (v *ImageView) FireImageLoad(a internal.Article, view ArticleView) tea.Cmd {
 	if !v.Enabled() {
 		return nil
 	}
@@ -541,7 +541,7 @@ func (v *ImageView) FireImageLoad(a store.Article, view ArticleView) tea.Cmd {
 // marking the URL in flight so duplicate loads are not started (for example on
 // resize), and gating the fetch/decode/render work with the shared concurrency
 // bound.
-func (v *ImageView) loadImageCmd(a store.Article, url string, position int) tea.Cmd {
+func (v *ImageView) loadImageCmd(a internal.Article, url string, position int) tea.Cmd {
 	width, vpH, _ := render.ContentGeom(v.width, v.height, v.sess.Config().Display.PaddingX, v.sess.Config().Display.PaddingY)
 	v.loading[url] = true
 	if v.NativeEnabled() {
@@ -557,7 +557,7 @@ func (v *ImageView) loadImageCmd(a store.Article, url string, position int) tea.
 // article renders at or before the load frontier that has no cached source at
 // the current content geometry (for example a stored block rendered at a
 // different width, or a native render keyed to an earlier viewport size).
-func (v *ImageView) EnsureImageSource(a store.Article, view ArticleView) tea.Cmd {
+func (v *ImageView) EnsureImageSource(a internal.Article, view ArticleView) tea.Cmd {
 	if !v.Enabled() {
 		return nil
 	}
@@ -615,7 +615,7 @@ func (v *ImageView) AdvanceFrontierLoads(view ArticleView) tea.Cmd {
 // served at the current geometry (their blocks are already composed). imgLoading
 // remains the per-URL in-flight guard, so a frontier advance never double-fires
 // a URL whose load or render is still running.
-func (v *ImageView) fireImagesTo(a store.Article, view ArticleView, k int, open bool) tea.Cmd {
+func (v *ImageView) fireImagesTo(a internal.Article, view ArticleView, k int, open bool) tea.Cmd {
 	width, vpH, _ := render.ContentGeom(v.width, v.height, v.sess.Config().Display.PaddingX, v.sess.Config().Display.PaddingY)
 	var cmds []tea.Cmd
 	for pos, url := range view.ImageURLs() {

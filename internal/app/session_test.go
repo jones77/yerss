@@ -11,16 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
 	"yerss/internal/feed"
-	"yerss/internal/store"
 )
 
-func newTestSession(t *testing.T) (*Session, *store.Store) {
+func newTestSession(t *testing.T) (*Session, *internal.Store) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	return New(config.Default(), st), st

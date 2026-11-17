@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"yerss/internal/store"
-	"yerss/internal/textutil"
+	"yerss/internal"
 )
 
 // stubStdin overrides the injectable stdin source and TTY detection for the
@@ -47,9 +46,9 @@ func captureStderr(t *testing.T, fn func()) string {
 }
 
 // writeDB creates a real, openable database at path and returns the open store.
-func writeDB(t *testing.T, path string) *store.Store {
+func writeDB(t *testing.T, path string) *internal.Store {
 	t.Helper()
-	st, err := store.Open(path)
+	st, err := internal.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +56,9 @@ func writeDB(t *testing.T, path string) *store.Store {
 }
 
 // insertArticle adds a minimal article with a unique GUID.
-func insertArticle(t *testing.T, st *store.Store, guid string) {
+func insertArticle(t *testing.T, st *internal.Store, guid string) {
 	t.Helper()
-	if _, err := st.UpsertArticle(store.Article{
+	if _, err := st.UpsertArticle(internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        guid,
 		Title:       "t",
@@ -84,7 +83,7 @@ func TestFormatSize(t *testing.T) {
 		{1048576, "1.0 MB"},
 		{1073741824, "1.0 GB"},
 	} {
-		if got := textutil.FormatSize(c.in); got != c.want {
+		if got := internal.FormatSize(c.in); got != c.want {
 			t.Errorf("FormatSize(%d) = %q, want %q", c.in, got, c.want)
 		}
 	}

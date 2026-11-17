@@ -3,8 +3,8 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal"
 	"yerss/internal/config"
-	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/popup"
 )
@@ -20,7 +20,7 @@ func (m *Model) openArticle() tea.Cmd {
 		m.view = viewArticle
 		return m.images.FireImageLoad(*full, &m.article)
 	}
-	m.article = m.article.Recompose(store.Article{ID: item.ID, Title: item.Title, Read: item.Read})
+	m.article = m.article.Recompose(internal.Article{ID: item.ID, Title: item.Title, Read: item.Read})
 	m.view = viewArticle
 	return nil
 }

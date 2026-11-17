@@ -6,11 +6,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/feed"
 	"yerss/internal/image"
-	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/imageview"
 	"yerss/internal/ui/listview"
@@ -56,7 +56,7 @@ type Model struct {
 	// recomposes at the true size, and re-applying the anchor there (instead of
 	// preserving the numeric offset, which is meaningless across a width change)
 	// is what actually lands the reader on the saved line.
-	pendingRestore *store.LastSelection
+	pendingRestore *internal.LastSelection
 
 	feedOutcomes []feed.FeedOutcome
 

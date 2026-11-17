@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/popup"
 )
 
@@ -143,7 +143,7 @@ func TestWheelMovesListCursor(t *testing.T) {
 func TestMouseIgnoredWhilePopupOpen(t *testing.T) {
 	m, _ := twoArticleModel(t)
 	m.popupData.SetKind(popup.KindTagsList)
-	m.popupData.SetTags([]store.TagCount{{Name: "tech", Total: 1, Unread: 1}})
+	m.popupData.SetTags([]internal.TagCount{{Name: "tech", Total: 1, Unread: 1}})
 	m.popupData.SetCursor(0)
 
 	m.Update(mouseClick(0, 2))
@@ -160,7 +160,7 @@ func TestMouseIgnoredWhilePopupOpen(t *testing.T) {
 
 func TestArticleWheelScrollsViewport(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "long", Content: "<p>x</p>"})
 	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 	m.article.Viewport.GotoTop()
 	start := m.article.Viewport.YOffset

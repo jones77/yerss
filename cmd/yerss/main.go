@@ -9,10 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/pflag"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
 	"yerss/internal/feed"
-	"yerss/internal/store"
 	"yerss/internal/ui"
 )
 
@@ -51,7 +51,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s: reinitialized database: %s\n", base, cfg.DBPath())
 	}
 
-	st, err := store.Open(cfg.DBPath())
+	st, err := internal.Open(cfg.DBPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: cannot initialize database\n", base)
 		fmt.Fprintf(os.Stderr, "database path: %s\n", cfg.DBPath())
@@ -163,7 +163,7 @@ func applyAsciiFlag(m *ui.Model, force bool) {
 // feeds file is canonicalized the same way it is on fetch. A read failure of
 // the feeds file is not an error: without a known configured set it is
 // impossible to tell which feeds were removed, so pruning is skipped.
-func pruneFeeds(cfg *config.Config, st *store.Store) error {
+func pruneFeeds(cfg *config.Config, st *internal.Store) error {
 	urls, err := feed.LoadFeeds(cfg.FeedsFile())
 	if err != nil {
 		return nil

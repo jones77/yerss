@@ -21,8 +21,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/mosaic"
 
-	"yerss/internal/store"
-	"yerss/internal/textutil"
+	"yerss/internal"
 )
 
 // BlockMsg reports an article's lead image rendered as a halfblock text block.
@@ -164,7 +163,7 @@ func NativeKey(url string, width, maxHeight int) string {
 // render is exactly the requested width per line, so this is the block's
 // render width.
 func BlockWidth(lines []string) int {
-	return textutil.MaxLineWidth(lines)
+	return internal.MaxLineWidth(lines)
 }
 
 // BlockCmd returns a tea.Cmd that resolves an article's image block at width
@@ -175,7 +174,7 @@ func BlockWidth(lines []string) int {
 // position (0 for the lead image, 1..N for inline images); on any failure a
 // FailedMsg is emitted. When fetch is false the command never hits the network:
 // that is the native-terminal placeholder path, where PhotoCmd owns fetching.
-func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, url string, width, maxHeight int, allowFetch bool, position int) tea.Cmd {
+func BlockCmd(cache *Cache, blocks *Blocks, st *internal.Store, articleID int64, url string, width, maxHeight int, allowFetch bool, position int) tea.Cmd {
 	return func() tea.Msg {
 		if lines, ok := blockFromCache(cache, blocks, url, width, maxHeight); ok {
 			return BlockMsg{Key: url, Lines: lines}
@@ -230,7 +229,7 @@ func BlockCmd(cache *Cache, blocks *Blocks, st *store.Store, articleID int64, ur
 // and persist the halfblock block so future opens have a placeholder, and both
 // the block and photo are persisted together at position (0 for the lead image,
 // 1..N for inline images). On any failure a FailedMsg is emitted.
-func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, articleID int64, url string, width, maxHeight, position int) tea.Cmd {
+func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *internal.Store, articleID int64, url string, width, maxHeight, position int) tea.Cmd {
 	return func() tea.Msg {
 		if _, ok := photos.Get(url); ok {
 			return PhotoMsg{Key: url}
@@ -261,8 +260,8 @@ func PhotoCmd(cache *Cache, blocks *Blocks, photos *Photos, st *store.Store, art
 // persistImage writes the rendered block and the raw photo bytes together as
 // the article image at the given position (0 for the lead image, 1..N for
 // inline images). block may be nil when only the photo is available.
-func persistImage(st *store.Store, id int64, url string, block []string, photo []byte, position int) {
-	_ = st.SetArticleImage(id, store.ArticleImage{
+func persistImage(st *internal.Store, id int64, url string, block []string, photo []byte, position int) {
+	_ = st.SetArticleImage(id, internal.ArticleImage{
 		Position: position,
 		URL:      url,
 		Block:    strings.Join(block, "\n"),
@@ -379,7 +378,7 @@ func RenderWidth(srcW, srcH, contentW int) int {
 // renders narrower than the column, so a stale full-width block stored before
 // the small-image cap is rejected and re-rendered from the photo); without a
 // photo the stored width matching contentW is trusted.
-func blockWidthMatches(img store.ArticleImage, contentW int) bool {
+func blockWidthMatches(img internal.ArticleImage, contentW int) bool {
 	if len(img.Photo) > 0 {
 		if cfg, _, err := image.DecodeConfig(bytes.NewReader(img.Photo)); err == nil {
 			return img.Width == RenderWidth(cfg.Width, cfg.Height, contentW)

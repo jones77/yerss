@@ -6,10 +6,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/convert"
 	"yerss/internal/image"
-	"yerss/internal/store"
-	"yerss/internal/timeutil"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
@@ -42,7 +41,7 @@ func (s *State) URLIndex(url string) int {
 // and, for a new article, resetting the image load frontier. It returns a new
 // State value; callers assign it back. Recomposes of the same article keep the
 // load frontier so it stays monotonic within the article open.
-func (s *State) Recompose(a store.Article) State {
+func (s *State) Recompose(a internal.Article) State {
 	s.contentGen++
 	if s.article == nil || a.ID != s.id {
 		s.images.ResetForNewArticle()
@@ -93,7 +92,7 @@ type derivationKey struct {
 // deriveArticle returns the article's derived display content, reusing the
 // cached single entry when the article and all derivation inputs match. A
 // stale entry (different article, geometry, or renderer inputs) is replaced.
-func (s *State) deriveArticle(a store.Article, contentW, vpH int) Derivation {
+func (s *State) deriveArticle(a internal.Article, contentW, vpH int) Derivation {
 	key := derivationKey{
 		id:         a.ID,
 		contentW:   contentW,
@@ -127,7 +126,7 @@ func stripSoftHyphens(s string) string {
 // discovers and dedupes the inline images, harvests the links, renders the
 // header and each body text segment through the markdown renderer, and records
 // the per-image captions — the work an image-load recompose must not repeat.
-func (s *State) computeDerivation(a store.Article, contentW int) Derivation {
+func (s *State) computeDerivation(a internal.Article, contentW int) Derivation {
 	a.Title = stripSoftHyphens(a.Title)
 	a.Author = stripSoftHyphens(a.Author)
 	a.Link = stripSoftHyphens(a.Link)
@@ -246,7 +245,7 @@ func (s *State) computeDerivation(a store.Article, contentW int) Derivation {
 // into the derived text segments at the sentinel positions, and builds the
 // viewport. This is the per-recompose part — image blocks change as loads land
 // while the derived body stays put.
-func (s *State) composeArticle(a store.Article, der Derivation, contentW, vpH int) State {
+func (s *State) composeArticle(a internal.Article, der Derivation, contentW, vpH int) State {
 	var parts []string
 	var blocks []compose.ImageBlock
 	var captions map[string]string
@@ -434,17 +433,17 @@ func stripURLScheme(url string) string {
 // a line break). Title and author are rendered as separate documents and joined
 // because the markdown renderer folds line breaks inside a paragraph into
 // spaces.
-func (s *State) renderHeader(a store.Article, contentW int) string {
+func (s *State) renderHeader(a internal.Article, contentW int) string {
 	return s.renderHeaderMode(a, contentW, s.LinkExpand)
 }
 
 // renderHeaderExpanded renders the header in the fixed expanded mode, used to
 // compute the mode-independent fitHeaderLines budget.
-func (s *State) renderHeaderExpanded(a store.Article, contentW int) string {
+func (s *State) renderHeaderExpanded(a internal.Article, contentW int) string {
 	return s.renderHeaderMode(a, contentW, true)
 }
 
-func (s *State) renderHeaderMode(a store.Article, contentW int, linkExpand bool) string {
+func (s *State) renderHeaderMode(a internal.Article, contentW int, linkExpand bool) string {
 	var meta []string
 	if a.Title != "" {
 		meta = append(meta, s.renderMarkdown("**"+compose.EscapeMarkdownText(a.Title)+"**", contentW))
@@ -537,7 +536,7 @@ func (s *State) RenderUncached() string {
 	a := s.article
 	date := ""
 	if !a.PublishedAt.IsZero() {
-		date = a.PublishedAt.Local().Format(timeutil.DateTimeLayout(s.sess.Config().Display.ShowSeconds))
+		date = a.PublishedAt.Local().Format(internal.DateTimeLayout(s.sess.Config().Display.ShowSeconds))
 	}
 	title := a.Title
 	if title == "" {

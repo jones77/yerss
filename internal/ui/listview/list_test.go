@@ -14,8 +14,7 @@ import (
 
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
-	"yerss/internal/timeutil"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -26,11 +25,11 @@ func withLocalZone(t *testing.T, loc *time.Location) {
 	t.Cleanup(func() { time.Local = old })
 }
 
-func newTestState(t *testing.T) (*State, *store.Store) {
+func newTestState(t *testing.T) (*State, *internal.Store) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	s := New(app.New(config.Default(), st), render.DarkPalette(), false, 80, 24)
@@ -50,9 +49,9 @@ func listKeys(t *testing.T) map[string]config.Action {
 	return keys
 }
 
-func insertTimedArticle(t *testing.T, st *store.Store, title string, pub time.Time) int64 {
+func insertTimedArticle(t *testing.T, st *internal.Store, title string, pub time.Time) int64 {
 	t.Helper()
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        "guid-" + title,
 		Title:       title,
@@ -66,7 +65,7 @@ func insertTimedArticle(t *testing.T, st *store.Store, title string, pub time.Ti
 	return id
 }
 
-func insertArticle(t *testing.T, st *store.Store, title string, tags []string) int64 {
+func insertArticle(t *testing.T, st *internal.Store, title string, tags []string) int64 {
 	t.Helper()
 	id := insertTimedArticle(t, st, title, time.Time{})
 	if err := st.SetArticleTags(id, tags); err != nil {
@@ -94,7 +93,7 @@ func forceTrueColor(t *testing.T) {
 func TestBucketDayGroupsOrdering(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	now := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-	arts := []store.Article{
+	arts := []internal.Article{
 		{Title: "day1-1", PublishedAt: time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)},
 		{Title: "day2-1", PublishedAt: time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)},
 		{Title: "day2-2", PublishedAt: time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)},
@@ -107,9 +106,9 @@ func TestBucketDayGroupsOrdering(t *testing.T) {
 	}
 	day := func(d int) time.Time { return time.Date(2026, 8, d, 0, 0, 0, 0, time.UTC) }
 	wantLabels := []string{
-		"today, " + timeutil.LongDate(day(28)),
-		"yesterday, " + timeutil.LongDate(day(27)),
-		timeutil.LongDate(day(26)),
+		"today, " + internal.LongDate(day(28)),
+		"yesterday, " + internal.LongDate(day(27)),
+		internal.LongDate(day(26)),
 		"Undated",
 	}
 	for i, want := range wantLabels {

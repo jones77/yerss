@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
 	"yerss/internal/feed"
-	"yerss/internal/store"
 )
 
 // tlsGateServer starts a self-signed HTTPS test server and swaps the feed
@@ -27,7 +27,7 @@ func tlsGateServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	old := feed.ClientFactory
 	feed.ClientFactory = func(timeout time.Duration) *http.Client {
 		return &http.Client{
-			Timeout:   timeout,
+			Timeout: timeout,
 			// Test server only: the self-signed certificate is trusted by design.
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec
 		}
@@ -39,7 +39,7 @@ func tlsGateServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	return srv
 }
 
-func gateTestEnv(t *testing.T, feedsContent string) (*config.Config, *store.Store) {
+func gateTestEnv(t *testing.T, feedsContent string) (*config.Config, *internal.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	feedsPath := filepath.Join(dir, "feeds.txt")
@@ -49,7 +49,7 @@ func gateTestEnv(t *testing.T, feedsContent string) (*config.Config, *store.Stor
 	cfg := config.Default()
 	cfg.Data.FeedsFile = feedsPath
 	cfg.Data.Dir = filepath.Join(dir, "data")
-	st, err := store.Open(cfg.DBPath())
+	st, err := internal.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestGateMissingFeedsRefuses(t *testing.T) {
 	cfg := config.Default()
 	cfg.Data.FeedsFile = filepath.Join(dir, "absent.txt")
 	cfg.Data.Dir = filepath.Join(dir, "data")
-	st, err := store.Open(cfg.DBPath())
+	st, err := internal.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestGateUnreadableFeedsFileRefuses(t *testing.T) {
 	cfg := config.Default()
 	cfg.Data.FeedsFile = feedsPath
 	cfg.Data.Dir = filepath.Join(dir, "data")
-	st, err := store.Open(cfg.DBPath())
+	st, err := internal.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatal(err)
 	}

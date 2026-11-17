@@ -3,7 +3,7 @@ package articleview
 import (
 	"charm.land/glamour/v2"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -58,7 +58,7 @@ func (s *State) DerivKey() DerivationKey {
 }
 
 // Derive returns the derivation for the article, cached by key.
-func (s *State) Derive(a store.Article, contentW, vpH int) Derivation {
+func (s *State) Derive(a internal.Article, contentW, vpH int) Derivation {
 	return s.deriveArticle(a, contentW, vpH)
 }
 
@@ -80,7 +80,7 @@ func (s *State) MarkdownRendererStyle() string { return s.mdRendererStyle }
 
 // RenderHeaderMode renders the article header in compact or expanded link
 // mode at the given content width.
-func (s *State) RenderHeaderMode(a store.Article, contentW int, linkExpand bool) string {
+func (s *State) RenderHeaderMode(a internal.Article, contentW int, linkExpand bool) string {
 	return s.renderHeaderMode(a, contentW, linkExpand)
 }
 

@@ -8,8 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"yerss/internal/app"
-	"yerss/internal/store"
-	"yerss/internal/timeutil"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -173,7 +172,7 @@ type visibleRow struct {
 // most recent day first. Articles with no publication time land in a trailing
 // "Undated" group. now is the reference time for the today/yesterday label
 // prefixes; callers pass time.Now() and tests pass a fixed time.
-func bucketDayGroups(arts []store.Article, now time.Time) []dayGroup {
+func bucketDayGroups(arts []internal.Article, now time.Time) []dayGroup {
 	var groups []dayGroup
 	idx := map[string]int{}
 	for _, a := range arts {
@@ -183,14 +182,14 @@ func bucketDayGroups(arts []store.Article, now time.Time) []dayGroup {
 		}
 		item := Item{ID: a.ID, Title: title, Read: a.Read, PublishedAt: a.PublishedAt, Link: a.Link, FeedURL: a.FeedURL}
 
-		key := timeutil.DayKey(a.PublishedAt)
+		key := internal.DayKey(a.PublishedAt)
 		i, ok := idx[key]
 		if !ok {
 			label := "Undated"
 			var date time.Time
 			if key != "undated" {
-				date = timeutil.DayStart(a.PublishedAt)
-				label = timeutil.DayLabel(date, now)
+				date = internal.DayStart(a.PublishedAt)
+				label = internal.DayLabel(date, now)
 			}
 			i = len(groups)
 			groups = append(groups, dayGroup{date: date, label: label})
@@ -384,13 +383,13 @@ func (s *State) renderArticleRow(item *Item, selected bool) string {
 		bar = s.styles.selRow
 	}
 
-	src := store.SourceLabel(item.Link, item.FeedURL)
+	src := internal.SourceLabel(item.Link, item.FeedURL)
 	if src != "" {
 		src = render.ElideMiddle(src, 15, g.Ellipsis)
 	}
 	ts := "--:--"
 	if !item.PublishedAt.IsZero() {
-		ts = item.PublishedAt.Local().Format(timeutil.TimeLayout(s.sess.Config().Display.ShowSeconds))
+		ts = item.PublishedAt.Local().Format(internal.TimeLayout(s.sess.Config().Display.ShowSeconds))
 	}
 
 	// The row starts with the local publication time, the title filling the

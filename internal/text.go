@@ -1,6 +1,6 @@
-// Package textutil provides small text helpers shared across the TUI, store,
-// and converter packages.
-package textutil
+// Package internal provides SQLite storage, text helpers, and time formatting
+// shared across the yerss command, TUI, and converter packages.
+package internal
 
 import (
 	"fmt"

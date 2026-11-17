@@ -15,9 +15,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/convert"
 	imgpkg "yerss/internal/image"
-	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/imageview"
@@ -80,8 +80,8 @@ func testImg() image.Image {
 	return img
 }
 
-func imageArticle() store.Article {
-	return store.Article{
+func imageArticle() internal.Article {
+	return internal.Article{
 		FeedURL:  "https://example.com/feed.xml",
 		GUID:     "g-img",
 		Title:    "Headline",
@@ -686,7 +686,7 @@ const kittyDeleteEsc = "\x1b_Ga=d,d=a,q=1\x1b\\"
 // path the UI uses on PhotoMsg, which caches the finished block in imgNatives
 // so a subsequent compose serves it. Tests call it before newArticleState to
 // stand in for the PhotoMsg → NativeCmd → NativeMsg flow.
-func nativeRenderLines(t *testing.T, m *Model, a store.Article) []string {
+func nativeRenderLines(t *testing.T, m *Model, a internal.Article) []string {
 	t.Helper()
 	width, vpH, _ := render.ContentGeom(m.width, m.height, m.sess.Config().Display.PaddingX, m.sess.Config().Display.PaddingY)
 	fitLines := 0
@@ -3253,7 +3253,7 @@ func TestImageMessageBatchRecomposesOncePerMessage(t *testing.T) {
 // separated by long stretches of body text, so the distant inlines sit well
 // beyond the open viewport's lookahead margin while the lead and first inline
 // are within it.
-func frontierArticle() store.Article {
+func frontierArticle() internal.Article {
 	a := imageArticle()
 	a.GUID = "g-frontier"
 	a.Content = "<p>intro</p>" +

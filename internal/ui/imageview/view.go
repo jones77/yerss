@@ -1,8 +1,8 @@
 package imageview
 
 import (
+	"yerss/internal"
 	"yerss/internal/convert"
-	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 )
 
@@ -16,7 +16,7 @@ type ArticleView interface {
 	// ID is the open article's store id (0 when none is open).
 	ID() int64
 	// Article is the open article's full store row, or nil when none is open.
-	Article() *store.Article
+	Article() *internal.Article
 	// Lines is the composed article content, one display row per entry.
 	Lines() []string
 	// ViewportY is the viewport's current top offset.

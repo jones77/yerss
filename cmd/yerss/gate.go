@@ -6,19 +6,19 @@ import (
 	"os"
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
 	"yerss/internal/feed"
-	"yerss/internal/store"
 )
 
 // Exit codes for the startup gate refusals. Existing load/DB errors remain
 // exit 1; these distinct codes let scripts and tests tell the two refusal
 // reasons apart.
 const (
-	exitEmptyFeeds  = 2
-	exitNoWorking   = 3
-	verifyPerFeed   = 10 * time.Second
-	verifyOverall   = 30 * time.Second
+	exitEmptyFeeds = 2
+	exitNoWorking  = 3
+	verifyPerFeed  = 10 * time.Second
+	verifyOverall  = 30 * time.Second
 )
 
 // runStartupGate verifies that at least one RSS feed is configured and live
@@ -28,7 +28,7 @@ const (
 //   - empty/missing feeds file            -> exit 2, naming the file
 //   - feeds table already has a verified feed -> 0 (offline-safe, no network)
 //   - first run: fetch with 10s/feed, 30s overall; no feed parsed -> exit 3
-func runStartupGate(cfg *config.Config, st *store.Store) int {
+func runStartupGate(cfg *config.Config, st *internal.Store) int {
 	urls, err := feed.LoadFeeds(cfg.FeedsFile())
 	if err != nil {
 		// A missing file is the "nothing configured yet" case (exit 2). Any

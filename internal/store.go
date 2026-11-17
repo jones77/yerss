@@ -1,4 +1,4 @@
-package store
+package internal
 
 import (
 	"database/sql"
@@ -13,7 +13,6 @@ import (
 	"golang.org/x/net/publicsuffix"
 
 	_ "github.com/glebarez/go-sqlite"
-	"yerss/internal/textutil"
 )
 
 // Article is a single stored feed item.
@@ -253,7 +252,7 @@ ON CONFLICT(article_id, position) DO UPDATE SET
 
 // blockWidth returns the maximum cell width across the given ANSI-styled lines.
 func blockWidth(lines []string) int {
-	return textutil.MaxLineWidth(lines)
+	return MaxLineWidth(lines)
 }
 
 // migrateCategorySource adds the source flag to the categories table when it

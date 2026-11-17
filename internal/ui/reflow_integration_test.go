@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 // TestArticleReflowFixesStrippedLinkAndBlockquote reproduces the two reported
@@ -20,7 +20,7 @@ func TestArticleReflowFixesStrippedLinkAndBlockquote(t *testing.T) {
 	m.article.SetSize(m.width, m.height)
 	content := `<figure class="wp-block-pullquote"><blockquote><p>“The ocean swallows up all the information we would usually rely on.”</p></blockquote></figure>` +
 		`<p>Twenty-six of the 227 total killed have been identified. Among those identified by a&nbsp;<a href="https://www.elclip.org/guiria-venezuela-vueltas-narcotrafico-bombardeos-caribe/?lang=en">consortium of journalists</a>&nbsp;from Venezuelan outlets were a bus driver, a mototaxi driver, men involved in fishing or the seafood trade, and a futsal player.</p>`
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "reflow-guid",
 		Title:   "reflow",

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 // FetchResult summarizes a refresh pass.
@@ -56,7 +56,7 @@ const maxConcurrentFetches = 8
 // feed failures are collected in the result rather than aborting the pass. It
 // applies a per-feed HTTP timeout and an overall deadline so a hung server
 // cannot stall the pass indefinitely.
-func FetchFeeds(st *store.Store, urls []string) FetchResult {
+func FetchFeeds(st *internal.Store, urls []string) FetchResult {
 	parser := gofeed.NewParser()
 	parser.Client = ClientFactory(refreshPerFeedTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), refreshOverallTimeout)
@@ -69,7 +69,7 @@ func FetchFeeds(st *store.Store, urls []string) FetchResult {
 // deadline, reusing the same fetch-and-persist path. It returns an error when
 // no feed parses successfully; a successful gate fetch persists the verified
 // feed (stamping last_fetched_at) so the startup refresh is skipped.
-func VerifyFeeds(st *store.Store, urls []string, perFeed, overall time.Duration) (FetchResult, error) {
+func VerifyFeeds(st *internal.Store, urls []string, perFeed, overall time.Duration) (FetchResult, error) {
 	parser := gofeed.NewParser()
 	parser.Client = ClientFactory(perFeed)
 	ctx, cancel := context.WithTimeout(context.Background(), overall)
@@ -85,7 +85,7 @@ func VerifyFeeds(st *store.Store, urls []string, perFeed, overall time.Duration)
 // non-nil: it carries the overall deadline, and each request is cancelled when
 // it elapses. In-flight requests are capped by a semaphore so a feed set larger
 // than the bound is processed in waves rather than all at once.
-func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx context.Context) FetchResult {
+func fetchFeeds(st *internal.Store, urls []string, parser *gofeed.Parser, ctx context.Context) FetchResult {
 	var (
 		mu  sync.Mutex
 		res FetchResult
@@ -146,7 +146,7 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 					mu.Unlock()
 					continue
 				}
-				source := store.SourceLabel(art.Link, art.FeedURL)
+				source := internal.SourceLabel(art.Link, art.FeedURL)
 				tags := make([]string, 0, len(art.Categories)+1)
 				tags = append(tags, art.Categories...)
 				if source != "" {
@@ -172,7 +172,7 @@ func fetchFeeds(st *store.Store, urls []string, parser *gofeed.Parser, ctx conte
 	return res
 }
 
-func itemToArticle(feedURL string, item *gofeed.Item) store.Article {
+func itemToArticle(feedURL string, item *gofeed.Item) internal.Article {
 	guid := item.GUID
 	if guid == "" {
 		guid = item.Link
@@ -193,7 +193,7 @@ func itemToArticle(feedURL string, item *gofeed.Item) store.Article {
 	} else if len(item.Authors) > 0 {
 		author = item.Authors[0].Name
 	}
-	return store.Article{
+	return internal.Article{
 		FeedURL:     feedURL,
 		GUID:        guid,
 		Title:       item.Title,

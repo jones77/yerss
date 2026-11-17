@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
-	"yerss/internal/store"
 )
 
-func jsonTestStore(t *testing.T) *store.Store {
+func jsonTestStore(t *testing.T) *internal.Store {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.Data.Dir = filepath.Join(dir, "data")
-	st, err := store.Open(cfg.DBPath())
+	st, err := internal.Open(cfg.DBPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,9 +34,9 @@ func withLocal(t *testing.T, loc *time.Location) {
 	t.Cleanup(func() { time.Local = old })
 }
 
-func insertJSONArticle(t *testing.T, st *store.Store, guid string, pub time.Time, cats []string) {
+func insertJSONArticle(t *testing.T, st *internal.Store, guid string, pub time.Time, cats []string) {
 	t.Helper()
-	id, err := st.UpsertArticle(store.Article{
+	id, err := st.UpsertArticle(internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        guid,
 		Title:       "Title " + guid,

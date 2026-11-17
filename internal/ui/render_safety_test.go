@@ -6,7 +6,7 @@ import (
 
 	"github.com/mattn/go-runewidth"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -15,7 +15,7 @@ func TestRenderArticleZeroHeight(t *testing.T) {
 	m.width = 0
 	m.height = 0
 	m.article.SetSize(m.width, m.height)
-	m.article = m.article.Recompose(store.Article{
+	m.article = m.article.Recompose(internal.Article{
 		Title:   "x",
 		Content: "<p>hello world</p>",
 	})

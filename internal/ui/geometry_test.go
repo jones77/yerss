@@ -4,8 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"yerss/internal/store"
-	"yerss/internal/timeutil"
+	"yerss/internal"
 )
 
 func TestContentGeomStateAndRectAgree(t *testing.T) {
@@ -16,7 +15,7 @@ func TestContentGeomStateAndRectAgree(t *testing.T) {
 	m.sess.Config().Display.PaddingX = 2
 	m.sess.Config().Display.PaddingY = 2
 
-	st := m.article.Recompose(store.Article{ID: 1})
+	st := m.article.Recompose(internal.Article{ID: 1})
 	_, _, w, h := m.article.ContentRect()
 	if st.Viewport.Width != w || st.Viewport.Height != h {
 		t.Fatalf("newArticleState viewport (%d,%d) != contentRect (%d,%d)",
@@ -25,22 +24,22 @@ func TestContentGeomStateAndRectAgree(t *testing.T) {
 }
 
 func TestDayKey(t *testing.T) {
-	if got := timeutil.DayKey(time.Time{}); got != "undated" {
+	if got := internal.DayKey(time.Time{}); got != "undated" {
 		t.Errorf("DayKey(zero) = %q, want %q", got, "undated")
 	}
 	day := time.Date(2026, 8, 28, 15, 4, 0, 0, time.Local)
-	if got := timeutil.DayKey(day); got != "20260828" {
+	if got := internal.DayKey(day); got != "20260828" {
 		t.Errorf("DayKey(%v) = %q, want %q", day, got, "20260828")
 	}
 	nextDay := time.Date(2026, 8, 29, 0, 0, 0, 0, time.Local)
-	if got := timeutil.DayKey(nextDay); got != "20260829" {
+	if got := internal.DayKey(nextDay); got != "20260829" {
 		t.Errorf("DayKey(%v) = %q, want %q", nextDay, got, "20260829")
 	}
 }
 
 func TestDayStart(t *testing.T) {
 	in := time.Date(2026, 8, 28, 23, 59, 59, 999999999, time.Local)
-	got := timeutil.DayStart(in)
+	got := internal.DayStart(in)
 	want := time.Date(2026, 8, 28, 0, 0, 0, 0, time.Local)
 	if !got.Equal(want) {
 		t.Errorf("DayStart(%v) = %v, want %v", in, got, want)

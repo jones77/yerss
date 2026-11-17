@@ -3,8 +3,8 @@ package listview
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal"
 	"yerss/internal/config"
-	"yerss/internal/timeutil"
 	"yerss/internal/ui/render"
 )
 
@@ -174,7 +174,7 @@ func (s *State) HeaderKeyAtCursor() string {
 	if row.kind != rowHeader {
 		return ""
 	}
-	return timeutil.DayKey(s.groups[row.groupIdx].date)
+	return internal.DayKey(s.groups[row.groupIdx].date)
 }
 
 // SelectionForCursor returns the selection identity of the row under the
@@ -193,7 +193,7 @@ func (s *State) SelectionForCursor() (articleID int64, headerKey string) {
 func (s *State) RestoreCursor(articleID int64, headerKey string) {
 	if headerKey != "" {
 		for gi := range s.groups {
-			if timeutil.DayKey(s.groups[gi].date) == headerKey {
+			if internal.DayKey(s.groups[gi].date) == headerKey {
 				rows := s.visibleRows()
 				for i, r := range rows {
 					if r.kind == rowHeader && r.groupIdx == gi {

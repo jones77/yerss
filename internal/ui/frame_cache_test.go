@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 
 	imgpkg "yerss/internal/image"
 	"yerss/internal/ui/articleview"
@@ -22,7 +22,7 @@ import (
 func TestFrameCacheSkipsNoOpBoundaryScrolls(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.view = viewArticle
-	m.article = m.article.Recompose(store.Article{Title: "long", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "long", Content: "<p>x</p>"})
 	m.article.Viewport.SetContent(strings.Join(make([]string, 70), "\n"))
 	m.article.Viewport.GotoTop()
 

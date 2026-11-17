@@ -7,8 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"yerss/internal/store"
-	"yerss/internal/textutil"
+	"yerss/internal"
 )
 
 // stdinReader returns the stream confirmInitDB reads a confirmation from. It
@@ -43,7 +42,7 @@ func confirmInitDB(path string) (code int, ok bool) {
 	}
 
 	count := 0
-	if st, oerr := store.Open(path); oerr == nil {
+	if st, oerr := internal.Open(path); oerr == nil {
 		count, _ = st.ArticleCount()
 		st.Close()
 	}
@@ -53,7 +52,7 @@ func confirmInitDB(path string) (code int, ok bool) {
 		return 1, false
 	}
 
-	fmt.Fprintf(os.Stderr, "delete database (%s, %d articles) at %s? [y/N] ", textutil.FormatSize(size), count, path)
+	fmt.Fprintf(os.Stderr, "delete database (%s, %d articles) at %s? [y/N] ", internal.FormatSize(size), count, path)
 	line, _ := bufio.NewReader(stdinReader()).ReadString('\n')
 	if strings.EqualFold(strings.TrimSpace(line), "y") {
 		return 0, true

@@ -1,13 +1,13 @@
 package articleview
 
 import (
-	"github.com/charmbracelet/bubbles/viewport"
 	"charm.land/glamour/v2"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/convert"
-	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/imageview"
 	"yerss/internal/ui/render"
@@ -30,35 +30,35 @@ func newStyles(p render.Palette) styles {
 // State value and routes input and messages to it; State depends only on
 // render, compose, imageview, app, and store.
 type State struct {
-	sess   *app.Session
-	images *imageview.ImageView
+	sess    *app.Session
+	images  *imageview.ImageView
 	palette render.Palette
-	ascii  bool
-	width  int
-	height int
-	styles styles
+	ascii   bool
+	width   int
+	height  int
+	styles  styles
 
-	contentGen  int
-	nativeGen   int
-	derivCache  Derivation
-	derivKey    derivationKey
-	derivValid  bool
-	frameKey    FrameKey
-	frameValid  bool
-	frameStr    string
+	contentGen       int
+	nativeGen        int
+	derivCache       Derivation
+	derivKey         derivationKey
+	derivValid       bool
+	frameKey         FrameKey
+	frameValid       bool
+	frameStr         string
 	frameRenderCount int
 	recomposePending bool
 	recomposeCount   int
-	mdRenderer  *glamour.TermRenderer
-	mdRendererW int
-	mdRendererStyle string
+	mdRenderer       *glamour.TermRenderer
+	mdRendererW      int
+	mdRendererStyle  string
 
 	// LinkExpand is the link display mode this State was composed in. Model
 	// owns the session-wide truth (Model.linkExpand) and syncs it here.
 	LinkExpand bool
 
 	id          int64
-	article     *store.Article
+	article     *internal.Article
 	lines       []string
 	Viewport    viewport.Model
 	readMarked  bool
@@ -153,7 +153,7 @@ func (s *State) base() State {
 func (s *State) ID() int64 { return s.id }
 
 // Article returns the article being read, or nil before the first Recompose.
-func (s *State) Article() *store.Article { return s.article }
+func (s *State) Article() *internal.Article { return s.article }
 
 // Lines returns the composed content lines (the viewport source).
 func (s *State) Lines() []string { return s.lines }

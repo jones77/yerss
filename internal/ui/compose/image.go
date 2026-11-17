@@ -1,8 +1,8 @@
 package compose
 
 import (
+	"yerss/internal"
 	"yerss/internal/convert"
-	"yerss/internal/store"
 )
 
 // ImageBlock is one image block composed into the article content: the lead
@@ -48,7 +48,7 @@ func CaptionWidth(screenW, contentW int) int {
 // link-text steps; an image in a captioned figure whose caption belongs to a
 // later image (a photo-grid's first photo) returns "" before any other source,
 // so it never borrows that figure's caption.
-func ResolveImageAttribution(a store.Article, url, alt, linkText string, isLead bool) string {
+func ResolveImageAttribution(a internal.Article, url, alt, linkText string, isLead bool) string {
 	cap, inFig := convert.ImageCaption(a.Content, url)
 	if inFig && cap == "" {
 		return ""
@@ -57,7 +57,7 @@ func ResolveImageAttribution(a store.Article, url, alt, linkText string, isLead 
 		return cap
 	}
 	if isLead {
-		if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
+		if src := internal.SourceLabel(a.Link, a.FeedURL); src != "" {
 			return "photo: " + src
 		}
 		return ""
@@ -68,7 +68,7 @@ func ResolveImageAttribution(a store.Article, url, alt, linkText string, isLead 
 	if linkText != "" {
 		return linkText
 	}
-	if src := store.SourceLabel(a.Link, a.FeedURL); src != "" {
+	if src := internal.SourceLabel(a.Link, a.FeedURL); src != "" {
 		return "photo: " + src
 	}
 	return ""

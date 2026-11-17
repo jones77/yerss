@@ -15,7 +15,7 @@ import (
 
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -64,7 +64,7 @@ type State struct {
 	width  int
 	height int
 
-	tags      []store.TagCount
+	tags      []internal.TagCount
 	links     []Link
 	cursor    int
 	scrollCol int
@@ -98,10 +98,10 @@ func (s *State) Cursor() int { return s.cursor }
 func (s *State) SetCursor(c int) { s.cursor = c }
 
 // Tags returns the popup's tag counts.
-func (s *State) Tags() []store.TagCount { return s.tags }
+func (s *State) Tags() []internal.TagCount { return s.tags }
 
 // SetTags replaces the popup's tag counts.
-func (s *State) SetTags(tags []store.TagCount) { s.tags = tags }
+func (s *State) SetTags(tags []internal.TagCount) { s.tags = tags }
 
 // Links returns the popup's links.
 func (s *State) Links() []Link { return s.links }
@@ -123,7 +123,7 @@ func (s *State) OpenTags(kind Kind, categories []string) string {
 		for _, c := range categories {
 			want[c] = true
 		}
-		filtered := make([]store.TagCount, 0, len(want))
+		filtered := make([]internal.TagCount, 0, len(want))
 		for _, t := range tags {
 			if want[t.Name] {
 				filtered = append(filtered, t)
@@ -143,9 +143,9 @@ func (s *State) OpenLinks(links []Link) {
 }
 
 // SelectedTag returns the tag at the cursor, if any.
-func (s *State) SelectedTag() (store.TagCount, bool) {
+func (s *State) SelectedTag() (internal.TagCount, bool) {
 	if len(s.tags) == 0 || s.cursor < 0 || s.cursor >= len(s.tags) {
-		return store.TagCount{}, false
+		return internal.TagCount{}, false
 	}
 	return s.tags[s.cursor], true
 }

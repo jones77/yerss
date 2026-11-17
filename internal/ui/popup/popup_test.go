@@ -13,15 +13,15 @@ import (
 
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
-func newTestState(t *testing.T) (*State, *store.Store) {
+func newTestState(t *testing.T) (*State, *internal.Store) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	return New(app.New(config.Default(), st), render.DarkPalette(), false, 80, 24), st
@@ -51,10 +51,10 @@ func escapePrefix(rendered string) string {
 	return strings.Split(rendered, "x")[0]
 }
 
-func makeTags(n int) []store.TagCount {
-	tags := make([]store.TagCount, n)
+func makeTags(n int) []internal.TagCount {
+	tags := make([]internal.TagCount, n)
 	for i := range tags {
-		tags[i] = store.TagCount{Name: fmt.Sprintf("tag%02d", i+1), Total: 1, Unread: 1}
+		tags[i] = internal.TagCount{Name: fmt.Sprintf("tag%02d", i+1), Total: 1, Unread: 1}
 	}
 	return tags
 }
@@ -70,10 +70,10 @@ func containsAll(s string, subs ...string) bool {
 	return true
 }
 
-func wideTags(n, nameLen int) []store.TagCount {
-	tags := make([]store.TagCount, n)
+func wideTags(n, nameLen int) []internal.TagCount {
+	tags := make([]internal.TagCount, n)
 	for i := range tags {
-		tags[i] = store.TagCount{
+		tags[i] = internal.TagCount{
 			Name:  fmt.Sprintf("tag%02d", i+1) + strings.Repeat("x", nameLen),
 			Total: 1, Unread: 1,
 		}
@@ -114,7 +114,7 @@ func TestActionLabel(t *testing.T) {
 
 func TestPopupWrapAround(t *testing.T) {
 	s, _ := newTestState(t)
-	s.SetTags([]store.TagCount{
+	s.SetTags([]internal.TagCount{
 		{Name: "a"}, {Name: "b"},
 	})
 	s.SetCursor(1)
@@ -583,7 +583,7 @@ func TestTagPopupCountsRightAligned(t *testing.T) {
 	s.SetKind(KindTagsList)
 	// Two tags in one column: the long-named tag sizes the column to the
 	// 23-column cap, and the short-named tag's counts right-align to the edge.
-	tags := []store.TagCount{
+	tags := []internal.TagCount{
 		{Name: "aaaa", Total: 12, Unread: 3},
 		{Name: "bbbbbbbbbbbbbbbbbbbbbb", Total: 5, Unread: 5},
 	}
@@ -650,7 +650,7 @@ func TestTagSubtitleCellCentered(t *testing.T) {
 func TestTagPopupSubtitlesGroupTheTags(t *testing.T) {
 	s, _ := newTestState(t)
 	s.SetKind(KindTagsList)
-	s.SetTags([]store.TagCount{
+	s.SetTags([]internal.TagCount{
 		{Name: "nytimes", Total: 3, Unread: 1, IsSource: true},
 		{Name: "theguardian", Total: 2, Unread: 0, IsSource: true},
 		{Name: "tech", Total: 5, Unread: 2},
@@ -690,7 +690,7 @@ func TestTagPopupSubtitlesGroupTheTags(t *testing.T) {
 			srcRow, nyRow, tagsRow, techRow, out)
 	}
 	// A tags-only popup still labels its section.
-	s.SetTags([]store.TagCount{{Name: "tech", Total: 1, Unread: 1}})
+	s.SetTags([]internal.TagCount{{Name: "tech", Total: 1, Unread: 1}})
 	out = ansi.Strip(s.renderTagPopup())
 	if !strings.Contains(strings.Split(out, "\n")[1], "Tags") {
 		t.Errorf("category-only popup should show the Tags subtitle: %q", out)
@@ -700,7 +700,7 @@ func TestTagPopupSubtitlesGroupTheTags(t *testing.T) {
 func TestTagPopupSubtitlesNotSelectable(t *testing.T) {
 	s, _ := newTestState(t)
 	s.SetKind(KindTagsList)
-	s.SetTags([]store.TagCount{
+	s.SetTags([]internal.TagCount{
 		{Name: "nytimes", Total: 3, Unread: 1, IsSource: true},
 		{Name: "tech", Total: 5, Unread: 2},
 	})
@@ -746,7 +746,7 @@ func TestTagPopupCountUsesListViewColors(t *testing.T) {
 	forceTrueColor(t)
 	s, _ := newTestState(t)
 	s.SetKind(KindTagsList)
-	s.SetTags([]store.TagCount{
+	s.SetTags([]internal.TagCount{
 		{Name: "news", Total: 60, Unread: 15},
 		{Name: "sports", Total: 10, Unread: 0},
 	})
@@ -975,9 +975,9 @@ func TestHelpShowsSpaceKeyAsWord(t *testing.T) {
 	}
 	cfg := config.Default()
 	cfg.Keybindings = km
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	s := New(app.New(cfg, st), render.DarkPalette(), false, 80, 24)

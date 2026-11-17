@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -50,7 +50,7 @@ func TestSetAsciiForcesAsciiGlyphs(t *testing.T) {
 	m, _ := newTestModel(t)
 	// Force ascii off regardless of what config or terminal detection chose.
 	m.SetAscii(false)
-	m.article = m.article.Recompose(store.Article{Title: "x", Content: "<p>y</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "x", Content: "<p>y</p>"})
 
 	before := ansi.Strip(m.article.Render())
 	if !strings.HasPrefix(before, "┌") {

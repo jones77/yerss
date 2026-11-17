@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 func withLocalZone(t *testing.T, loc *time.Location) {
@@ -15,9 +15,9 @@ func withLocalZone(t *testing.T, loc *time.Location) {
 	t.Cleanup(func() { time.Local = old })
 }
 
-func insertTimedArticle(t *testing.T, st *store.Store, title string, pub time.Time) int64 {
+func insertTimedArticle(t *testing.T, st *internal.Store, title string, pub time.Time) int64 {
 	t.Helper()
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:     "https://example.com/feed.xml",
 		GUID:        "guid-" + title,
 		Title:       title,

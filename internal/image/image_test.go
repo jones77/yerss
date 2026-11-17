@@ -15,7 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 // pngBytes encodes a solid-color image as PNG bytes.
@@ -34,9 +34,9 @@ func pngBytes(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-func newImageTestStore(t *testing.T) *store.Store {
+func newImageTestStore(t *testing.T) *internal.Store {
 	t.Helper()
-	st, err := store.Open(t.TempDir() + "/img.sqlite")
+	st, err := internal.Open(t.TempDir() + "/img.sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,13 +184,13 @@ func TestBlockCmdInMemoryHit(t *testing.T) {
 
 func TestBlockCmdStoredBlockHit(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, 480, 320))
 	want, _ := (Halfblocks{}).Render(img, 40, 100)
-	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, URL: "https://example.com/img.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
+	if err := st.SetArticleImage(id, internal.ArticleImage{Position: 0, URL: "https://example.com/img.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
 		t.Fatal(err)
 	}
 	c := NewCache()
@@ -211,7 +211,7 @@ func TestBlockCmdStoredBlockHit(t *testing.T) {
 
 func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 		t.Error("width mismatch must re-render from the stored photo, not fetch")
 	}))
 	defer srv.Close()
-	if err := st.SetArticleImage(id, store.ArticleImage{
+	if err := st.SetArticleImage(id, internal.ArticleImage{
 		Position: 0,
 		URL:      srv.URL,
 		Block:    strings.Join(old, "\n"),
@@ -254,7 +254,7 @@ func TestBlockCmdStoredPhotoRerendersOnWidthMismatch(t *testing.T) {
 
 func TestBlockCmdNoFetchModeNeverHitsNetwork(t *testing.T) {
 	st := newImageTestStore(t)
-	id, _ := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, _ := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("no-fetch mode must not hit the network")
 	}))
@@ -268,7 +268,7 @@ func TestBlockCmdNoFetchModeNeverHitsNetwork(t *testing.T) {
 
 func TestBlockCmdNetworkFetchPersistsBlockAndPhoto(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestBlockCmdNetworkFetchPersistsBlockAndPhoto(t *testing.T) {
 
 func TestPhotoCmdFetchesAndPersistsBlock(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,13 +354,13 @@ func TestPhotoCmdFetchesAndPersistsBlock(t *testing.T) {
 
 func TestPhotoCmdStoredPhotoSkipsFetch(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	url := "https://example.com/img.png"
 	data := pngBytes(t, 4, 4)
-	if err := st.SetArticleImage(id, store.ArticleImage{Position: 0, URL: url, Photo: data}); err != nil {
+	if err := st.SetArticleImage(id, internal.ArticleImage{Position: 0, URL: url, Photo: data}); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -376,7 +376,7 @@ func TestPhotoCmdStoredPhotoSkipsFetch(t *testing.T) {
 
 func TestPhotoCmdAlreadyCachedSkipsFetch(t *testing.T) {
 	st := newImageTestStore(t)
-	id, _ := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, _ := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("cached photo must not re-fetch")
 	}))
@@ -530,7 +530,7 @@ func TestRenderNativeFittedDecodesOnce(t *testing.T) {
 
 func TestBlockCmdNonImageContentTypeFails(t *testing.T) {
 	st := newImageTestStore(t)
-	id, _ := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, _ := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte("<html>not an image</html>"))
@@ -567,7 +567,7 @@ func TestFetchNoByteCap(t *testing.T) {
 
 func TestBlockCmdTimeoutFails(t *testing.T) {
 	st := newImageTestStore(t)
-	id, _ := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, _ := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	old := fetchTimeout
 	fetchTimeout = 50 * time.Millisecond
 	defer func() { fetchTimeout = old }()
@@ -952,7 +952,7 @@ func TestPixelDimsCapPreservesAspectRatio(t *testing.T) {
 
 func TestBlockCmdPersistsInlineImageAtPosition(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -984,12 +984,12 @@ func TestBlockCmdPersistsInlineImageAtPosition(t *testing.T) {
 
 func TestBlockCmdServesInlineStoredBlockByURL(t *testing.T) {
 	st := newImageTestStore(t)
-	id, err := st.UpsertArticle(store.Article{FeedURL: "f", GUID: "g"})
+	id, err := st.UpsertArticle(internal.Article{FeedURL: "f", GUID: "g"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want, _ := (Halfblocks{}).Render(image.NewRGBA(image.Rect(0, 0, 480, 320)), 40, 100)
-	if err := st.SetArticleImage(id, store.ArticleImage{Position: 3, URL: "https://example.com/inline.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
+	if err := st.SetArticleImage(id, internal.ArticleImage{Position: 3, URL: "https://example.com/inline.png", Block: strings.Join(want, "\n"), Width: BlockWidth(want)}); err != nil {
 		t.Fatal(err)
 	}
 	msg := BlockCmd(NewCache(), NewBlocks(), st, id, "https://example.com/inline.png", 40, 100, true, 3)()

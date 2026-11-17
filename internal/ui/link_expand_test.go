@@ -12,19 +12,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
 
 // openTestArticle inserts an article and opens it in the reader view.
-func openTestArticle(t *testing.T, title, content string) (*Model, *store.Store) {
+func openTestArticle(t *testing.T, title, content string) (*Model, *internal.Store) {
 	t.Helper()
 	m, st := newTestModel(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "guid-" + title,
 		Title:   title,
@@ -91,7 +91,7 @@ func TestLinkExpandModePersistsAcrossArticles(t *testing.T) {
 	if !strings.Contains(bodyText(m), "world https://example.com/post") {
 		t.Fatalf("expected expanded after x: %q", bodyText(m))
 	}
-	a2 := store.Article{
+	a2 := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "guid-second",
 		Title:   "second",
@@ -140,7 +140,7 @@ func TestCompactLinkSpanIsClickable(t *testing.T) {
 func TestReaderHeaderURLRendersBlue(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.SetLinkExpand(true)
-	m.article = m.article.Recompose(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
 	blue := escapePrefix(lipgloss.NewStyle().Foreground(m.palette.StatusBar).Render("x"))
 	if !strings.Contains(m.article.Lines()[0], blue) {
 		t.Errorf("header URL line should render in the status-bar blue role: %q", m.article.Lines()[0])
@@ -262,7 +262,7 @@ func nonEmptyLines(s string) int {
 
 func TestCompactHeaderHidesURL(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.article = m.article.Recompose(store.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "t", Link: "https://example.com/post", Content: "<p>x</p>"})
 	lines := strippedLines(m.article.Lines())
 	if first := strings.TrimRight(lines[0], " "); first != "t" {
 		t.Errorf("first content line = %q, want the title", first)
@@ -276,7 +276,7 @@ func TestCompactHeaderHidesURL(t *testing.T) {
 // stable "paragraph <n> text anchor<n>" line and end in a wrapped hyperlink, so
 // toggling link mode adds URL lines that push the text off its compact position
 // without changing each paragraph's leading words.
-func anchorToggleFixture(t *testing.T, n int) (*Model, *store.Store) {
+func anchorToggleFixture(t *testing.T, n int) (*Model, *internal.Store) {
 	t.Helper()
 	var html strings.Builder
 	for i := 1; i <= n; i++ {
@@ -287,14 +287,14 @@ func anchorToggleFixture(t *testing.T, n int) (*Model, *store.Store) {
 
 // toggleTopFixture builds an article with a Link so the expanded header adds
 // the URL line above the title, and scrolls to the very top.
-func toggleTopFixture(t *testing.T) (*Model, *store.Store) {
+func toggleTopFixture(t *testing.T) (*Model, *internal.Store) {
 	t.Helper()
 	var html strings.Builder
 	for i := 1; i <= 30; i++ {
 		fmt.Fprintf(&html, `<p>paragraph %d text anchor%d [j](%s)</p>`, i, i, wrapURL)
 	}
 	m, st := newTestModel(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g-toggle-top",
 		Title:   "top-title",
@@ -461,7 +461,7 @@ func TestLinkExpandToggleURLFirstLineNearEndGluesBottom(t *testing.T) {
 		fmt.Fprintf(&html, "<p>filler paragraph %d with some words</p>", i)
 	}
 	fmt.Fprintf(&html, "<p>tail [link](%s)</p>", longURL)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g-url-tail",
 		Title:   "url-tail",
@@ -550,9 +550,9 @@ func TestLinkExpandToggleReflowReanchorsFirstWord(t *testing.T) {
 // photoToggleModel builds a model on an article whose lead photo composes a
 // block and whose body wraps a long URL across lines, so toggling link mode
 // changes the line count while the photo block stays present.
-func photoToggleModel(t *testing.T) (*Model, *store.Store) {
+func photoToggleModel(t *testing.T) (*Model, *internal.Store) {
 	t.Helper()
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:  "https://example.com/feed.xml",
 		GUID:     "g-photo-toggle",
 		Title:    "Headline",
@@ -689,7 +689,7 @@ func TestFitHeaderLinesIsMaxAcrossModes(t *testing.T) {
 func TestLinkExpandModePersistsAcrossRestart(t *testing.T) {
 	withLocalZone(t, time.UTC)
 	st := openSharedStore(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "guid-persist",
 		Title:   "persist-title",
@@ -748,7 +748,7 @@ func TestLinkExpandToggleDoesNotTouchConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -757,7 +757,7 @@ func TestLinkExpandToggleDoesNotTouchConfigFile(t *testing.T) {
 	m.width = 80
 	m.height = 24
 
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "guid-config",
 		Title:   "cfg",

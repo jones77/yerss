@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/timeutil"
+	"yerss/internal"
 )
 
 // StatusBarLeft builds the status bar's left segment: the transient status
@@ -25,7 +25,7 @@ func StatusBarLeft(base, dim lipgloss.Style, g BorderGlyphs, statusMsg string, s
 		left = base.Render("never refreshed")
 	} else {
 		t := lastRefreshedAt
-		left = base.Render(t.Format(timeutil.TimeLayout(showSeconds))+" "+timeutil.LongDate(t)) + " " + dim.Render("last refresh")
+		left = base.Render(t.Format(internal.TimeLayout(showSeconds))+" "+internal.LongDate(t)) + " " + dim.Render("last refresh")
 	}
 	if filter != "" && (statusMsg == "" || !statusActive) {
 		left += " " + dim.Render(g.Bullet) + " " + base.Render("filter "+filter)

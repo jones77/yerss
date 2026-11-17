@@ -6,12 +6,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 func TestShortArticleMarkedReadOnOpen(t *testing.T) {
 	m, st := newTestModel(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g1",
 		Title:   "short",
@@ -35,7 +35,7 @@ func TestShortArticleMarkedReadOnOpen(t *testing.T) {
 func TestLongArticleNotMarkedReadOnOpen(t *testing.T) {
 	m, st := newTestModel(t)
 	content := strings.Repeat("<p>a long line of text to scroll through</p>\n", 200)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g2",
 		Title:   "long",
@@ -58,13 +58,13 @@ func TestLongArticleNotMarkedReadOnOpen(t *testing.T) {
 
 func TestFirstMovementInEachDirectionMarksRead(t *testing.T) {
 	keys := map[string]tea.KeyMsg{
-		"up":    {Type: tea.KeyUp},
-		"down":  {Type: tea.KeyDown},
-		"pgup":  {Type: tea.KeyPgUp},
-		"pgdn":  {Type: tea.KeyPgDown},
-		"halfup":  {Type: tea.KeyCtrlU},
-		"halfdn":  {Type: tea.KeyCtrlD},
-		"top":   {Type: tea.KeyRunes, Runes: []rune("1")},
+		"up":     {Type: tea.KeyUp},
+		"down":   {Type: tea.KeyDown},
+		"pgup":   {Type: tea.KeyPgUp},
+		"pgdn":   {Type: tea.KeyPgDown},
+		"halfup": {Type: tea.KeyCtrlU},
+		"halfdn": {Type: tea.KeyCtrlD},
+		"top":    {Type: tea.KeyRunes, Runes: []rune("1")},
 		"bottom": {Type: tea.KeyRunes, Runes: []rune("G")},
 	}
 	for dir, key := range keys {
@@ -73,7 +73,7 @@ func TestFirstMovementInEachDirectionMarksRead(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			m, st := newTestModel(t)
 			content := strings.Repeat("<p>scrolling text content here</p>\n", 200)
-			a := store.Article{
+			a := internal.Article{
 				FeedURL: "https://example.com/feed.xml",
 				GUID:    "g-move-" + name,
 				Title:   "move-" + name,
@@ -103,7 +103,7 @@ func TestFirstMovementInEachDirectionMarksRead(t *testing.T) {
 func TestMovementMarksReadWhenPositionUnchanged(t *testing.T) {
 	m, st := newTestModel(t)
 	content := strings.Repeat("<p>text at the top of a long article</p>\n", 200)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g4",
 		Title:   "top",
@@ -129,7 +129,7 @@ func TestMovementMarksReadWhenPositionUnchanged(t *testing.T) {
 func TestFurtherMovementKeepsArticleRead(t *testing.T) {
 	m, st := newTestModel(t)
 	content := strings.Repeat("<p>more scrolling text content here</p>\n", 200)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g5",
 		Title:   "read",
@@ -165,7 +165,7 @@ func TestFurtherMovementKeepsArticleRead(t *testing.T) {
 
 func TestRestoreSavedOffsetDoesNotMarkRead(t *testing.T) {
 	st := openSharedStore(t)
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "g6",
 		Title:   "restore",

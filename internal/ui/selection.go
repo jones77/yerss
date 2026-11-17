@@ -3,13 +3,13 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
 // persistSelection records the current list selection (and the open article,
 // when in the article view) so a restart can restore it. It is called on quit.
 func (m *Model) persistSelection() {
-	sel := store.LastSelection{View: "list"}
+	sel := internal.LastSelection{View: "list"}
 	if m.view == viewArticle {
 		sel.View = "article"
 		if m.article.Article() != nil {

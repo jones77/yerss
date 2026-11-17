@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/compose"
 	"yerss/internal/ui/render"
 )
@@ -190,7 +190,7 @@ func (s *State) SelectedText() string {
 
 // MarkRead marks the article read in the store, once per State: the flag
 // guards against repeat writes for the same composed article.
-func (s *State) MarkRead(st *store.Store) {
+func (s *State) MarkRead(st *internal.Store) {
 	if s.readMarked || s.article.Read {
 		s.readMarked = true
 		return

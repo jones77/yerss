@@ -4,17 +4,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
 	"yerss/internal/ui/popup"
 )
 
-func newTestModel(t *testing.T) (*Model, *store.Store) {
+func newTestModel(t *testing.T) (*Model, *internal.Store) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	m := New(app.New(config.Default(), st))
@@ -23,9 +23,9 @@ func newTestModel(t *testing.T) (*Model, *store.Store) {
 	return m, st
 }
 
-func insertArticle(t *testing.T, st *store.Store, title string, tags []string) int64 {
+func insertArticle(t *testing.T, st *internal.Store, title string, tags []string) int64 {
 	t.Helper()
-	a := store.Article{
+	a := internal.Article{
 		FeedURL: "https://example.com/feed.xml",
 		GUID:    "guid-" + title,
 		Title:   title,
@@ -52,10 +52,10 @@ func TestTagFiltering(t *testing.T) {
 	}
 
 	m.popupData.SetKind(popup.KindTagsList)
-	m.popupData.SetTags([]store.TagCount{{Name: "tech", Total: 1, Unread: 1}})
+	m.popupData.SetTags([]internal.TagCount{{Name: "tech", Total: 1, Unread: 1}})
 	m.popupData.SetCursor(0)
 	m.confirmTagSelection()
-if m.list.Filter() != "tech" {
+	if m.list.Filter() != "tech" {
 		t.Errorf("filter = %q, want tech", m.list.Filter())
 	}
 	if m.list.ArticleCount() != 1 || !containsID(loadedIDs(m), id1) {
@@ -83,7 +83,6 @@ func containsID(ids []int64, id int64) bool {
 	}
 	return false
 }
-
 
 func TestTagPopupGroupsSourcesFirst(t *testing.T) {
 	m, st := newTestModel(t)

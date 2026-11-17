@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"yerss/internal"
 	imgpkg "yerss/internal/image"
-	"yerss/internal/store"
 )
 
 // countingRenderer wraps the real halfblock renderer and counts calls, so a
@@ -53,14 +53,14 @@ func drain(m *Model, cmd tea.Cmd) {
 // photoHeavyArticle returns an article with a lead image and n inline images
 // separated by short paragraphs, compact enough that every image's anchor row
 // sits within the open viewport's load frontier.
-func photoHeavyArticle(n int) store.Article {
+func photoHeavyArticle(n int) internal.Article {
 	var content strings.Builder
 	content.WriteString("<p>intro</p>")
 	for i := 1; i <= n; i++ {
 		fmt.Fprintf(&content, `<p><img src="https://example.com/img%d.jpg" alt="Photo %d"></p>`, i, i)
 		content.WriteString("<p>body</p>")
 	}
-	return store.Article{
+	return internal.Article{
 		FeedURL:  "https://example.com/feed.xml",
 		GUID:     "g-photo-heavy",
 		Title:    "Photo Heavy",
@@ -97,7 +97,7 @@ func TestRecomposeServesCachedBlocksRendersBounded(t *testing.T) {
 		if pos > 0 {
 			url = fmt.Sprintf("https://example.com/img%d.jpg", pos)
 		}
-		if err := st.SetArticleImage(id, store.ArticleImage{
+		if err := st.SetArticleImage(id, internal.ArticleImage{
 			Position: pos,
 			URL:      url,
 			Photo:    pngBytes(t, 320, 160),
@@ -112,7 +112,7 @@ func TestRecomposeServesCachedBlocksRendersBounded(t *testing.T) {
 	}
 	m.article = m.article.Recompose(*full)
 	m.view = viewArticle
-	drain(m, m.images.FireImageLoad(*full,&m.article))
+	drain(m, m.images.FireImageLoad(*full, &m.article))
 
 	if len(m.article.ImageBlocks()) != images {
 		t.Fatalf("imageBlocks = %d, want %d (every image should have composed)", len(m.article.ImageBlocks()), images)

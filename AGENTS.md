@@ -8,6 +8,21 @@ Guidelines for AI agents working in this repository.
 for storage, and gofeed for feed parsing. Behavioral requirements live in
 `openspec/specs/`.
 
+### Package layout and naming
+
+Name packages after the capability they provide, such as `store`, `feed`, or
+`render`. Avoid `utils`, `common`, `helpers`, and similar names: they hide
+responsibility and tend to become dependency magnets that everything imports.
+The `internal` root package holds the cross-cutting storage, text, and time
+helpers (`store.go`, `text.go`, `time.go`); do not add capability-specific code
+there just because it is convenient.
+
+Do not create a `subfolder/` that contains only `subfolder.go` and
+`subfolder_test.go`. A package that is a single file with a single test file is
+not a meaningful boundary: keep the code in the parent package, or promote it
+to the root `internal` package when several parents need it. Create a subfolder
+only when it groups multiple related files behind a real capability boundary.
+
 ### Async model and the UI-thread boundary
 
 bubbletea runs the model on a single UI goroutine (`Update` then `View` per

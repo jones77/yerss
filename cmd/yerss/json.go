@@ -7,9 +7,8 @@ import (
 	"os"
 	"time"
 
+	"yerss/internal"
 	"yerss/internal/config"
-	"yerss/internal/store"
-	"yerss/internal/timeutil"
 )
 
 // articleJSON is the JSON representation of a stored article. Times are emitted
@@ -30,7 +29,7 @@ type articleJSON struct {
 	Categories  []string `json:"categories"`
 }
 
-func toArticleJSON(a store.Article) articleJSON {
+func toArticleJSON(a internal.Article) articleJSON {
 	cats := a.Categories
 	if cats == nil {
 		cats = []string{}
@@ -96,7 +95,7 @@ func (b dateBuckets) MarshalJSON() ([]byte, error) {
 // calendar day. ListArticles returns articles reverse chronological, so the
 // first time a date is seen is its most-recent occurrence and the buckets stay
 // in descending date order with each bucket's articles already descending.
-func bucketArticles(arts []store.Article) dateBuckets {
+func bucketArticles(arts []internal.Article) dateBuckets {
 	var buckets dateBuckets
 	idx := map[string]int{}
 	for _, a := range arts {
@@ -104,7 +103,7 @@ func bucketArticles(arts []store.Article) dateBuckets {
 		if t.IsZero() {
 			t = a.FetchedAt
 		}
-		key := timeutil.DayKey(t)
+		key := internal.DayKey(t)
 		i, ok := idx[key]
 		if !ok {
 			i = len(buckets)
@@ -119,7 +118,7 @@ func bucketArticles(arts []store.Article) dateBuckets {
 // runJSONDump writes all stored articles as a date-grouped JSON object to
 // stdout and returns the process exit code. It reads directly from the store
 // and never fetches feeds or runs the startup verification gate.
-func runJSONDump(cfg *config.Config, st *store.Store) int {
+func runJSONDump(cfg *config.Config, st *internal.Store) int {
 	arts, err := st.ListArticles("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "yerss: cannot list articles: %v\n", err)

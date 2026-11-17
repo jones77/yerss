@@ -10,12 +10,12 @@ import (
 
 	"github.com/mmcdole/gofeed"
 	ext "github.com/mmcdole/gofeed/extensions"
-	"yerss/internal/store"
+	"yerss/internal"
 )
 
-func newTestFeedStore(t *testing.T) *store.Store {
+func newTestFeedStore(t *testing.T) *internal.Store {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "test.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +119,7 @@ func TestVerifyFeedsOverallDeadline(t *testing.T) {
 		t.Errorf("VerifyFeeds did not respect the overall deadline: %v", elapsed)
 	}
 }
+
 // TestItemToArticleFallsBackToGUIDLink covers Atom feeds whose entries carry
 // the permalink in <id> but no <link> element (e.g. jacobin.com): the article
 // link must fall back to the GUID so the reader can open it.
@@ -197,9 +198,9 @@ func TestLeadImageURLNotFromInlineContent(t *testing.T) {
 
 func TestItemToArticleCapturesLeadImage(t *testing.T) {
 	item := &gofeed.Item{
-		GUID:      "g1",
-		Title:     "t",
-		Content:   "<p>body</p>",
+		GUID:       "g1",
+		Title:      "t",
+		Content:    "<p>body</p>",
 		Enclosures: []*gofeed.Enclosure{{Type: "image/jpeg", URL: "https://example.com/lead.jpg"}},
 	}
 	a := itemToArticle("https://example.com/feed", item)

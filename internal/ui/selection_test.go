@@ -10,22 +10,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal/store"
 )
 
-func openSharedStore(t *testing.T) *store.Store {
+func openSharedStore(t *testing.T) *internal.Store {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "sel.sqlite"))
+	st, err := internal.Open(filepath.Join(t.TempDir(), "sel.sqlite"))
 	if err != nil {
-		t.Fatalf("store.Open: %v", err)
+		t.Fatalf("internal.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
 	return st
 }
 
-func modelOn(t *testing.T, st *store.Store) *Model {
+func modelOn(t *testing.T, st *internal.Store) *Model {
 	t.Helper()
 	m := New(app.New(config.Default(), st))
 	m.width = 80
@@ -163,7 +163,7 @@ func TestRestoreSelectionAnchorsToContentWithImages(t *testing.T) {
 		if pos > 0 {
 			url = fmt.Sprintf("https://example.com/img%d.jpg", pos)
 		}
-		if err := st.SetArticleImage(id, store.ArticleImage{
+		if err := st.SetArticleImage(id, internal.ArticleImage{
 			Position: pos, URL: url, Photo: pngBytes(t, 320, 160),
 		}); err != nil {
 			t.Fatal(err)
@@ -238,7 +238,7 @@ func TestRestoreSelectionSurvivesStartupResize(t *testing.T) {
 		if pos > 0 {
 			url = fmt.Sprintf("https://example.com/img%d.jpg", pos)
 		}
-		if err := st.SetArticleImage(id, store.ArticleImage{
+		if err := st.SetArticleImage(id, internal.ArticleImage{
 			Position: pos, URL: url, Photo: pngBytes(t, 320, 160),
 		}); err != nil {
 			t.Fatal(err)
@@ -298,7 +298,7 @@ func TestRestoreSelectionTopExpandedStaysAtTop(t *testing.T) {
 	// lead directly under the header). Quitting at the very top and restarting
 	// must land back at the very top once the photo load lands — not snap the
 	// viewport forward to the photo and scroll the header off.
-	a := store.Article{
+	a := internal.Article{
 		FeedURL:  "https://example.com/feed.xml",
 		GUID:     "g-restore-top-expanded",
 		Title:    "The U.S. Has Killed 227 Civilians in Boat Strikes During \u201cA Year of Murders\u201d",
@@ -319,7 +319,7 @@ func TestRestoreSelectionTopExpandedStaysAtTop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetArticleImage(id, store.ArticleImage{
+	if err := st.SetArticleImage(id, internal.ArticleImage{
 		Position: 0, URL: a.ImageURL, Photo: pngBytes(t, 440, 440),
 	}); err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestRestoreSelectionFallsBackWhenArticleGone(t *testing.T) {
 	st := openSharedStore(t)
 	insertTimedArticle(t, st, "a", time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC))
 	// Save a selection naming an article that does not exist.
-	if err := st.SaveLastSelection(store.LastSelection{View: "article", ArticleID: 9999}); err != nil {
+	if err := st.SaveLastSelection(internal.LastSelection{View: "article", ArticleID: 9999}); err != nil {
 		t.Fatalf("SaveLastSelection: %v", err)
 	}
 

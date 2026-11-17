@@ -16,7 +16,7 @@ import (
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"golang.org/x/net/html"
 
-	"yerss/internal/textutil"
+	"yerss/internal"
 )
 
 var conv = newConverter()
@@ -153,7 +153,7 @@ func renderImage(_ converter.Context, w converter.Writer, n *html.Node) converte
 		w.WriteString("[image]")
 		return converter.RenderSuccess
 	}
-	w.WriteString("[" + textutil.EscapeMarkdown(strings.TrimSpace(alt)) + "]")
+	w.WriteString("[" + internal.EscapeMarkdown(strings.TrimSpace(alt)) + "]")
 	return converter.RenderSuccess
 }
 

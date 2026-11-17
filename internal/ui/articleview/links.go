@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
+	"yerss/internal"
 	"yerss/internal/convert"
-	"yerss/internal/store"
 	"yerss/internal/ui/compose"
 )
 
@@ -51,7 +51,7 @@ func HarvestLinks(md string) []Link {
 // body renders (ConvertImages), so a link that wraps an inline image (promo
 // banners render as a linked image) is harvested like any other, with the
 // image sentinel stripped from the link text.
-func HarvestArticleLinks(a store.Article) []Link {
+func HarvestArticleLinks(a internal.Article) []Link {
 	seen := map[string]bool{}
 	var out []Link
 	add := func(text, url string) {
@@ -73,7 +73,7 @@ func HarvestArticleLinks(a store.Article) []Link {
 // absolute (https://theintercept.com/tomdispatch) so opening it navigates to
 // the right page. Absolute URLs pass through; targets with no resolvable base
 // are returned unchanged.
-func ResolveLink(a store.Article, href string) string {
+func ResolveLink(a internal.Article, href string) string {
 	u, err := url.Parse(href)
 	if err != nil || u.IsAbs() {
 		return href

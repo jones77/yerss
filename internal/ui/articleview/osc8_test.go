@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -16,7 +16,7 @@ func TestRenderArticleHeaderURLIsOSC8(t *testing.T) {
 	s, _ := newTestState(t)
 	url := "https://example.com/post"
 	s.LinkExpand = true
-	s = s.Recompose(store.Article{Title: "t", Link: url, Content: "<p>x</p>"})
+	s = s.Recompose(internal.Article{Title: "t", Link: url, Content: "<p>x</p>"})
 
 	rendered := strings.Join(s.Lines(), "\n")
 	if !strings.Contains(rendered, "\x1b]8;") {
@@ -36,7 +36,7 @@ func TestReaderHeaderOrder(t *testing.T) {
 	s, _ := newTestState(t)
 	url := "https://example.com/post"
 	s.LinkExpand = true
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "Headline",
 		Author:  "Jane",
 		Link:    url,
@@ -67,7 +67,7 @@ func TestReaderHeaderOrder(t *testing.T) {
 func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
 	s, _ := newTestState(t)
 	s.LinkExpand = true
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "Headline",
 		Link:    "https://example.com/post",
 		Content: "<p>x</p>",
@@ -90,7 +90,7 @@ func TestReaderHeaderURLWraps(t *testing.T) {
 	s.SetSize(40, 24)
 	url := "https://example.com/a/very/long/path/that/extends/beyond/the/available/width/and/must/wrap"
 	s.LinkExpand = true
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "t",
 		Link:    url,
 		Content: "<p>x</p>",
@@ -128,7 +128,7 @@ func TestReaderHeaderURLWraps(t *testing.T) {
 
 func TestReaderHeaderWithoutLinkStartsWithTitle(t *testing.T) {
 	s, _ := newTestState(t)
-	s = s.Recompose(store.Article{Title: "Only title", Content: "<p>x</p>"})
+	s = s.Recompose(internal.Article{Title: "Only title", Content: "<p>x</p>"})
 
 	lines := ansi.Strip(strings.Join(s.Lines(), "\n"))
 	if !strings.Contains(lines, "Only title") || !strings.HasPrefix(strings.Split(lines, "\n")[0], "Only title") {
@@ -173,7 +173,7 @@ func TestArticleOSC8LinksRenderInASCIIMode(t *testing.T) {
 	s, _ := newTestState(t)
 	s.SetAscii(true)
 	url := "https://example.com/post"
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "ascii links",
 		Link:    url,
 		Content: `<p>see <a href="` + url + `">post</a> now</p>`,
@@ -219,7 +219,7 @@ func TestParseLinkSpans(t *testing.T) {
 func TestArticleClickOpensLink(t *testing.T) {
 	url := "https://example.com/body"
 	s, _ := newTestState(t)
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "t",
 		Content: `<p>go <a href="` + url + `">there</a> now</p>`,
 	})
@@ -260,7 +260,7 @@ func TestArticleClickOpensLink(t *testing.T) {
 func TestArticleClickOffLinkSelects(t *testing.T) {
 	url := "https://example.com/body"
 	s, _ := newTestState(t)
-	s = s.Recompose(store.Article{
+	s = s.Recompose(internal.Article{
 		Title:   "t",
 		Content: `<p>go <a href="` + url + `">there</a> now</p>`,
 	})

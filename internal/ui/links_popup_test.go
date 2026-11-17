@@ -6,13 +6,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"yerss/internal/store"
+	"yerss/internal"
 	"yerss/internal/ui/articleview"
 	"yerss/internal/ui/popup"
 )
 
-func linkyArticle() store.Article {
-	return store.Article{
+func linkyArticle() internal.Article {
+	return internal.Article{
 		Title:   "Linked",
 		Link:    "https://example.com/post",
 		Content: `<p>see <a href="https://example.com/one">one</a> and <a href="https://example.com/two">two</a> again <a href="https://example.com/one">one</a></p>`,
@@ -44,7 +44,7 @@ func TestHarvestLinksDeduplicatesInDocumentOrder(t *testing.T) {
 }
 
 func TestResolveLinkAgainstArticleOrigin(t *testing.T) {
-	a := store.Article{Link: "https://theintercept.com/2026/08/31/iran-war/", FeedURL: "https://theintercept.com/feed"}
+	a := internal.Article{Link: "https://theintercept.com/2026/08/31/iran-war/", FeedURL: "https://theintercept.com/feed"}
 	cases := map[string]string{
 		"/tomdispatch":               "https://theintercept.com/tomdispatch",
 		"https://example.com/abs":    "https://example.com/abs",
@@ -59,7 +59,7 @@ func TestResolveLinkAgainstArticleOrigin(t *testing.T) {
 }
 
 func TestHarvestArticleLinksResolvesRelativeTargets(t *testing.T) {
-	a := store.Article{
+	a := internal.Article{
 		Link:    "https://theintercept.com/2026/08/31/iran-war/",
 		Content: `<p><a href="/tomdispatch">TomDispatch</a></p>`,
 	}
@@ -73,7 +73,7 @@ func TestHarvestArticleLinksLinkedImageBanner(t *testing.T) {
 	// A promo banner renders as a linked image whose link wraps the sentinel
 	// and the banner text; the harvest must still surface the link, resolved
 	// to an absolute target, with the sentinel stripped from the link text.
-	a := store.Article{
+	a := internal.Article{
 		Link: "https://theintercept.com/2026/08/31/iran-war/",
 		Content: `<aside class="promote-banner"><a class="promote-banner__link" href="/tomdispatch">` +
 			`<span class="promote-banner__image"><img decoding="async" src="https://example.com/logo.jpg" alt=""></span>` +
@@ -152,7 +152,7 @@ func TestLinkPopupEscClosesWithoutNavigating(t *testing.T) {
 
 func TestLinkPopupEmptyArticle(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.article = m.article.Recompose(store.Article{Title: "bare", Content: "<p>no links</p>"})
+	m.article = m.article.Recompose(internal.Article{Title: "bare", Content: "<p>no links</p>"})
 	m.openLinksPopup()
 	if len(m.popupData.Links()) != 0 {
 		t.Fatalf("expected no links, got %+v", m.popupData.Links())
