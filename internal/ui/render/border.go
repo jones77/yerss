@@ -122,9 +122,9 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 // dash-plus-corner on the right (`─╖`). The date is always fully visible; when
 // the title does not fit, it is truncated and ends with the ellipsis glyph and
 // the right rail keeps its single dash so the two ends mirror each other. When
-// the title fits, leftover space is filled with horizontal dashes. The date,
-// title, and ellipsis are styled in bright blue (12); the bullet and the rails
-// stay in the grey role (8).
+// the title fits, leftover space is filled with horizontal dashes. The date
+// and ellipsis are styled in bright blue (12) while the title is bright white
+// (15 on dark); the bullet and the rails stay in the grey role (8).
 func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
 	leftRail := g.TL + g.H
 	rightRail := g.H + g.TR
@@ -141,6 +141,7 @@ func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
 
 	style := lipgloss.NewStyle().Foreground(p.Dim)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
+	titleStyle := lipgloss.NewStyle().Foreground(p.Bright)
 	hLeft := style.Render(leftRail)
 	hRight := style.Render(rightRail)
 
@@ -151,16 +152,16 @@ func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
 		}
 		right := style.Render(strings.Repeat(g.H, fill) + rightRail)
 		if date == "" {
-			return hLeft + " " + textStyle.Render(title) + " " + right
+			return hLeft + " " + titleStyle.Render(title) + " " + right
 		}
-		return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + textStyle.Render(title) + " " + right
+		return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + titleStyle.Render(title) + " " + right
 	}
 
 	cut := Truncate(title, titleW-runewidth.StringWidth(g.Ellipsis))
 	if date == "" {
-		return hLeft + " " + textStyle.Render(cut+g.Ellipsis) + " " + hRight
+		return hLeft + " " + titleStyle.Render(cut) + textStyle.Render(g.Ellipsis) + " " + hRight
 	}
-	return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + textStyle.Render(cut+g.Ellipsis) + " " + hRight
+	return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + titleStyle.Render(cut) + textStyle.Render(g.Ellipsis) + " " + hRight
 }
 
 // BottomBorder renders the article frame's bottom edge as `leftCorner +
@@ -193,14 +194,14 @@ func BottomBorder(w int, g BorderGlyphs, p Palette, sc ScrollState) string {
 		avail = 0
 	}
 	hint = Truncate(hint, avail)
-	hw := ansi.StringWidth(hint)
-	if avail-hw < 0 {
+	hintWidth := ansi.StringWidth(hint)
+	if avail-hintWidth < 0 {
 		indicator = ""
 	} else {
-		indicator = Truncate(indicator, avail-hw)
+		indicator = Truncate(indicator, avail-hintWidth)
 	}
-	iw := ansi.StringWidth(indicator)
-	fill := inner - 6 - hw - iw
+	indicatorW := ansi.StringWidth(indicator)
+	fill := inner - 6 - hintWidth - indicatorW
 	if fill < 0 {
 		fill = 0
 	}
