@@ -165,6 +165,30 @@ func TestStripLinkHrefsWrappedNameKept(t *testing.T) {
 	}
 }
 
+func TestStripLinkHrefsWrappedNameWithoutClose(t *testing.T) {
+	// glamour can re-emit a hyperlink across a wrapped line inside a blockquote
+	// without closing the previous span first: two same-target opens with the
+	// blockquote border and the start of the next line between them, then the
+	// href. The two opens are one continuous hyperlink, so the wrapped name must
+	// survive and the href must still be dropped without inverting offsets.
+	url := "http://example.com/article"
+	open := "\x1b]8;id=1;" + url + "\x07"
+	closeSeq := "\x1b]8;;\x07"
+	in := open + "2016 PDK poll of the\n\x1b[37m│ Public's " +
+		open + "Attitudes Toward the Public Schools" + closeSeq +
+		"\x1b[37m \x1b[m\x1b[96m" + open + url + closeSeq + "\x1b[m"
+
+	out := StripLinkHrefs(in)
+	if strings.Contains(visible(out), url) {
+		t.Errorf("URL text leaked into visible output: %q", visible(out))
+	}
+	got := strings.Join(strings.Fields(visible(out)), " ")
+	want := "2016 PDK poll of the │ Public's Attitudes Toward the Public Schools"
+	if got != want {
+		t.Errorf("stripped = %q, want %q", got, want)
+	}
+}
+
 func TestStripLinkHrefsAdjacentSameURLWrapped(t *testing.T) {
 	// Adjacent links to the same URL in a wrapped paragraph must each keep
 	// their name and drop their (possibly multi-line) href.

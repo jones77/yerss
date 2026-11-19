@@ -7,12 +7,14 @@ import (
 
 // linkSpan is one OSC 8 hyperlink span of a target: the segment index and byte
 // offset of its open, the byte offset just past its closing OSC 8 (or the end
-// of the string when unterminated), and the visible text it wraps.
+// of the string when unterminated), the visible text it wraps, and whether a
+// close was found before the next open.
 type linkSpan struct {
-	openSeg   int
-	openStart int
-	closeEnd  int
-	text      string
+	openSeg    int
+	openStart  int
+	closeEnd   int
+	text       string
+	terminated bool
 }
 
 // StripLinkHrefs removes the visible href span glamour appends to each body
@@ -114,31 +116,31 @@ func collectLinkSpans(s string, segs []ScanSeg) ([]string, map[string][]linkSpan
 	var order []string
 	byTarget := map[string][]linkSpan{}
 	for i := 0; i < len(segs); i++ {
-		seg := segs[i]
-		if seg.Kind != SegOSC {
+		u, ok := oscLinkTarget(s, segs[i])
+		if !ok || u == "" {
 			continue
 		}
-		payload, _ := seg.OSC(s)
-		if !strings.HasPrefix(payload, "8;") {
-			continue
-		}
-		rest := payload[2:]
-		u := rest
-		if idx := strings.LastIndex(rest, ";"); idx >= 0 {
-			u = rest[idx+1:]
-		}
-		if u == "" {
-			continue
-		}
-		sp := linkSpan{openSeg: i, openStart: seg.Start, closeEnd: len(s)}
+		sp := linkSpan{openSeg: i, openStart: segs[i].Start, closeEnd: len(s)}
 		for j := i + 1; j < len(segs); j++ {
-			if segs[j].Kind == SegOSC {
-				sp.closeEnd = segs[j].End
-				break
-			}
 			if segs[j].Kind == SegText {
 				sp.text += s[segs[j].Start:segs[j].End]
+				continue
 			}
+			if segs[j].Kind != SegOSC {
+				continue
+			}
+			if next, isLink := oscLinkTarget(s, segs[j]); isLink && next != "" {
+				// Another open arrives before a close: glamour re-emits the
+				// hyperlink across a wrap (for example inside a blockquote)
+				// without closing the previous line. Mark the span unterminated
+				// and bound it before the next escape so offsets stay ordered.
+				sp.closeEnd = segs[j].Start
+				sp.terminated = false
+			} else {
+				sp.closeEnd = segs[j].End
+				sp.terminated = true
+			}
+			break
 		}
 		if _, ok := byTarget[u]; !ok {
 			order = append(order, u)
@@ -146,6 +148,24 @@ func collectLinkSpans(s string, segs []ScanSeg) ([]string, map[string][]linkSpan
 		byTarget[u] = append(byTarget[u], sp)
 	}
 	return order, byTarget
+}
+
+// oscLinkTarget returns the OSC 8 URI carried by seg and whether seg is an
+// OSC 8 sequence at all. A close sequence (empty URI) returns ("", true).
+func oscLinkTarget(s string, seg ScanSeg) (string, bool) {
+	if seg.Kind != SegOSC {
+		return "", false
+	}
+	payload, _ := seg.OSC(s)
+	if !strings.HasPrefix(payload, "8;") {
+		return "", false
+	}
+	rest := payload[2:]
+	u := rest
+	if idx := strings.LastIndex(rest, ";"); idx >= 0 {
+		u = rest[idx+1:]
+	}
+	return u, true
 }
 
 // linkUnit groups a target's spans into one logical link part: within a unit,
@@ -189,6 +209,16 @@ func groupLinkUnits(s string, segs []ScanSeg, order []string, byTarget map[strin
 // text starting at the URL target's beginning. Within an already-open href
 // part every same-padding line resumes the URL.
 func joinsUnit(s string, segs []ScanSeg, prev, cur linkSpan, target string, prevDrop bool) bool {
+	// A span with no close before the next open is one continuous hyperlink
+	// that glamour re-emits across a wrap (it may interleave the line's
+	// indentation, such as a blockquote border), so the next same-target open
+	// is a continuation regardless of the text between them.
+	if !prev.terminated {
+		return true
+	}
+	if cur.openStart < prev.closeEnd {
+		return false
+	}
 	if !strings.Contains(s[prev.closeEnd:cur.openStart], "\n") {
 		return false
 	}
