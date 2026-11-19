@@ -82,6 +82,28 @@ func TestReaderHeaderOrderWithoutAuthor(t *testing.T) {
 	}
 }
 
+func TestReaderHeaderTrimsTitleWhitespace(t *testing.T) {
+	// A feed title with trailing whitespace must still close the bold
+	// delimiter. CommonMark does not treat "**text **" as emphasis because the
+	// closing marker follows whitespace, so the raw stars would leak through.
+	s, _ := newTestState(t)
+	s = s.Recompose(internal.Article{
+		Title:   "Bari Weiss Has a ‘Confession’ for Ben Shapiro ",
+		Content: "<p>x</p>",
+	})
+
+	title := strippedLines(s.Lines())[0]
+	if strings.Contains(title, "**") {
+		t.Errorf("title line leaked markdown stars: %q", title)
+	}
+	if want := "Bari Weiss Has a ‘Confession’ for Ben Shapiro"; strings.TrimRight(title, " ") != want {
+		t.Errorf("title line = %q, want %q", title, want)
+	}
+	if !strings.Contains(s.Lines()[0], ";1m") {
+		t.Errorf("title line is not bold: %q", s.Lines()[0])
+	}
+}
+
 func TestReaderHeaderURLWraps(t *testing.T) {
 	// A URL longer than the content width wraps onto subsequent lines so the
 	// whole display string is visible, each wrapped line an OSC 8 hyperlink

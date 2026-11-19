@@ -445,8 +445,8 @@ func (s *State) renderHeaderExpanded(a internal.Article, contentW int) string {
 
 func (s *State) renderHeaderMode(a internal.Article, contentW int, linkExpand bool) string {
 	var meta []string
-	if a.Title != "" {
-		meta = append(meta, s.renderMarkdown("**"+compose.EscapeMarkdownText(a.Title)+"**", contentW))
+	if title := strings.TrimSpace(a.Title); title != "" {
+		meta = append(meta, s.renderMarkdown("**"+compose.EscapeMarkdownText(title)+"**", contentW))
 	}
 	if a.Author != "" {
 		meta = append(meta, s.renderMarkdown("by "+compose.EscapeMarkdownText(a.Author), contentW))
