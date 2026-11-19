@@ -56,7 +56,7 @@ func TestRenderArticleBorderHeightClamp(t *testing.T) {
 		{"h3 padY5", 3, 5},
 	}
 	for _, c := range cases {
-		got := render.RenderArticleBorder(80, c.h, 2, c.padY, g, p, "", "t", render.ScrollState{TotalH: 100, ViewportH: 10, Offset: 0}, []string{"x"})
+		got := render.RenderArticleBorder(80, c.h, 2, c.padY, g, p, "", "t", "", "o: open article in browser", render.ScrollState{TotalH: 100, ViewportH: 10, Offset: 0}, []string{"x"})
 		if n := len(strings.Split(got, "\n")); n > c.h {
 			t.Errorf("%s: emitted %d lines, want <= %d", c.name, n, c.h)
 		}

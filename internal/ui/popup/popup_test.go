@@ -934,12 +934,11 @@ func TestLinkPopupIgnoresGridKeys(t *testing.T) {
 	})
 	s.SetCursor(1)
 	keys := popupKeys(t)
-	// The links popup is a single column, so the horizontal grid keys have no
-	// target and leave the cursor alone.
+	// The links popup is a single column, so right has no target and leaves
+	// the cursor alone. The left key and h close the popup instead; that is
+	// covered by the model-level link popup tests.
 	gridKeys := []tea.KeyMsg{
-		{Type: tea.KeyLeft},
 		{Type: tea.KeyRight},
-		{Type: tea.KeyRunes, Runes: []rune("h")},
 		{Type: tea.KeyRunes, Runes: []rune("l")},
 	}
 	for _, key := range gridKeys {

@@ -150,15 +150,32 @@ func TestLinkPopupEscClosesWithoutNavigating(t *testing.T) {
 	}
 }
 
-func TestLinkPopupQClosesWithoutQuitting(t *testing.T) {
+func TestLinkPopupQQuitsApplication(t *testing.T) {
 	m := articleWithLinks(t)
 	m.openLinksPopup()
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
-	if cmd != nil {
-		t.Errorf("q should close the popup, not quit, got %T", cmd)
+	if cmd == nil {
+		t.Fatal("q should quit the application, not close the popup")
 	}
-	if m.popupData.Kind() != popup.KindNone || m.view != viewArticle {
-		t.Errorf("q should close the popup and stay in the article, kind = %d view = %d", m.popupData.Kind(), m.view)
+	if m.popupData.Kind() != popup.KindLinks {
+		t.Errorf("q should quit without closing the popup first, kind = %d", m.popupData.Kind())
+	}
+}
+
+func TestLinkPopupLeftClosesPopup(t *testing.T) {
+	for _, key := range []tea.KeyMsg{
+		{Type: tea.KeyLeft},
+		{Type: tea.KeyRunes, Runes: []rune("h")},
+	} {
+		m := articleWithLinks(t)
+		m.openLinksPopup()
+		_, cmd := m.updatePopup(key)
+		if cmd != nil {
+			t.Errorf("%s should not navigate, got %T", key.String(), cmd)
+		}
+		if m.popupData.Kind() != popup.KindNone || m.view != viewArticle {
+			t.Errorf("%s should close the popup and stay in the article, kind = %d view = %d", key.String(), m.popupData.Kind(), m.view)
+		}
 	}
 }
 

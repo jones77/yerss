@@ -18,7 +18,7 @@ func stripTop(t *testing.T, line string) string {
 func TestTopBorderTitleFits(t *testing.T) {
 	g := render.GlyphsFor(false)
 	p := render.DarkPalette()
-	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", "short"))
+	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", "short", ""))
 
 	if w := runewidth.StringWidth(line); w != 40 {
 		t.Errorf("top border width = %d, want 40: %q", w, line)
@@ -40,7 +40,7 @@ func TestTopBorderTitleFits(t *testing.T) {
 func TestTopBorderTitleTruncated(t *testing.T) {
 	g := render.GlyphsFor(false)
 	p := render.DarkPalette()
-	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", strings.Repeat("x", 100)))
+	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", strings.Repeat("x", 100), ""))
 
 	if w := runewidth.StringWidth(line); w != 40 {
 		t.Errorf("top border width = %d, want 40: %q", w, line)
@@ -56,7 +56,7 @@ func TestTopBorderTitleTruncated(t *testing.T) {
 func TestTopBorderTitleTruncatedASCII(t *testing.T) {
 	g := render.GlyphsFor(true)
 	p := render.DarkPalette()
-	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", strings.Repeat("x", 100)))
+	line := stripTop(t, render.TopBorder(40, g, p, "2026-01-02", strings.Repeat("x", 100), ""))
 
 	if w := runewidth.StringWidth(line); w != 40 {
 		t.Errorf("top border width = %d, want 40: %q", w, line)
@@ -73,7 +73,7 @@ func TestTopBorderCJKTitle(t *testing.T) {
 	g := render.GlyphsFor(false)
 	p := render.DarkPalette()
 	title := "日本語のタイトルです" // 10 runes, 20 display columns
-	line := stripTop(t, render.TopBorder(30, g, p, "2026-01-02", title))
+	line := stripTop(t, render.TopBorder(30, g, p, "2026-01-02", title, ""))
 
 	if w := runewidth.StringWidth(line); w != 30 {
 		t.Errorf("top border width = %d, want 30: %q", w, line)
@@ -92,7 +92,7 @@ func TestTopBorderCJKTitle(t *testing.T) {
 func TestTopBorderEmptyDate(t *testing.T) {
 	g := render.GlyphsFor(false)
 	p := render.DarkPalette()
-	line := stripTop(t, render.TopBorder(40, g, p, "", "x"))
+	line := stripTop(t, render.TopBorder(40, g, p, "", "x", ""))
 
 	if w := runewidth.StringWidth(line); w != 40 {
 		t.Errorf("top border width = %d, want 40: %q", w, line)

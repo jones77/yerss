@@ -64,6 +64,33 @@ func (s *State) ArticleIDs() []int64 {
 	return ids
 }
 
+// SelectArticleID moves the cursor to the article with the given ID and reports
+// whether the article is present in the loaded list. A collapsed day group is
+// expanded so the article's row becomes visible before the raw cursor is set to
+// it.
+func (s *State) SelectArticleID(id int64) bool {
+	for gi := range s.groups {
+		for ai := range s.groups[gi].articles {
+			if s.groups[gi].articles[ai].ID != id {
+				continue
+			}
+			s.groups[gi].collapsed = false
+			row := 0
+			for g := 0; g < gi; g++ {
+				row++
+				if !s.groups[g].collapsed {
+					row += len(s.groups[g].articles)
+				}
+			}
+			row++
+			row += ai
+			s.cursor = row
+			return true
+		}
+	}
+	return false
+}
+
 // RenderArticleRow renders a single article row. It is exported for the Model
 // layer's tests; the list's own rendering calls the unexported version.
 func (s *State) RenderArticleRow(item *Item, selected bool) string {

@@ -222,6 +222,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(msg.Label)
 		}
 		return m, nil
+	case articleview.NavHintExpiredMsg:
+		m.article.ExpireNavHint()
+		return m, nil
 	}
 	return m, nil
 }

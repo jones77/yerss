@@ -29,14 +29,26 @@ func TestFrameCacheSkipsNoOpBoundaryScrolls(t *testing.T) {
 	frameView(m) // fill the frame cache for the top offset
 	m.article.SetFrameRenderCount(0)
 
-	// Wheel up at the very top cannot scroll further; no re-render allowed.
+	// Wheel up at the very top cannot scroll further; the first such message
+	// arms the transient "K: next" hint, so it re-renders exactly once.
 	m.Update(mouseWheel(0, false))
 	m.View()
 	if m.article.Viewport.YOffset != 0 {
 		t.Fatalf("wheel-up at top moved offset to %d, want 0", m.article.Viewport.YOffset)
 	}
+	if m.article.FrameRenderCount() != 1 {
+		t.Fatalf("wheel-up at top rendered the frame %d times, want 1 (hint)", m.article.FrameRenderCount())
+	}
+	if !strings.Contains(m.View(), "K: next") {
+		t.Error("top-edge hint should show K: next")
+	}
+
+	// A repeated identical no-op is cache-served: the hint is already armed.
+	m.article.SetFrameRenderCount(0)
+	m.Update(mouseWheel(0, false))
+	m.View()
 	if m.article.FrameRenderCount() != 0 {
-		t.Fatalf("wheel-up at top rendered the frame %d times, want 0", m.article.FrameRenderCount())
+		t.Fatalf("repeat wheel-up at top rendered the frame %d times, want 0", m.article.FrameRenderCount())
 	}
 
 	// A real one-line scroll down changes the offset and re-renders exactly once.
@@ -50,14 +62,24 @@ func TestFrameCacheSkipsNoOpBoundaryScrolls(t *testing.T) {
 	}
 	m.article.SetFrameRenderCount(0)
 
-	// Wheel down at the very bottom cannot scroll further; no re-render allowed.
+	// Wheel down at the very bottom cannot scroll further; the first such
+	// message arms the "J: previous" hint and re-renders once.
 	m.article.Viewport.GotoBottom()
 	frameView(m) // fill the frame cache for the bottom offset
 	m.article.SetFrameRenderCount(0)
 	m.Update(mouseWheel(0, true))
 	m.View()
+	if m.article.FrameRenderCount() != 1 {
+		t.Fatalf("wheel-down at bottom rendered the frame %d times, want 1 (hint)", m.article.FrameRenderCount())
+	}
+	if !strings.Contains(m.View(), "J: previous") {
+		t.Error("bottom-edge hint should show J: previous")
+	}
+	m.article.SetFrameRenderCount(0)
+	m.Update(mouseWheel(0, true))
+	m.View()
 	if m.article.FrameRenderCount() != 0 {
-		t.Fatalf("wheel-down at bottom rendered the frame %d times, want 0", m.article.FrameRenderCount())
+		t.Fatalf("repeat wheel-down at bottom rendered the frame %d times, want 0", m.article.FrameRenderCount())
 	}
 }
 
@@ -185,13 +207,14 @@ func TestFrameCacheRecomposesOnImageLoadAtBoundary(t *testing.T) {
 		t.Fatalf("expected the article at the top boundary, offset=%d", m.article.Viewport.YOffset)
 	}
 
-	// A no-op wheel at the top is served from the cache before any image load.
+	// A no-op wheel at the top arms the transient hint and re-renders once;
+	// subsequent frames are cache-stable until the image load lands.
 	frameView(m)
 	m.article.SetFrameRenderCount(0)
 	m.Update(mouseWheel(0, false))
 	frameView(m)
-	if m.article.FrameRenderCount() != 0 {
-		t.Fatalf("no-op wheel at a boundary re-rendered %d times, want 0", m.article.FrameRenderCount())
+	if m.article.FrameRenderCount() != 1 {
+		t.Fatalf("no-op wheel at a boundary rendered %d times, want 1 (hint)", m.article.FrameRenderCount())
 	}
 
 	// Delivering the block message recomposes the article (contentGen bump), so

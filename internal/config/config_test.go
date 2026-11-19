@@ -246,6 +246,8 @@ func TestDefaultKeybindingsMatchCatalog(t *testing.T) {
 		OpenArticle:      {"enter", "l", "o"},
 		Back:             {"esc", "h", "b"},
 		CloseArticle:     {"enter"},
+		NextArticle:      {"K"},
+		PreviousArticle:  {"J"},
 		LinkPopup:        {"l", "right"},
 		MoveUp:           {"up", "k"},
 		MoveDown:         {"down", "j"},
@@ -331,7 +333,7 @@ func TestHelpActionGroups(t *testing.T) {
 	want := map[string][]Action{
 		"Global":       {Quit, Back, MoveUp, MoveDown, MoveLeft, MoveRight, PageUp, PageDown, HalfPageUp, HalfPageDown, Top, Bottom, TagPopup, Help},
 		"List view":    {Refresh, OpenArticle, ExpandToggle},
-		"Article view": {CloseArticle, LinkPopup, LinkExpandToggle, OpenURL, CopyURL, CopyArticleText, CopyDebugInfo},
+		"Article view": {CloseArticle, NextArticle, PreviousArticle, LinkPopup, LinkExpandToggle, OpenURL, CopyURL, CopyArticleText, CopyDebugInfo},
 	}
 	for label, expected := range want {
 		if !reflect.DeepEqual(groups[label], expected) {

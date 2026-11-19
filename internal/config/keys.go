@@ -15,6 +15,8 @@ const (
 	OpenArticle      Action = "open_article"
 	Back             Action = "back"
 	CloseArticle     Action = "close_article"
+	NextArticle      Action = "next_article"
+	PreviousArticle  Action = "previous_article"
 	LinkPopup        Action = "link_popup"
 	MoveUp           Action = "move_up"
 	MoveDown         Action = "move_down"
@@ -65,6 +67,8 @@ var catalog = []actionSpec{
 	{OpenArticle, []string{"enter", "l", "o"}, []View{ViewList}},
 	{Back, []string{"esc", "h", "b"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{CloseArticle, []string{"enter"}, []View{ViewArticle}},
+	{NextArticle, []string{"K"}, []View{ViewArticle}},
+	{PreviousArticle, []string{"J"}, []View{ViewArticle}},
 	{LinkPopup, []string{"l", "right"}, []View{ViewArticle}},
 	{MoveUp, []string{"up", "k"}, []View{ViewList, ViewArticle, ViewPopup}},
 	{MoveDown, []string{"down", "j"}, []View{ViewList, ViewArticle, ViewPopup}},

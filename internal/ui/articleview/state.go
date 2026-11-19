@@ -1,6 +1,8 @@
 package articleview
 
 import (
+	"time"
+
 	"charm.land/glamour/v2"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
@@ -64,6 +66,15 @@ type State struct {
 	readMarked  bool
 	Sel         Selection
 	headerLines int
+	// listPos is the open article's 1-based position among the shown articles
+	// and listTotal is the shown count. A zero position means the article is
+	// not in the current list, so the counter is omitted.
+	listPos   int
+	listTotal int
+	// navHint is the transient bottom-border hint shown after scrolling to an
+	// article edge, and navHintExpires is when it stops showing.
+	navHint        navHintKind
+	navHintExpires time.Time
 	// fitHeaderLines is the mode-independent header budget the image-block
 	// height fit reserves: the line count of the tallest header the article
 	// presents across both link modes. The height fit consumes this instead of
@@ -145,7 +156,11 @@ func (s *State) base() State {
 		frameRenderCount: s.frameRenderCount,
 		recomposePending: s.recomposePending, recomposeCount: s.recomposeCount,
 		mdRenderer: s.mdRenderer, mdRendererW: s.mdRendererW, mdRendererStyle: s.mdRendererStyle,
-		LinkExpand: s.LinkExpand,
+		LinkExpand:     s.LinkExpand,
+		listPos:        s.listPos,
+		listTotal:      s.listTotal,
+		navHint:        s.navHint,
+		navHintExpires: s.navHintExpires,
 	}
 }
 
@@ -226,3 +241,55 @@ func (s *State) FrameRenderCount() int { return s.frameRenderCount }
 
 // RecomposeCount returns how many image-load recomposes have run.
 func (s *State) RecomposeCount() int { return s.recomposeCount }
+
+// SetListPosition records the open article's 1-based position among the shown
+// articles and the total shown count. A position of zero means the article is
+// not in the current list; the counter is then omitted.
+func (s *State) SetListPosition(n, total int) { s.listPos, s.listTotal = n, total }
+
+// ListPosition returns the stored position and total.
+func (s *State) ListPosition() (n, total int) { return s.listPos, s.listTotal }
+
+// navHintKind identifies the transient navigation hint shown in the article's
+// bottom border.
+type navHintKind int
+
+const (
+	navHintNone navHintKind = iota
+	navHintPrevious
+	navHintNext
+)
+
+// navHintDuration is how long a navigation hint stays visible.
+const navHintDuration = 2 * time.Second
+
+// NavHintExpiredMsg asks the Model to clear the article's navigation hint once
+// its display window has elapsed.
+type NavHintExpiredMsg struct{}
+
+// NavHint returns the bottom-border label for the active navigation hint, or ""
+// when none is showing. A hint whose display window has elapsed reports "".
+func (s *State) NavHint() string {
+	if s.navHint == navHintNone || !time.Now().Before(s.navHintExpires) {
+		return ""
+	}
+	if s.navHint == navHintNext {
+		return "K: next"
+	}
+	return "J: previous"
+}
+
+// ResetNavHint clears the navigation hint. The Model calls it when an article
+// opens so a new article never inherits the previous one's hint.
+func (s *State) ResetNavHint() {
+	s.navHint = navHintNone
+	s.navHintExpires = time.Time{}
+}
+
+// ExpireNavHint clears the navigation hint once its window has elapsed.
+func (s *State) ExpireNavHint() {
+	if !s.navHintExpires.IsZero() && !time.Now().Before(s.navHintExpires) {
+		s.navHint = navHintNone
+		s.navHintExpires = time.Time{}
+	}
+}

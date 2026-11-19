@@ -1,6 +1,7 @@
 package articleview
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -494,6 +495,7 @@ type FrameKey struct {
 	Sel        Selection
 	Ascii      bool
 	LinkExpand bool
+	Hint       string
 }
 
 // KeyFor builds the frame-cache key from the current reader state.
@@ -508,6 +510,7 @@ func (s *State) KeyFor() FrameKey {
 		Sel:        s.Sel,
 		Ascii:      s.ascii,
 		LinkExpand: s.LinkExpand,
+		Hint:       s.NavHint(),
 	}
 }
 
@@ -553,8 +556,16 @@ func (s *State) RenderUncached() string {
 		ViewportH: s.Viewport.Height,
 		Offset:    s.Viewport.YOffset,
 	}
+	counter := ""
+	if n, total := s.ListPosition(); n > 0 && total > 0 {
+		counter = fmt.Sprintf("%d/%d", n, total)
+	}
+	hint := s.NavHint()
+	if hint == "" {
+		hint = "o: open article in browser"
+	}
 	return render.RenderArticleBorder(s.width, s.height, s.sess.Config().Display.PaddingX, s.sess.Config().Display.PaddingY,
-		g, s.palette, date, title, sc, lines)
+		g, s.palette, date, title, counter, hint, sc, lines)
 }
 
 // highlightSelection applies the inverted selection style to the selected cell

@@ -166,10 +166,10 @@ func (s *State) SelectedURL() string {
 func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
 	if s.kind == KindHelp {
 		switch msg.String() {
-		case "q", "esc", "enter", " ":
+		case "esc", "enter", " ", "b", "h":
 			s.kind = KindNone
 			return ActionBack
-		case "ctrl+c":
+		case "q", "ctrl+c":
 			return ActionQuit
 		}
 		return ActionNone
@@ -183,13 +183,6 @@ func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
 	}
 	switch act {
 	case config.Quit:
-		// The q key closes the popup instead of quitting the app, the same
-		// way the help popup treats it; ctrl+c (the other default quit
-		// binding) still quits from inside a popup.
-		if msg.String() == "q" {
-			s.kind = KindNone
-			return ActionBack
-		}
 		return ActionQuit
 	case config.Back:
 		s.kind = KindNone
@@ -199,6 +192,13 @@ func (s *State) Update(msg tea.KeyMsg, keys map[string]config.Action) Action {
 	case config.MoveUp:
 		s.movePopupCursor(-1)
 	case config.MoveLeft:
+		// Left (and the h key bound with it) leaves the links popup. The tag
+		// grid uses the same keys to move its cursor, so only the links popup
+		// treats them as an exit.
+		if s.kind == KindLinks {
+			s.kind = KindNone
+			return ActionBack
+		}
 		if s.isTagPopup() {
 			s.moveTagCursorHorizontal(-1)
 		}

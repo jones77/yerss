@@ -2,6 +2,7 @@ package articleview
 
 import (
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -26,6 +27,8 @@ const (
 	ActionCopyDebugInfo
 	ActionToggleLinkExpand
 	ActionHelp
+	ActionPreviousArticle
+	ActionNextArticle
 )
 
 // UpdateKey routes an article-view key message. Scrolls and jumps are applied
@@ -45,32 +48,44 @@ func (s *State) UpdateKey(msg tea.KeyMsg, keys map[string]config.Action) (Action
 		return ActionQuit, nil
 	case config.Back, config.CloseArticle:
 		return ActionBack, nil
+	case config.NextArticle:
+		return ActionNextArticle, nil
+	case config.PreviousArticle:
+		return ActionPreviousArticle, nil
 	case config.LinkPopup:
 		return ActionOpenLinkPopup, nil
 	case config.MoveDown:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.ScrollDown(1) }, true)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.MoveUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.ScrollUp(1) }, true)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.PageDown:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.PageDown() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.PageUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.PageUp() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.HalfPageDown:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.HalfPageDown() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.HalfPageUp:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.HalfPageUp() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.Top:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.GotoTop() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.Bottom:
 		cmd = s.images.ScrollArticle(s, func() { s.Viewport.GotoBottom() }, false)
 		s.MarkRead(s.sess.Store())
+		cmd = tea.Batch(cmd, s.armNavHint())
 	case config.OpenURL:
 		if s.article.Link != "" {
 			return ActionOpenURL, OpenURLCmd(s.article.Link)
@@ -103,11 +118,11 @@ func (s *State) UpdateMouse(msg tea.MouseMsg) (Action, tea.Cmd) {
 	case tea.MouseButtonWheelUp:
 		cmd := s.images.ScrollArticle(s, func() { s.Viewport.ScrollUp(1) }, true)
 		s.MarkRead(s.sess.Store())
-		return ActionNone, cmd
+		return ActionNone, tea.Batch(cmd, s.armNavHint())
 	case tea.MouseButtonWheelDown:
 		cmd := s.images.ScrollArticle(s, func() { s.Viewport.ScrollDown(1) }, true)
 		s.MarkRead(s.sess.Store())
-		return ActionNone, cmd
+		return ActionNone, tea.Batch(cmd, s.armNavHint())
 	}
 	if msg.Shift || msg.Alt || msg.Ctrl {
 		return ActionNone, nil
@@ -145,4 +160,34 @@ func (s *State) UpdateMouse(msg tea.MouseMsg) (Action, tea.Cmd) {
 		}
 	}
 	return ActionNone, nil
+}
+
+// armNavHint sets the transient navigation hint from the current viewport
+// position: "K: next" at the top edge, "J: previous" at the bottom edge, and no
+// hint in between or on an article short enough to fit. A set hint returns a
+// timer command that expires it.
+func (s *State) armNavHint() tea.Cmd {
+	total := s.Viewport.TotalLineCount()
+	h := s.Viewport.Height
+	if total <= h {
+		s.navHint = navHintNone
+		s.navHintExpires = time.Time{}
+		return nil
+	}
+	maxOffset := total - h
+	hint := navHintNone
+	switch {
+	case s.Viewport.YOffset <= 0:
+		hint = navHintNext
+	case s.Viewport.YOffset >= maxOffset:
+		hint = navHintPrevious
+	}
+	if hint == navHintNone {
+		s.navHint = navHintNone
+		s.navHintExpires = time.Time{}
+		return nil
+	}
+	s.navHint = hint
+	s.navHintExpires = time.Now().Add(navHintDuration)
+	return tea.Tick(navHintDuration, func(time.Time) tea.Msg { return NavHintExpiredMsg{} })
 }

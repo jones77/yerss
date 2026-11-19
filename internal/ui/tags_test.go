@@ -109,15 +109,15 @@ func TestTagPopupGroupsSourcesFirst(t *testing.T) {
 	}
 }
 
-func TestTagPopupQClosesPopup(t *testing.T) {
+func TestTagPopupQQuitsApplication(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.openTagPopup(popup.KindTagsList)
 	_, cmd := m.updatePopup(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
-	if cmd != nil {
-		t.Errorf("q in a popup should close the popup, not quit, got %T", cmd)
+	if cmd == nil {
+		t.Error("q in a popup should quit the application")
 	}
-	if m.popupData.Kind() != popup.KindNone {
-		t.Errorf("q should close the tag popup, kind = %d", m.popupData.Kind())
+	if m.popupData.Kind() != popup.KindTagsList {
+		t.Errorf("q should quit without closing the tag popup first, kind = %d", m.popupData.Kind())
 	}
 }
 

@@ -55,7 +55,7 @@ func ClampPadY(padY, h int) int {
 // Content is padded inside the border by padX columns on each side and padY
 // rows above and below, so a permanent margin separates the content viewport
 // from the top and bottom borders.
-func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, title string, sc ScrollState, content []string) string {
+func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, title, counter, hint string, sc ScrollState, content []string) string {
 	if h < 1 {
 		h = 1
 	}
@@ -78,7 +78,7 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 	}
 
 	var lines []string
-	lines = append(lines, TopBorder(w, g, p, date, title))
+	lines = append(lines, TopBorder(w, g, p, date, title, counter))
 
 	// The vertical padding is a permanent margin above and below the content,
 	// between the content viewport and the borders.
@@ -103,7 +103,7 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 		lines = append(lines, blank())
 		row++
 	}
-	lines = append(lines, BottomBorder(w, g, p, sc))
+	lines = append(lines, BottomBorder(w, g, p, sc, hint))
 
 	// Defensive clamp to exactly h lines on the most degenerate sizes.
 	if len(lines) > h {
@@ -125,43 +125,53 @@ func RenderArticleBorder(w, h, padX, padY int, g BorderGlyphs, p Palette, date, 
 // the title fits, leftover space is filled with horizontal dashes. The date
 // and ellipsis are styled in bright blue (12) while the title is bright white
 // (15 on dark); the bullet and the rails stay in the grey role (8).
-func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
-	leftRail := g.TL + g.H
-	rightRail := g.H + g.TR
+func TopBorder(w int, g BorderGlyphs, p Palette, date, title, counter string) string {
+	style := lipgloss.NewStyle().Foreground(p.Dim)
+	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
+	titleStyle := lipgloss.NewStyle().Foreground(p.Bright)
+	hLeft := style.Render(g.TL + g.H)
+	hRight := style.Render(g.H + g.TR)
+
+	// The left segment is the date prefix and the title; the right segment is an
+	// optional right-aligned counter followed by the corner. The dash fill joins
+	// them so the line is always exactly w columns wide.
+	var prefixPlain, prefixRendered string
+	if date == "" {
+		prefixPlain = " "
+		prefixRendered = " "
+	} else {
+		prefixPlain = " " + date + " " + g.Bullet + " "
+		prefixRendered = textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " "
+	}
+
+	counterSeg := ""
+	if counter != "" {
+		counterSeg = " " + textStyle.Render(counter) + " "
+	}
+	counterW := ansi.StringWidth(counterSeg)
+
 	innerW := max(1, w-2)
 	coreW := max(1, innerW-2)
-	prefix := " " + date + " " + g.Bullet + " "
-	if date == "" {
-		prefix = " "
-	}
-	titleW := coreW - runewidth.StringWidth(prefix) - 1
+	titleW := coreW - runewidth.StringWidth(prefixPlain) - 1 - counterW
 	if titleW < 0 {
 		titleW = 0
 	}
 
-	style := lipgloss.NewStyle().Foreground(p.Dim)
-	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
-	titleStyle := lipgloss.NewStyle().Foreground(p.Bright)
-	hLeft := style.Render(leftRail)
-	hRight := style.Render(rightRail)
-
+	var titleRendered string
 	if runewidth.StringWidth(title) <= titleW {
-		fill := coreW - runewidth.StringWidth(prefix+title) - 1
-		if fill < 0 {
-			fill = 0
-		}
-		right := style.Render(strings.Repeat(g.H, fill) + rightRail)
-		if date == "" {
-			return hLeft + " " + titleStyle.Render(title) + " " + right
-		}
-		return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + titleStyle.Render(title) + " " + right
+		titleRendered = titleStyle.Render(title)
+	} else {
+		cut := Truncate(title, titleW-runewidth.StringWidth(g.Ellipsis))
+		titleRendered = titleStyle.Render(cut) + textStyle.Render(g.Ellipsis)
 	}
 
-	cut := Truncate(title, titleW-runewidth.StringWidth(g.Ellipsis))
-	if date == "" {
-		return hLeft + " " + titleStyle.Render(cut) + textStyle.Render(g.Ellipsis) + " " + hRight
+	left := hLeft + prefixRendered + titleRendered + " "
+	right := counterSeg + hRight
+	fill := w - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if fill < 0 {
+		fill = 0
 	}
-	return hLeft + textStyle.Render(" "+date+" ") + style.Render(g.Bullet) + " " + titleStyle.Render(cut) + textStyle.Render(g.Ellipsis) + " " + hRight
+	return left + style.Render(strings.Repeat(g.H, fill)) + right
 }
 
 // BottomBorder renders the article frame's bottom edge as `leftCorner +
@@ -174,14 +184,14 @@ func TopBorder(w int, g BorderGlyphs, p Palette, date, title string) string {
 // and line ratio are g.Bullet. The hint, affordance, percent, and ratio are
 // styled in bright blue (12); the bullets and the rails stay in the grey role
 // (8).
-func BottomBorder(w int, g BorderGlyphs, p Palette, sc ScrollState) string {
+func BottomBorder(w int, g BorderGlyphs, p Palette, sc ScrollState, hint string) string {
 	style := lipgloss.NewStyle().Foreground(p.Dim)
 	textStyle := lipgloss.NewStyle().Foreground(p.StatusBar)
 
-	// The left-aligned hint is the open hint; the right-aligned position
-	// indicator is led by the `?: help` affordance, each separated by the
-	// bullet (dim).
-	hint := textStyle.Render("o: open article in browser")
+	// The left-aligned hint is the supplied hint (normally the open hint, or a
+	// transient navigation hint); the right-aligned position indicator is led by
+	// the `?: help` affordance, each separated by the bullet (dim).
+	hint = textStyle.Render(hint)
 	percentStr := fmt.Sprintf("%d%%", sc.Percent())
 	ratioStr := fmt.Sprintf("%d/%d", sc.BottomLine(), sc.TotalH)
 	indicator := "?: help" + " " + g.Bullet + " " + percentStr + " " + g.Bullet + " " + ratioStr

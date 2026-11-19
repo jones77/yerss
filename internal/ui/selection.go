@@ -40,6 +40,7 @@ func (m *Model) restoreSelection() tea.Cmd {
 	if sel.View == "article" && sel.ArticleID != 0 {
 		if full, err := m.sess.GetArticle(sel.ArticleID); err == nil && full != nil {
 			m.article = m.article.Recompose(*full)
+			m.setArticlePosition(sel.ArticleID)
 			if !m.article.RestoreAt(sel) {
 				m.article.Viewport.SetYOffset(sel.ArticleOffset)
 			}

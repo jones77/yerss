@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"yerss/internal/app"
 	"yerss/internal"
+	"yerss/internal/app"
 	"yerss/internal/ui/render"
 )
 
@@ -33,7 +33,6 @@ type State struct {
 	height int
 
 	groups []dayGroup
-	total  int
 	cursor int
 	filter string
 	dbSize int64
@@ -105,9 +104,6 @@ func (s *State) Load() string {
 		return "load error: " + err.Error()
 	}
 	s.groups = bucketDayGroups(arts, time.Now())
-	if total, err := s.sess.ArticleCount(); err == nil {
-		s.total = total
-	}
 	if size, err := s.sess.DBSize(); err == nil {
 		s.dbSize = size
 	}
@@ -228,8 +224,9 @@ func (s *State) articleCount() int {
 
 // selectedArticlePosition returns the 1-based position of the article under the
 // cursor among the loaded article rows (day headers are not counted) and the
-// total number of articles in the store. A cursor on a day header reports the
-// position of the article just above it (0 when no articles precede it).
+// total number of articles shown under the active filter. A cursor on a day
+// header reports the position of the article just above it (0 when no articles
+// precede it).
 func (s *State) selectedArticlePosition() (n, total int) {
 	rows := s.visibleRows()
 	for i := 0; i <= s.cursor && i < len(rows); i++ {
@@ -237,7 +234,7 @@ func (s *State) selectedArticlePosition() (n, total int) {
 			n++
 		}
 	}
-	return n, s.total
+	return n, s.articleCount()
 }
 
 // clampCursor keeps the cursor within the flattened visible-row list.

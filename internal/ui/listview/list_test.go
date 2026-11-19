@@ -271,8 +271,8 @@ func TestStatusBarShowsNT(t *testing.T) {
 	s.Load()
 	s.cursor = 1
 	got := s.renderStatusBar()
-	if !strings.Contains(got, "50% "+render.GlyphsFor(s.ascii).Bullet+" 1/2") {
-		t.Errorf("filtered status bar = %q, want 50%% %s 1/2", got, render.GlyphsFor(s.ascii).Bullet)
+	if !strings.Contains(got, "100% "+render.GlyphsFor(s.ascii).Bullet+" 1/1") {
+		t.Errorf("filtered status bar = %q, want 100%% %s 1/1", got, render.GlyphsFor(s.ascii).Bullet)
 	}
 	if !strings.Contains(got, "filter tech") {
 		t.Errorf("filtered status bar missing filter name: %q", got)
@@ -339,7 +339,6 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 func TestStatusBarHelpHintTrailing(t *testing.T) {
 	s, _ := newTestState(t)
 	s.dbSize = 0
-	s.total = 1
 	s.cursor = 1
 	s.groups = []dayGroup{{articles: []Item{{ID: 1, Title: "one"}}}}
 	got := ansi.Strip(s.renderStatusBar())
