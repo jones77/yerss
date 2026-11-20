@@ -147,6 +147,49 @@ func TestGatePrintsVerifyingNotice(t *testing.T) {
 	if !strings.Contains(string(out), "verifying feeds...") {
 		t.Errorf("missing verifying notice on stderr: %q", string(out))
 	}
+	if !strings.Contains(string(out), "ok "+srv.URL) {
+		t.Errorf("missing per-feed success progress on stderr: %q", string(out))
+	}
+	if !strings.Contains(string(out), "verified 1 of 1 feeds") {
+		t.Errorf("missing verification summary on stderr: %q", string(out))
+	}
+}
+
+func TestGatePrintsPerFeedProgress(t *testing.T) {
+	srv := tlsGateServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/bad") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		fmt.Fprint(w, `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title></channel></rss>`)
+	})
+
+	cfg, st := gateTestEnv(t, srv.URL+"/good\n"+srv.URL+"/bad\n")
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	code := runStartupGate(cfg, st)
+	w.Close()
+	out, _ := io.ReadAll(r)
+	os.Stderr = old
+
+	if code != 0 {
+		t.Fatalf("expected 0, got %d", code)
+	}
+	got := string(out)
+	if !strings.Contains(got, "ok "+srv.URL+"/good") {
+		t.Errorf("missing success progress for the working feed: %q", got)
+	}
+	if !strings.Contains(got, "failed "+srv.URL+"/bad") {
+		t.Errorf("missing failure progress for the bad feed: %q", got)
+	}
+	if !strings.Contains(got, "verified 1 of 2 feeds") {
+		t.Errorf("missing verification summary: %q", got)
+	}
 }
 
 func TestGateUnreadableFeedsFileRefuses(t *testing.T) {

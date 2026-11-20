@@ -55,13 +55,17 @@ func runStartupGate(cfg *config.Config, st *internal.Store) int {
 	}
 
 	fmt.Fprintln(os.Stderr, "verifying feeds...")
-	res, err := feed.VerifyFeeds(st, urls, verifyPerFeed, verifyOverall)
+	res, err := feed.VerifyFeedsWithProgress(st, urls, verifyPerFeed, verifyOverall, func(outcome feed.FeedOutcome) {
+		if outcome.Err != nil {
+			fmt.Fprintf(os.Stderr, "  failed %s: %v\n", outcome.URL, outcome.Err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  ok %s (%d articles)\n", outcome.URL, outcome.Articles)
+	})
 	if err != nil || res.Feeds == 0 {
 		fmt.Fprintf(os.Stderr, "yerss: no working RSS feed found; check the URLs in %s\n", cfg.FeedsFile())
-		for _, e := range res.Errors {
-			fmt.Fprintf(os.Stderr, "  %v\n", e)
-		}
 		return exitNoWorking
 	}
+	fmt.Fprintf(os.Stderr, "verified %d of %d feeds\n", res.Feeds, len(urls))
 	return 0
 }

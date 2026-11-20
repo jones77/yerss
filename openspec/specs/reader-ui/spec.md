@@ -164,13 +164,11 @@ expanded articles).
 ### Requirement: List view status bar
 
 The system SHALL display a status bar at the bottom of the list view. The
-left-most elements SHALL be the time and long-form date the feeds were last
-refreshed, formatted as `HH:MM Weekday Day-ordinal Month Year last refresh`
-(for example `14:30 Saturday 29th August 2026 last refresh`), or
-`HH:MM:SS Weekday Day-ordinal Month Year last refresh` when the `show_seconds`
-display option is enabled, with the
-`last refresh` label rendered in the dim role (#707070), or the text
-`never refreshed` when no refresh has occurred. The right-most elements SHALL
+left-most element SHALL be the last-refresh text, formatted as
+`last refresh HH:MM` (for example `last refresh 14:30`), or
+`last refresh HH:MM:SS` when the `show_seconds` display option is enabled,
+rendered entirely in the dim role (#707070), or the text `never refreshed` in
+the dim role when no refresh has occurred. The right-most elements SHALL
 be a literal `?: help` hint, followed by the bullet and the on-disk size of the
 article database as `DB <n>MB`, the scroll position percentage, and the article
 count as `<n>/<total>` — where the database size is rendered as a whole number
@@ -179,10 +177,9 @@ and `<total>` is the total number of articles in the database — joined by the
 bullet (`•`, ASCII `.`) (for example
 `?: help • DB 320MB • 100% • 2/2`). The `DB` value SHALL be the on-disk database
 size including the WAL sidecar file when one is present. Values below one
-megabyte SHALL render as `0MB`. The bullets and the `last refresh` label SHALL
-render in the dim role (#707070); the remaining status bar text SHALL render in
-the chrome role. When a tag filter is active, the status bar SHALL also display
-the active filter name.
+megabyte SHALL render as `0MB`. The bullets SHALL render in the dim role
+(#707070); the remaining status bar text SHALL render in the chrome role. When a
+tag filter is active, the status bar SHALL also display the active filter name.
 
 #### Scenario: Status bar leads the right side with the help hint
 
@@ -193,22 +190,22 @@ the active filter name.
 #### Scenario: Status bar shows refresh time, size, percentage, and position
 
 - **WHEN** the list view is displayed
-- **THEN** the status bar shows the last-refresh time and date on the left as
-  `HH:MM Weekday Day-ordinal Month Year last refresh` and, on the right, the
-  database size as `DB <n>MB`, the percentage, and the `<n>/<total>` position
-  joined by ` • `
+- **THEN** the status bar shows the last-refresh time on the left as
+  `last refresh HH:MM` and, on the right, the database size as `DB <n>MB`, the
+  percentage, and the `<n>/<total>` position joined by ` • `
 
 #### Scenario: Status bar shows seconds when enabled
 
 - **WHEN** the `show_seconds` display option is enabled and the list view is displayed
-- **THEN** the status bar shows the last-refresh time on the left as `HH:MM:SS Weekday Day-ordinal Month Year last refresh`
+- **THEN** the status bar shows the last-refresh time on the left as `last refresh HH:MM:SS`
 
-#### Scenario: Status bar uses dim bullets and dim refresh label
+#### Scenario: Status bar uses dim bullets and dim refresh text
 
 - **WHEN** the list view is displayed
 - **THEN** the bullets between the database size, percentage, and position
-  render in the dim role (#707070), the `last refresh` label renders in the dim
-  role, and the elements between the bullets render in the chrome role
+  render in the dim role (#707070), the entire `last refresh HH:MM` text renders
+  in the dim role, and the elements between the bullets render in the chrome
+  role
 
 #### Scenario: Status bar shows active filter
 

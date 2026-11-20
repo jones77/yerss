@@ -61,7 +61,7 @@ func FetchFeeds(st *internal.Store, urls []string) FetchResult {
 	parser.Client = ClientFactory(refreshPerFeedTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), refreshOverallTimeout)
 	defer cancel()
-	return fetchFeeds(st, urls, parser, ctx)
+	return fetchFeeds(st, urls, parser, ctx, nil)
 }
 
 // VerifyFeeds is a bounded variant of FetchFeeds used by the startup gate. It
@@ -70,11 +70,18 @@ func FetchFeeds(st *internal.Store, urls []string) FetchResult {
 // no feed parses successfully; a successful gate fetch persists the verified
 // feed (stamping last_fetched_at) so the startup refresh is skipped.
 func VerifyFeeds(st *internal.Store, urls []string, perFeed, overall time.Duration) (FetchResult, error) {
+	return VerifyFeedsWithProgress(st, urls, perFeed, overall, nil)
+}
+
+// VerifyFeedsWithProgress behaves like VerifyFeeds and calls progress once for
+// each feed after its outcome is recorded, so callers can report progress while
+// a slow feed set is verified. progress is serialized and may be nil.
+func VerifyFeedsWithProgress(st *internal.Store, urls []string, perFeed, overall time.Duration, progress func(FeedOutcome)) (FetchResult, error) {
 	parser := gofeed.NewParser()
 	parser.Client = ClientFactory(perFeed)
 	ctx, cancel := context.WithTimeout(context.Background(), overall)
 	defer cancel()
-	res := fetchFeeds(st, urls, parser, ctx)
+	res := fetchFeeds(st, urls, parser, ctx, progress)
 	if res.Feeds == 0 {
 		return res, fmt.Errorf("no feed parsed successfully")
 	}
@@ -84,14 +91,23 @@ func VerifyFeeds(st *internal.Store, urls []string, perFeed, overall time.Durati
 // fetchFeeds downloads and persists all feeds concurrently. ctx must be
 // non-nil: it carries the overall deadline, and each request is cancelled when
 // it elapses. In-flight requests are capped by a semaphore so a feed set larger
-// than the bound is processed in waves rather than all at once.
-func fetchFeeds(st *internal.Store, urls []string, parser *gofeed.Parser, ctx context.Context) FetchResult {
+// than the bound is processed in waves rather than all at once. When progress
+// is non-nil it is called once per feed with that feed's outcome.
+func fetchFeeds(st *internal.Store, urls []string, parser *gofeed.Parser, ctx context.Context, progress func(FeedOutcome)) FetchResult {
 	var (
 		mu  sync.Mutex
 		res FetchResult
 		wg  sync.WaitGroup
 		now = time.Now()
 	)
+	// record appends one outcome and reports it. Callers hold mu, so progress
+	// calls never overlap and stay in completion order.
+	record := func(outcome FeedOutcome) {
+		res.Outcomes = append(res.Outcomes, outcome)
+		if progress != nil {
+			progress(outcome)
+		}
+	}
 	sem := make(chan struct{}, maxConcurrentFetches)
 	for _, entry := range urls {
 		if ctx.Err() != nil {
@@ -117,14 +133,14 @@ func fetchFeeds(st *internal.Store, urls []string, parser *gofeed.Parser, ctx co
 				if errors.As(err, &httpErr) {
 					outcome.Status = httpErr.StatusCode
 				}
-				res.Outcomes = append(res.Outcomes, outcome)
+				record(outcome)
 				mu.Unlock()
 				return
 			}
 
 			mu.Lock()
 			res.Feeds++
-			res.Outcomes = append(res.Outcomes, FeedOutcome{URL: url, Articles: len(feed.Items)})
+			record(FeedOutcome{URL: url, Articles: len(feed.Items)})
 			if err := st.UpsertFeed(url, feed.Title, now); err != nil {
 				res.Errors = append(res.Errors, err)
 			}

@@ -86,7 +86,14 @@ var lookPath = exec.LookPath
 func clipboardHelper(cmds []*exec.Cmd) (*exec.Cmd, string) {
 	var names []string
 	for _, c := range cmds {
-		names = append(names, c.Path)
+		// Report the helper name rather than c.Path: exec.Command resolves an
+		// installed helper to an absolute path, which we do not want in the
+		// user-facing "tried ..." diagnostic.
+		name := c.Path
+		if len(c.Args) > 0 {
+			name = c.Args[0]
+		}
+		names = append(names, name)
 		if _, err := lookPath(c.Path); err == nil {
 			return c, strings.Join(names, ", ")
 		}

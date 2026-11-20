@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
+	"yerss/internal"
 	"yerss/internal/app"
 	"yerss/internal/config"
-	"yerss/internal"
 	"yerss/internal/ui/render"
 )
 
@@ -299,8 +299,8 @@ func TestStatusBarShowsDBSize(t *testing.T) {
 	s.Status.LastRefreshedAt = mustParseTime(t, "2026-08-28T15:04:05Z")
 	s.cursor = 1 // the single article
 	got = s.renderStatusBar()
-	if !strings.Contains(got, "15:04 Friday 28th August 2026 last refresh") {
-		t.Errorf("status bar = %q, want last refresh time with long date", got)
+	if !strings.Contains(got, "last refresh 15:04") {
+		t.Errorf("status bar = %q, want last refresh time as HH:MM", got)
 	}
 	if !strings.Contains(got, "DB "+render.FormatMB(s.dbSize)) {
 		t.Errorf("status bar = %q, want DB %s", got, render.FormatMB(s.dbSize))
@@ -325,8 +325,8 @@ func TestStatusBarBulletAndRefreshDim(t *testing.T) {
 	if !strings.Contains(got, dim.Render(bullet)) {
 		t.Errorf("bullets should render in the dim role (ANSI 8): %q", got)
 	}
-	if !strings.Contains(got, dim.Render("last refresh")) {
-		t.Errorf("last refresh label should render in the dim role (ANSI 8): %q", got)
+	if !strings.Contains(got, dim.Render("last refresh 15:04")) {
+		t.Errorf("last refresh text should render in the dim role (ANSI 8): %q", got)
 	}
 	if !strings.Contains(got, base.Render("100%")) {
 		t.Errorf("elements between bullets should stay in the chrome role: %q", got)
@@ -461,7 +461,7 @@ func TestStatusBarShowsSecondsWhenEnabled(t *testing.T) {
 	s.cursor = 1
 
 	got := s.renderStatusBar()
-	if !strings.Contains(got, "15:04:05 Friday 28th August 2026 last refresh") {
+	if !strings.Contains(got, "last refresh 15:04:05") {
 		t.Errorf("status bar = %q, want seconds in the last refresh time", got)
 	}
 }

@@ -22,10 +22,9 @@ func StatusBarLeft(base, dim lipgloss.Style, g BorderGlyphs, statusMsg string, s
 	} else if refreshing {
 		left = base.Render("refreshing...")
 	} else if lastRefreshedAt.IsZero() {
-		left = base.Render("never refreshed")
+		left = dim.Render("never refreshed")
 	} else {
-		t := lastRefreshedAt
-		left = base.Render(t.Format(internal.TimeLayout(showSeconds))+" "+internal.LongDate(t)) + " " + dim.Render("last refresh")
+		left = dim.Render("last refresh " + lastRefreshedAt.Format(internal.TimeLayout(showSeconds)))
 	}
 	if filter != "" && (statusMsg == "" || !statusActive) {
 		left += " " + dim.Render(g.Bullet) + " " + base.Render("filter "+filter)

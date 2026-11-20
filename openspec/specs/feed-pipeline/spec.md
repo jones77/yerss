@@ -305,11 +305,15 @@ TUI without performing a network check. A feed row whose `last_fetched_at` is NU
 satisfy this trust rule. Otherwise the system SHALL fetch the configured feeds
 concurrently, bounded by a 10-second per-feed timeout and a 30-second overall
 deadline. While the verification fetch is in progress, the system SHALL print a
-`verifying feeds...` notice to stderr. If at least one feed parses successfully,
-the system SHALL proceed to the TUI and the successful fetch SHALL count as the
-first refresh (so the startup refresh gate SHALL skip a redundant fetch). If no
-feed parses successfully, the system SHALL print the per-feed errors and SHALL
-exit with code 3 without entering the TUI.
+`verifying feeds...` notice to stderr before the fetch begins. The system SHALL
+print one progress line to stderr for each feed as that feed's outcome is
+recorded: an `ok <URL> (<n> articles)` line when the feed parses successfully,
+or a `failed <URL>: <error>` line when the fetch or parse fails. If at least one
+feed parses successfully, the system SHALL print a
+`verified <ok> of <total> feeds` summary and SHALL proceed to the TUI; the
+successful fetch SHALL count as the first refresh (so the startup refresh gate
+SHALL skip a redundant fetch). If no feed parses successfully, the system SHALL
+print the summary and SHALL exit with code 3 without entering the TUI.
 
 #### Scenario: Empty feeds file refuses start
 
@@ -344,12 +348,15 @@ exit with code 3 without entering the TUI.
 #### Scenario: First run with no working feed refuses start
 
 - **WHEN** the feeds file contains at least one URL, the feeds table has no previously-verified feed, and no configured feed parses successfully within the per-feed and overall deadlines
-- **THEN** the system prints the per-feed errors and exits with code 3 without entering the TUI
+- **THEN** the system prints a `failed <URL>: <error>` progress line for each feed, prints the summary, and exits with code 3 without entering the TUI
 
-#### Scenario: Verifying notice printed to stderr
+#### Scenario: Verifying notice and per-feed progress printed to stderr
 
 - **WHEN** the gate performs a verification fetch (no previously-verified feed)
-- **THEN** the system prints a `verifying feeds...` notice to stderr before the fetch begins
+- **THEN** the system prints a `verifying feeds...` notice before the fetch begins
+- **AND** prints an `ok <URL> (<n> articles)` or `failed <URL>: <error>` line
+  for each feed as its outcome is recorded
+- **AND** prints a `verified <ok> of <total> feeds` summary before proceeding
 ### Requirement: Exit diagnostics for failed feed URLs
 
 After the TUI exits, the system SHALL print per-URL fetch diagnostics to
